@@ -1,0 +1,26 @@
+[Unit]
+Description=ACS - schvalovani pristupu k mistnostem (web)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=acs
+Group=acs
+WorkingDirectory=/opt/acs/current
+ExecStart=/opt/acs/current/Acs.Web
+EnvironmentFile=/etc/acs/acs.env
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=20
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/acs
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

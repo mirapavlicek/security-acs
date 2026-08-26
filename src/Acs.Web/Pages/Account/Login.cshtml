@@ -1,0 +1,26 @@
+@page
+@model Acs.Web.Pages.Account.LoginModel
+@{
+    ViewData["Title"] = "Přihlášení";
+}
+<div class="login-box card">
+    <div class="brand" style="margin-bottom:1rem">
+        <span class="brand-mark">ACS</span>
+        <span class="brand-sub">schvalování přístupů k místnostem</span>
+    </div>
+
+    @if (Model.ErrorMessage is not null)
+    {
+        <div class="alert alert-error">@Model.ErrorMessage</div>
+    }
+
+    <form method="post">
+        <label asp-for="UserName">Uživatelské jméno (AD účet nebo lokální)</label>
+        <input asp-for="UserName" type="text" autofocus autocomplete="username" />
+
+        <label asp-for="Password">Heslo</label>
+        <input asp-for="Password" type="password" autocomplete="current-password" />
+
+        <button type="submit" class="btn" style="width:100%">Přihlásit se</button>
+    </form>
+</div>

@@ -1,0 +1,63 @@
+@page
+@model Acs.Web.Pages.ReportsModel
+@{
+    ViewData["Title"] = "Reporty";
+}
+<h1>Reporty přístupů</h1>
+<p class="muted">Aktivní přístupy (zapsané do WIN-PAK přes API nebo potvrzené ručně).</p>
+
+<div class="card">
+    <form method="get" class="inline-form">
+        <label style="display:inline">Pohled</label>
+        <select name="view" onchange="this.form.submit()" style="max-width:260px;display:inline-block">
+            <option value="byReader" selected="@(Model.View == "byReader")">Podle čtečky (kdo má přístup kam)</option>
+            <option value="byEmployee" selected="@(Model.View == "byEmployee")">Podle zaměstnance (kdo má jaké přístupy)</option>
+        </select>
+    </form>
+    <a class="btn btn-sm" style="float:right" href="/Reports?handler=Csv&view=@Model.View">Export CSV</a>
+</div>
+
+@if (Model.View == "byReader")
+{
+    foreach (var group in Model.ByReader)
+    {
+        <div class="card">
+            <h2 style="margin-top:0">@group.Key <span class="muted">(@group.Count() osob)</span></h2>
+            <table class="data">
+                @foreach (var row in group)
+                {
+                    <tr>
+                        <td>@row.EmployeeName</td>
+                        <td class="muted">@row.Department</td>
+                        <td class="muted">karta @(row.CardNumber ?? "—")</td>
+                        <td class="muted">od @row.Since?.ToString("yyyy-MM-dd")</td>
+                    </tr>
+                }
+            </table>
+        </div>
+    }
+}
+else
+{
+    foreach (var group in Model.ByEmployee)
+    {
+        <div class="card">
+            <h2 style="margin-top:0">@group.Key <span class="muted">(@group.Count() přístupů)</span></h2>
+            <table class="data">
+                @foreach (var row in group)
+                {
+                    <tr>
+                        <td>@row.ReaderName</td>
+                        <td class="muted">@row.Location</td>
+                        <td class="muted">od @row.Since?.ToString("yyyy-MM-dd")</td>
+                    </tr>
+                }
+            </table>
+        </div>
+    }
+}
+
+@if (Model.Rows.Count == 0)
+{
+    <div class="card"><p class="muted">Žádné aktivní přístupy.</p></div>
+}

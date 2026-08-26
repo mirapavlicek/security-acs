@@ -1,0 +1,17 @@
+# Ukázková konfigurace HAProxy pro acs.fnmh.network
+# (doplňte do stávající HAProxy před aplikačními servery).
+
+frontend acs_front
+    bind *:80
+    # Pokud HAProxy terminuje TLS:
+    # bind *:443 ssl crt /etc/haproxy/certs/acs.fnmh.network.pem
+    # redirect scheme https code 301 if !{ ssl_fc }
+    default_backend acs_back
+
+backend acs_back
+    balance roundrobin
+    option httpchk GET /health
+    http-check expect status 200
+    # Aplikace je bezestavová — sticky session není potřeba.
+    server acs1 10.84.7.146:52000 check inter 3s fall 2 rise 2
+    server acs2 10.84.7.147:52000 check inter 3s fall 2 rise 2

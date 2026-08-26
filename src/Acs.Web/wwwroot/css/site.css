@@ -1,0 +1,182 @@
+/* ===== Barevná témata (CSS custom properties) ===== */
+:root, html[data-theme="light"] {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --text: #1c2733;
+  --muted: #63707e;
+  --primary: #0b6bcb;
+  --primary-contrast: #ffffff;
+  --border: #d8dee6;
+  --danger: #c62828;
+  --success: #2e7d32;
+}
+
+html[data-theme="dark"] {
+  --bg: #121821;
+  --surface: #1b2430;
+  --text: #e6ecf2;
+  --muted: #93a1b1;
+  --primary: #4da3ff;
+  --primary-contrast: #0b1420;
+  --border: #2c3947;
+  --danger: #ef5350;
+  --success: #66bb6a;
+}
+
+html[data-theme="blue"] {
+  --bg: #eaf2fb;
+  --surface: #ffffff;
+  --text: #10263f;
+  --muted: #4f6b88;
+  --primary: #1156a5;
+  --primary-contrast: #ffffff;
+  --border: #c3d6ec;
+  --danger: #c62828;
+  --success: #2e7d32;
+}
+
+html[data-theme="green"] {
+  --bg: #eef6ef;
+  --surface: #ffffff;
+  --text: #16301c;
+  --muted: #557a5f;
+  --primary: #1d7a34;
+  --primary-contrast: #ffffff;
+  --border: #c8dfcd;
+  --danger: #c62828;
+  --success: #1d7a34;
+}
+
+html[data-theme="purple"] {
+  --bg: #f3effa;
+  --surface: #ffffff;
+  --text: #2a1f3d;
+  --muted: #6f6386;
+  --primary: #6a3cb5;
+  --primary-contrast: #ffffff;
+  --border: #ddd2ef;
+  --danger: #c62828;
+  --success: #2e7d32;
+}
+
+html[data-theme="contrast"] {
+  --bg: #000000;
+  --surface: #0d0d0d;
+  --text: #ffffff;
+  --muted: #ffd600;
+  --primary: #ffd600;
+  --primary-contrast: #000000;
+  --border: #ffffff;
+  --danger: #ff5252;
+  --success: #69f0ae;
+}
+
+/* ===== Základ ===== */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.6rem 1.2rem;
+  background: var(--surface);
+  border-bottom: 2px solid var(--primary);
+}
+
+.brand { text-decoration: none; color: var(--text); display: flex; flex-direction: column; line-height: 1.1; }
+.brand-mark { font-size: 1.3rem; font-weight: 700; color: var(--primary); letter-spacing: 0.08em; }
+.brand-sub { font-size: 0.7rem; color: var(--muted); }
+
+.mainnav { display: flex; gap: 1rem; flex: 1; flex-wrap: wrap; }
+.mainnav a { color: var(--text); text-decoration: none; padding: 0.35rem 0.6rem; border-radius: 6px; }
+.mainnav a:hover { background: var(--bg); color: var(--primary); }
+.nav-soon { color: var(--muted); padding: 0.35rem 0.6rem; cursor: not-allowed; opacity: 0.6; }
+
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 0.8rem; }
+.user-badge { color: var(--muted); font-size: 0.9rem; }
+.theme-form select {
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem 0.4rem;
+}
+
+.content { flex: 1; width: 100%; max-width: 1100px; margin: 0 auto; padding: 1.5rem 1.2rem; }
+.footer { padding: 0.7rem 1.2rem; color: var(--muted); font-size: 0.8rem; border-top: 1px solid var(--border); }
+
+/* ===== Komponenty ===== */
+h1 { font-size: 1.5rem; margin: 0 0 1rem; }
+h2 { font-size: 1.15rem; margin: 1.5rem 0 0.6rem; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.2rem;
+  margin-bottom: 1.2rem;
+}
+
+.cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
+
+label { display: block; margin: 0.6rem 0 0.2rem; font-size: 0.88rem; color: var(--muted); }
+input[type="text"], input[type="password"], input[type="number"], input[type="email"], select, textarea {
+  width: 100%; padding: 0.45rem 0.6rem;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  font-size: 0.95rem;
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); outline-offset: 0; border-color: var(--primary); }
+
+.checkbox-row { display: flex; align-items: center; gap: 0.5rem; margin: 0.6rem 0; }
+.checkbox-row label { margin: 0; }
+
+.btn {
+  display: inline-block; border: 1px solid var(--primary);
+  background: var(--primary); color: var(--primary-contrast);
+  padding: 0.45rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.95rem;
+  text-decoration: none; margin-top: 0.8rem;
+}
+.btn:hover { filter: brightness(1.1); }
+.btn-ghost { background: transparent; color: var(--text); border-color: var(--border); margin-top: 0; }
+.btn-sm { padding: 0.2rem 0.6rem; font-size: 0.85rem; margin-top: 0; }
+.btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+
+.inline-form { display: inline; }
+
+table.data { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 8px; overflow: hidden; }
+table.data th, table.data td { text-align: left; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--border); font-size: 0.92rem; }
+table.data th { background: var(--bg); color: var(--muted); font-weight: 600; }
+table.data tr:hover td { background: color-mix(in srgb, var(--primary) 6%, var(--surface)); }
+
+.alert { padding: 0.7rem 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid; }
+.alert-error { color: var(--danger); border-color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }
+.alert-success { color: var(--success); border-color: var(--success); background: color-mix(in srgb, var(--success) 8%, var(--surface)); }
+
+.badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.75rem; border: 1px solid var(--border); color: var(--muted); }
+.badge-primary { border-color: var(--primary); color: var(--primary); }
+
+.login-box { max-width: 380px; margin: 8vh auto 0; }
+.login-box .brand-mark { font-size: 2rem; }
+
+.muted { color: var(--muted); }
+
+/* ===== Plány pater (hotspoty čteček) ===== */
+.hotspot {
+  position: absolute;
+  width: 16px; height: 16px;
+  margin: -8px 0 0 -8px;
+  border-radius: 50%;
+  background: var(--muted);
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--border);
+  cursor: help;
+}
+.hotspot-mine { background: var(--success); }
+.hotspot-inline { position: static; display: inline-block; margin: 0 0.2rem -3px 0; cursor: default; }

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Acs.WinPakConnector</RootNamespace>
+    <!-- Aplikace se publikuje pro win-x64 (běží na WIN-PAK serveru jako Windows služba),
+         ale vyvíjet a testovat ji lze na jakékoli platformě. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.*" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.*" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.*" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,40 @@
+@page
+@model Acs.Web.Pages.Catalog.Matrices.IndexModel
+@{
+    ViewData["Title"] = "Schvalovací matice";
+}
+<h1>Schvalovací matice</h1>
+<p class="muted">Matice definuje, kdo a v jakém pořadí schvaluje žádost. Čtečkám se přiřazuje v editaci čtečky; jedna matice může sloužit více čtečkám.</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+
+<div class="card">
+    <table class="data">
+        <thead>
+        <tr><th>Název</th><th>Úrovní</th><th>Používá čteček</th><th>Aktivní</th><th></th></tr>
+        </thead>
+        <tbody>
+        @foreach (var matrix in Model.Matrices)
+        {
+            <tr>
+                <td>@matrix.Name <span class="muted">@matrix.Description</span></td>
+                <td>@matrix.Levels.Count</td>
+                <td>@Model.UsageCounts.GetValueOrDefault(matrix.Id)</td>
+                <td>@(matrix.IsActive ? "ano" : "ne")</td>
+                <td><a class="btn btn-sm btn-ghost" asp-page="Edit" asp-route-id="@matrix.Id">Upravit</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+<div class="card" style="max-width:480px">
+    <h2 style="margin-top:0">Nová matice</h2>
+    <form method="post" asp-page-handler="Create">
+        <input type="text" name="name" placeholder="Název matice" required />
+        <button class="btn" type="submit">Vytvořit</button>
+    </form>
+</div>

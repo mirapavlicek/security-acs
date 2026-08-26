@@ -1,0 +1,83 @@
+﻿@{
+    var theme = Context.Request.Cookies["acs-theme"] ?? "light";
+    var isAuthenticated = User.Identity?.IsAuthenticated == true;
+    bool HasRole(string role) => User.IsInRole("Admin") || User.IsInRole(role);
+}
+<!DOCTYPE html>
+<html lang="cs" data-theme="@theme">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] – ACS</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body>
+<header class="topbar">
+    <a class="brand" asp-page="/Index">
+        <span class="brand-mark">ACS</span>
+        <span class="brand-sub">schvalování přístupů</span>
+    </a>
+
+    @if (isAuthenticated)
+    {
+        <nav class="mainnav">
+            <a asp-page="/Index">Přehled</a>
+            <a asp-page="/Requests/Index">Žádosti</a>
+            <a asp-page="/MyAccess">Moje přístupy</a>
+            <a asp-page="/Plans">Plány</a>
+            <a asp-page="/Deputies">Zástupy</a>
+            @if (HasRole("CatalogManager"))
+            {
+                <a asp-page="/Catalog/Readers/Index">Čtečky</a>
+                <a asp-page="/Catalog/Employees/Index">Zaměstnanci</a>
+                <a asp-page="/Catalog/Places">Budovy</a>
+                <a asp-page="/Catalog/Matrices/Index">Matice</a>
+                <a asp-page="/Reports">Reporty</a>
+            }
+            @if (HasRole("CardAdmin"))
+            {
+                <a asp-page="/CardQueue">Fronta karet</a>
+            }
+            @if (User.IsInRole("Admin"))
+            {
+                <a asp-page="/Admin/Users/Index">Uživatelé</a>
+                <a asp-page="/Admin/Settings">Nastavení</a>
+                <a asp-page="/Admin/Audit">Audit</a>
+            }
+        </nav>
+    }
+
+    <div class="topbar-right">
+        <form method="post" action="/set-theme" class="theme-form">
+            <select name="theme" onchange="this.form.submit()" aria-label="Barevné téma">
+                @foreach (var (value, label) in new[]
+                {
+                    ("light", "Světlé"), ("dark", "Tmavé"), ("blue", "Modré"),
+                    ("green", "Zelené"), ("purple", "Fialové"), ("contrast", "Kontrastní"),
+                })
+                {
+                    <option value="@value" selected="@(theme == value)">@label</option>
+                }
+            </select>
+        </form>
+
+        @if (isAuthenticated)
+        {
+            <span class="user-badge" title="@User.Identity!.Name">@(User.FindFirst("display_name")?.Value ?? User.Identity!.Name)</span>
+            <form method="post" asp-page="/Account/Login" asp-page-handler="Logout" class="inline-form">
+                <button type="submit" class="btn btn-ghost">Odhlásit</button>
+            </form>
+        }
+    </div>
+</header>
+
+<main class="content">
+    @RenderBody()
+</main>
+
+<footer class="footer">
+    <span>ACS · acs.fnmh.network</span>
+</footer>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

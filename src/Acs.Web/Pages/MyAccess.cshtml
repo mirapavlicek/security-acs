@@ -1,0 +1,78 @@
+@page
+@using Acs.Domain.Entities
+@model Acs.Web.Pages.MyAccessModel
+@{
+    ViewData["Title"] = "Moje přístupy";
+}
+<h1>Moje přístupy</h1>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+@if (Model.Employee is null)
+{
+    <div class="card">
+        <p class="muted">K vašemu účtu není přiřazen žádný zaměstnanec — kontaktujte správce číselníků
+        (párování probíhá podle AD účtu v kartě zaměstnance).</p>
+    </div>
+}
+else
+{
+    <p class="muted">Přístupy zaměstnance @Model.Employee.FullName (karta @(Model.Employee.CardNumber ?? "—")).</p>
+
+    <h2>Aktivní přístupy</h2>
+    <div class="card">
+        <table class="data">
+            <thead><tr><th>Čtečka</th><th>Umístění</th><th>Stav</th><th>Od</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var item in Model.ActiveItems)
+            {
+                <tr>
+                    <td>@item.Reader?.Name</td>
+                    <td class="muted">@(item.Reader?.Room is null ? "—" : $"{item.Reader.Room.Floor?.Building?.Name} / {item.Reader.Room.Floor?.Name} / {item.Reader.Room.Name}")</td>
+                    <td><span class="badge badge-primary">@(item.Status == RequestStatus.PushedToWinPak ? "v systému (API)" : "v systému (ručně)")</span></td>
+                    <td class="muted">@item.PushedAt?.ToString("yyyy-MM-dd")</td>
+                    <td style="width:1%">
+                        <form method="post" asp-page-handler="Revoke" class="inline-form">
+                            <input type="hidden" name="readerId" value="@item.ReaderId" />
+                            <button class="btn btn-sm btn-ghost" type="submit"
+                                    onclick="return confirm('Požádat o odebrání přístupu @item.Reader?.Name?')">Požádat o odebrání</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (Model.ActiveItems.Count == 0)
+        {
+            <p class="muted">Žádné aktivní přístupy.</p>
+        }
+    </div>
+
+    <h2>Čeká na vyřízení</h2>
+    <div class="card">
+        <table class="data">
+            <thead><tr><th>Čtečka</th><th>Stav</th><th>Žádost</th></tr></thead>
+            <tbody>
+            @foreach (var item in Model.PendingItems)
+            {
+                <tr>
+                    <td>@item.Reader?.Name</td>
+                    <td>@(item.Status == RequestStatus.Pending ? $"schvalování — úroveň {item.CurrentLevelOrder}" : "u správce karet")</td>
+                    <td><a class="btn btn-sm btn-ghost" asp-page="/Requests/Detail" asp-route-id="@item.RequestId">#@item.RequestId</a></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (Model.PendingItems.Count == 0)
+        {
+            <p class="muted">Nic nečeká na vyřízení.</p>
+        }
+    </div>
+}

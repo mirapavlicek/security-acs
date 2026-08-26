@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Acs.Domain/Acs.Domain.csproj" />
+    <Project Path="src/Acs.Infrastructure/Acs.Infrastructure.csproj" />
+    <Project Path="src/Acs.Web/Acs.Web.csproj" />
+    <Project Path="src/Acs.WinPakConnector/Acs.WinPakConnector.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Acs.Tests/Acs.Tests.csproj" />
+    <Project Path="tests/Acs.WinPakConnector.Tests/Acs.WinPakConnector.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,83 @@
+@page
+@model Acs.Web.Pages.Catalog.PlacesModel
+@{
+    ViewData["Title"] = "Budovy a místnosti";
+}
+<h1>Budovy, patra a místnosti</h1>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+@foreach (var building in Model.Buildings)
+{
+    <div class="card">
+        <h2 style="margin-top:0">@building.Name
+            <form method="post" asp-page-handler="DeleteBuilding" class="inline-form" style="float:right">
+                <input type="hidden" name="buildingId" value="@building.Id" />
+                <button class="btn btn-sm btn-danger" type="submit"
+                        onclick="return confirm('Smazat budovu @building.Name včetně pater a místností?')">Smazat</button>
+            </form>
+        </h2>
+
+        @foreach (var floor in building.Floors.OrderBy(f => f.SortOrder))
+        {
+            <h3 style="margin:0.8rem 0 0.3rem">@floor.Name
+                <form method="post" asp-page-handler="DeleteFloor" class="inline-form">
+                    <input type="hidden" name="floorId" value="@floor.Id" />
+                    <button class="btn btn-sm btn-ghost" type="submit"
+                            onclick="return confirm('Smazat patro @floor.Name?')">Smazat patro</button>
+                </form>
+            </h3>
+            <table class="data" style="margin-bottom:0.5rem">
+                @foreach (var room in floor.Rooms.OrderBy(r => r.Name))
+                {
+                    <tr>
+                        <td>@room.Name <span class="muted">@room.Description</span></td>
+                        <td class="muted">čteček: @room.Readers.Count</td>
+                        <td style="width:1%">
+                            <form method="post" asp-page-handler="DeleteRoom" class="inline-form">
+                                <input type="hidden" name="roomId" value="@room.Id" />
+                                <button class="btn btn-sm btn-ghost" type="submit"
+                                        onclick="return confirm('Smazat místnost @room.Name?')">Smazat</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </table>
+            <form method="post" asp-page-handler="AddRoom" class="inline-form">
+                <input type="hidden" name="floorId" value="@floor.Id" />
+                <input type="text" name="name" placeholder="Nová místnost…" required style="max-width:220px;display:inline-block" />
+                <button class="btn btn-sm" type="submit">Přidat místnost</button>
+            </form>
+            <form method="post" asp-page-handler="UploadSchema" enctype="multipart/form-data" class="inline-form" style="margin-left:1rem">
+                <input type="hidden" name="floorId" value="@floor.Id" />
+                <input type="file" name="file" accept="image/png,image/jpeg,image/svg+xml" style="display:inline-block;max-width:230px" />
+                <button class="btn btn-sm btn-ghost" type="submit">Nahrát schéma</button>
+            </form>
+            @if (floor.SchemaImage is not null)
+            {
+                <a class="btn btn-sm btn-ghost" asp-page="FloorPlan" asp-route-id="@floor.Id">Editor plánu</a>
+            }
+        }
+
+        <form method="post" asp-page-handler="AddFloor" class="inline-form" style="display:block;margin-top:0.8rem">
+            <input type="hidden" name="buildingId" value="@building.Id" />
+            <input type="text" name="name" placeholder="Nové patro…" required style="max-width:220px;display:inline-block" />
+            <button class="btn btn-sm" type="submit">Přidat patro</button>
+        </form>
+    </div>
+}
+
+<div class="card" style="max-width:480px">
+    <h2 style="margin-top:0">Nová budova</h2>
+    <form method="post" asp-page-handler="AddBuilding">
+        <input type="text" name="name" placeholder="Název budovy" required />
+        <button class="btn" type="submit">Přidat budovu</button>
+    </form>
+</div>

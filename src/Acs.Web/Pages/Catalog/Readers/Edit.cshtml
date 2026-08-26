@@ -1,0 +1,86 @@
+@page "{id:int?}"
+@using Acs.Domain.Entities
+@model Acs.Web.Pages.Catalog.Readers.EditModel
+@{
+    ViewData["Title"] = Model.Reader.Id == 0 ? "Nová čtečka" : $"Čtečka: {Model.Reader.Name}";
+}
+<h1>@ViewData["Title"]</h1>
+
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="card" style="max-width:640px">
+    <form method="post">
+        <input type="hidden" asp-for="Reader.Id" />
+        <label>Název</label>
+        <input asp-for="Reader.Name" required />
+        <label>Popis</label>
+        <input asp-for="Reader.Description" />
+        <label>Panel</label>
+        <input asp-for="Reader.PanelName" />
+        <label>WIN-PAK access level (pro zápis přístupů)</label>
+        <input asp-for="Reader.AccessLevelExternalId" placeholder="např. AL-03" />
+        <label>Místnost</label>
+        <select asp-for="Reader.RoomId">
+            <option value="">— žádná —</option>
+            @foreach (var room in Model.Rooms)
+            {
+                <option value="@room.Id">@room.Floor?.Building?.Name / @room.Floor?.Name / @room.Name</option>
+            }
+        </select>
+        <label>Schvalovací matice</label>
+        <select asp-for="Reader.ApprovalMatrixId">
+            <option value="">— bez schvalování —</option>
+            @foreach (var matrix in Model.Matrices)
+            {
+                <option value="@matrix.Id">@matrix.Name</option>
+            }
+        </select>
+        <div class="checkbox-row">
+            <input type="checkbox" asp-for="Reader.IsActive" />
+            <label asp-for="Reader.IsActive">Aktivní</label>
+        </div>
+        @if (Model.Reader.ExternalId is not null)
+        {
+            <p class="muted">Importováno z WIN-PAK (id @Model.Reader.ExternalId) — název a panel se při synchronizaci přepíší.</p>
+        }
+        <button class="btn" type="submit">Uložit</button>
+        <a class="btn btn-ghost" asp-page="Index">Zpět</a>
+    </form>
+</div>
+
+@if (Model.Reader.Id != 0)
+{
+    <div class="card" style="max-width:640px">
+        <h2 style="margin-top:0">Řetězec čteček — co je potřeba k této čtečce</h2>
+        <p class="muted">Žádost o tuto čtečku automaticky doplní i uvedené čtečky (chodba, patro, budova…).</p>
+
+        <table class="data">
+            @foreach (var dep in Model.Dependencies)
+            {
+                <tr>
+                    <td>@dep.RequiresReader?.Name</td>
+                    <td style="width:1%">
+                        <form method="post" asp-page-handler="RemoveDependency" class="inline-form">
+                            <input type="hidden" name="dependencyId" value="@dep.Id" />
+                            <button class="btn btn-sm btn-danger" type="submit">Odebrat</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+        </table>
+
+        <form method="post" asp-page-handler="AddDependency">
+            <label>Přidat vyžadovanou čtečku</label>
+            <select name="requiresReaderId">
+                @foreach (var candidate in Model.DependencyCandidates)
+                {
+                    <option value="@candidate.Id">@candidate.Name</option>
+                }
+            </select>
+            <button class="btn" type="submit">Přidat</button>
+        </form>
+    </div>
+}

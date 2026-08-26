@@ -1,0 +1,54 @@
+@page
+@using Acs.Domain.Entities
+@model Acs.Web.Pages.Catalog.Employees.IndexModel
+@{
+    ViewData["Title"] = "Zaměstnanci";
+}
+<h1>Zaměstnanci</h1>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="card">
+    <form method="get" class="inline-form">
+        <input type="text" name="search" value="@Model.Search" placeholder="Hledat jméno, oddělení, kartu…" style="max-width:300px;display:inline-block" />
+        <button class="btn btn-sm" type="submit">Hledat</button>
+    </form>
+    <form method="post" asp-page-handler="Sync" class="inline-form" style="float:right">
+        <button class="btn btn-sm" type="submit">Synchronizovat ze zdroje</button>
+    </form>
+    <a class="btn btn-sm btn-ghost" style="float:right;margin-right:0.5rem" asp-page="Edit">+ Nový zaměstnanec</a>
+</div>
+
+<div class="card">
+    <table class="data">
+        <thead>
+        <tr><th>Jméno</th><th>Os. číslo</th><th>Oddělení</th><th>AD účet</th><th>Karta</th><th>Zdroj</th><th>Aktivní</th><th></th></tr>
+        </thead>
+        <tbody>
+        @foreach (var employee in Model.Employees)
+        {
+            <tr>
+                <td>@employee.FullName</td>
+                <td class="muted">@employee.PersonalNumber</td>
+                <td>@employee.Department</td>
+                <td class="muted">@employee.AdAccount</td>
+                <td class="muted">@employee.CardNumber</td>
+                <td><span class="badge">@(employee.Source == RecordSource.Imported ? "import" : "ruční")</span></td>
+                <td>@(employee.IsActive ? "ano" : "ne")</td>
+                <td><a class="btn btn-sm btn-ghost" asp-page="Edit" asp-route-id="@employee.Id">Upravit</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Employees.Count == 0)
+    {
+        <p class="muted">Žádní zaměstnanci. Nakonfigurujte zdroj v Nastavení a spusťte synchronizaci, nebo přidejte ručně.</p>
+    }
+</div>
