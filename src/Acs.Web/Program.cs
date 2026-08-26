@@ -62,8 +62,9 @@ builder.Services.AddScoped<Acs.Infrastructure.Sync.EmployeeSourceFactory>();
 builder.Services.AddHttpClient(nameof(Acs.Infrastructure.Sync.ApiEmployeeSource));
 builder.Services.AddHostedService<Acs.Infrastructure.Sync.SyncScheduler>();
 
-// Schvalovací workflow.
+// Schvalovací workflow a fronta správce karet.
 builder.Services.AddScoped<Acs.Infrastructure.Workflow.RequestWorkflowService>();
+builder.Services.AddScoped<Acs.Infrastructure.Workflow.CardAdminService>();
 
 // ---------- Autentizace a autorizace ----------
 builder.Services

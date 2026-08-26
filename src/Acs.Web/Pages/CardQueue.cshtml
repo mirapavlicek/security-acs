@@ -1,0 +1,57 @@
+@page
+@using Acs.Domain.Entities
+@model Acs.Web.Pages.CardQueueModel
+@{
+    ViewData["Title"] = "Fronta správce karet";
+}
+<h1>Fronta správce karet</h1>
+<p class="muted">
+    Schválené žádosti k zadání do WIN-PAK. „Předat do systému“ zavolá API konektoru;
+    „Potvrdit ručně“ použijte, pokud jste přístup zadali ve WIN-PAK sami.
+    Stav konektoru: <strong>@Model.ConnectorStatus</strong>
+</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="card">
+    <table class="data">
+        <thead>
+        <tr><th>Žádost</th><th>Typ</th><th>Zaměstnanec</th><th>Karta / holder</th><th>Čtečka</th><th>Access level</th><th>Schváleno</th><th></th></tr>
+        </thead>
+        <tbody>
+        @foreach (var item in Model.Queue)
+        {
+            <tr>
+                <td><a asp-page="/Requests/Detail" asp-route-id="@item.RequestId">#@item.RequestId</a></td>
+                <td>@(item.Request?.Kind == RequestKind.Revoke ? Html.Raw("<span class=\"badge btn-danger\">odebrání</span>") : Html.Raw("<span class=\"badge\">udělení</span>"))</td>
+                <td>@item.Request?.TargetEmployee?.FullName</td>
+                <td class="muted">@(item.Request?.TargetEmployee?.CardNumber ?? "—") / @(item.Request?.TargetEmployee?.WinPakCardHolderId ?? "—")</td>
+                <td>@item.Reader?.Name</td>
+                <td class="muted">@(item.Reader?.AccessLevelExternalId ?? "nenamapován")</td>
+                <td class="muted">@item.DecidedAt?.ToString("yyyy-MM-dd HH:mm")</td>
+                <td style="white-space:nowrap">
+                    <form method="post" asp-page-handler="Push" class="inline-form">
+                        <input type="hidden" name="itemId" value="@item.Id" />
+                        <button class="btn btn-sm" type="submit" disabled="@(!Model.CanPush)">Předat do systému</button>
+                    </form>
+                    <form method="post" asp-page-handler="Confirm" class="inline-form">
+                        <input type="hidden" name="itemId" value="@item.Id" />
+                        <button class="btn btn-sm btn-ghost" type="submit">Potvrdit ručně</button>
+                    </form>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Queue.Count == 0)
+    {
+        <p class="muted">Fronta je prázdná.</p>
+    }
+</div>

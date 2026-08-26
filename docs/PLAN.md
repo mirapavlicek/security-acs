@@ -210,6 +210,9 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
 16. **Fronta správce karet** — seznam schváleného k zadání; tlačítko
     **Předat do systému** (volání Connectoru, výsledek se zapíše) nebo
     **Potvrdit ručně** (zadal do WIN-PAK sám); stav synchronizace.
+    ✅ Implementováno (`/CardQueue`) včetně revokací („Požádat o odebrání“
+    v Moje přístupy prochází stejným workflow a po provedení označí původní
+    přístup jako odebraný).
 17. **Reporty** — kdo má kam přístup (per místnost / per člověk), export CSV.
 
 ### E. Provoz a nasazení

@@ -34,7 +34,7 @@
             }
             @if (HasRole("CardAdmin"))
             {
-                <span class="nav-soon" title="Připravujeme">Fronta karet</span>
+                <a asp-page="/CardQueue">Fronta karet</a>
             }
             @if (User.IsInRole("Admin"))
             {
