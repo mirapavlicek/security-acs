@@ -1,0 +1,10 @@
+[Unit]
+Description=ACS auto-update z Git main
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=acs
+Group=acs
+ExecStart=/opt/acs/bin/acs-updater.sh
+EnvironmentFile=/etc/acs/acs.env

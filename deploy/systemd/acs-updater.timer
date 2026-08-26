@@ -1,0 +1,13 @@
+[Unit]
+Description=Pravidelna kontrola nove verze ACS v Git main
+
+[Timer]
+# Kontrola kazdych 10 minut; nahodne zpozdeni az 4 minuty,
+# aby se oba HA nody neaktualizovaly ve stejny okamzik.
+OnBootSec=2min
+OnUnitActiveSec=10min
+RandomizedDelaySec=240
+Persistent=true
+
+[Install]
+WantedBy=timers.target

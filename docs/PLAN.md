@@ -98,8 +98,7 @@ službu (.NET) nasazenou vedle WIN-PAK serveru, která:
 
 | Vrstva | Volba | Zdůvodnění |
 | --- | --- | --- |
-| Backend | ASP.NET Core (.NET 10 LTS), Minimal API + Razor | LTS, běží na RHEL |
-| Frontend | **Blazor WebAssembly** (hostovaný v téže aplikaci) | bohaté UI (editor matice, schémata, témata) a server zůstane plně bezestavový; Blazor Server by vyžadoval sticky sessions, což odporuje zadání |
+| Backend + frontend | ASP.NET Core **Razor Pages** (.NET 10 LTS), server-rendered | plně bezestavové (žádné SignalR circuity jako u Blazor Server), jediný projekt, jednoduché auto-update; interaktivita doplňována cíleně JS |
 | ORM | EF Core + **Pomelo.EntityFrameworkCore.MySql** | podpora MariaDB; `MySqlConnector` umí `Server=10.84.12.170,10.84.12.171,10.84.12.172;LoadBalance=Failover` přesně dle zadání |
 | Autentizace | cookie auth; AD přes **LDAPS** (`System.DirectoryServices.Protocols`, funguje na Linuxu) + lokální účty (admin) s Argon2/PBKDF2 hash | |
 | Bezestavovost | ASP.NET **Data Protection keys v MariaDB** (sdílené oběma nody), žádný in-memory session state, cache jen jako lokální read-through | uživatel může kdykoli přejít na druhý node |
@@ -154,15 +153,17 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
 ## 5. Co všechno musíme vyvinout (rozpad na moduly)
 
 ### A. Základ aplikace
-1. **Skeleton řešení** — ASP.NET Core + Blazor WASM, EF Core migrace,
+1. **Skeleton řešení** — ASP.NET Core Razor Pages, EF Core migrace,
    healthcheck endpoint (`/health` pro HAProxy), strukturované logování.
+   ✅ Implementováno (`src/Acs.Web`, `src/Acs.Infrastructure`, `src/Acs.Domain`).
 2. **Autentizace a autorizace** — AD (LDAPS) login, lokální admin (seed při
-   prvním startu), role: `Admin`, `Správce číselníků`, `Schvalovatel`,
-   `Správce karet`, `Žadatel/Zaměstnanec`; mapování AD skupin na role v GUI.
+   prvním startu, vynucená změna hesla), role: `Admin`, `CatalogManager`,
+   `Approver`, `CardAdmin`, `Employee`. ✅ Implementováno (mapování AD skupin
+   na role zbývá).
 3. **Nastavení v GUI** — administrace všech parametrů: připojení WinPak
    Connector, LDAP, zdroj zaměstnanců, SMTP, plány synchronizací, témata;
-   citlivé hodnoty šifrované (Data Protection) v DB.
-4. **Audit log** + prohlížečka v GUI.
+   citlivé hodnoty šifrované (Data Protection) v DB. ✅ Implementováno.
+4. **Audit log** + prohlížečka v GUI. ✅ Implementováno.
 
 ### B. Číselníky a integrace
 5. **WinPak Connector** (Windows služba) — REST fasáda nad WIN-PAK SDK;
@@ -203,16 +204,17 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
 17. **Reporty** — kdo má kam přístup (per místnost / per člověk), export CSV.
 
 ### E. Provoz a nasazení
-18. **Deploy tooling** — skripty/Ansible playbook: instalace .NET runtime na
-    RHEL, systemd unit `acs-web` (Kestrel na 0.0.0.0:52000), firewalld,
-    SELinux kontext; spouštěno přes SSH z macOS-ai proxyhubu lokálním klíčem.
-19. **Auto-update z Gitu** — služba/timer `acs-updater` na obou nodech:
-    periodicky kontroluje `main` (nový release tag / commit), stáhne
-    publikovaný artefakt, `dotnet ef` migrace s DB zámkem (spustí jen první
-    node), atomický přepnutí symlinku a restart služby; nody se aktualizují
-    **postupně** (druhý čeká, až je první zdravý) → bezvýpadková aktualizace.
-20. **CI** — build + testy + publish artefaktu na push do `main`
-    (GitHub Actions), verze = git tag.
+18. **Deploy tooling** — instalace .NET na RHEL, systemd unit `acs-web`
+    (Kestrel na 0.0.0.0:52000), firewalld, SELinux kontext; spouštěno přes
+    SSH z macOS-ai proxyhubu lokálním klíčem. ✅ Implementováno
+    (`deploy/install.sh`, `deploy/systemd/`).
+19. **Auto-update z Gitu** — timer `acs-updater` na obou nodech: periodicky
+    kontroluje `main`, sestaví novou verzi, spustí testy, atomicky přepne
+    symlink a restartuje službu; DB migrace běží s distribuovaným zámkem
+    (GET_LOCK), náhodný rozptyl timeru brání současné aktualizaci obou nodů.
+    ✅ Implementováno (`deploy/bin/acs-updater.sh`).
+20. **CI** — build + testy na push/PR (GitHub Actions).
+    ✅ Implementováno (`.github/workflows/ci.yml`).
 
 ---
 

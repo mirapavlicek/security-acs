@@ -480,3 +480,7 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Lokální konfigurace nasazení (obsahuje hesla)
+deploy/acs.env
+*.db

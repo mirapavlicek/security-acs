@@ -8,9 +8,18 @@ Webová aplikace pro schvalování přístupů k místnostem (`acs.fnmh.network`
 
 ## Komponenty
 
+- [`src/Acs.Web`](src/Acs.Web) — hlavní webová aplikace (Razor Pages):
+  přihlašování AD + lokální admin, nastavení v GUI, barevná témata, správa
+  uživatelů a rolí, audit, healthcheck pro HAProxy.
+- [`src/Acs.Domain`](src/Acs.Domain) — doménový model (číselníky, schvalovací
+  matice, zástupy, řetězce čteček, žádosti).
+- [`src/Acs.Infrastructure`](src/Acs.Infrastructure) — EF Core (MariaDB
+  Galera / SQLite pro vývoj), LDAP, šifrovaná nastavení, klient konektoru.
 - [`src/Acs.WinPakConnector`](src/Acs.WinPakConnector/README.md) — Windows
   služba instalovaná na WIN-PAK server; překládá proprietární WIN-PAK API na
   normální REST API (režimy Mock / MSSQL read-only / SDK).
+- [`deploy/`](deploy/README.md) — instalace na RHEL nody přes SSH, systemd,
+  auto-update z Git `main`, ukázka HAProxy.
 
 ## Dokumentace
 
@@ -22,11 +31,14 @@ Webová aplikace pro schvalování přístupů k místnostem (`acs.fnmh.network`
 ```bash
 dotnet build          # sestavení
 dotnet test           # testy
-dotnet run --project src/Acs.WinPakConnector   # konektor v režimu Mock na :52001
+dotnet run --project src/Acs.Web              # hlavní aplikace na :52000 (SQLite bez konfigurace)
+dotnet run --project src/Acs.WinPakConnector  # konektor v režimu Mock na :52001
 ```
+
+První přihlášení: `admin` / `admin` (aplikace vynutí změnu hesla).
 
 ## Stav
 
-Fáze návrhu + první komponenta (WinPak Connector). Čeká se na odpovědi na
-otevřené otázky (kapitola 8 v `docs/PLAN.md`), poté začne etapa 1 — hlavní
-ACS aplikace.
+Hotová etapa 1 (skeleton, autentizace, nastavení v GUI, deploy + auto-update)
+a WinPak Connector. Následuje etapa 2 — číselníky a synchronizace.
+Otevřené otázky: kapitola 8 v `docs/PLAN.md`.

@@ -1,0 +1,47 @@
+﻿@page
+@model Acs.Web.Pages.IndexModel
+@{
+    ViewData["Title"] = "Přehled";
+}
+<h1>Přehled</h1>
+
+<div class="cards-grid">
+    <div class="card">
+        <h2 style="margin-top:0">Moje přístupy</h2>
+        <p class="muted">Přehled přístupů, které máte přiděleny, a stav vašich žádostí.</p>
+        <span class="badge">Připravujeme — etapa 3</span>
+    </div>
+    <div class="card">
+        <h2 style="margin-top:0">Nová žádost</h2>
+        <p class="muted">Žádost o přístup ke čtečce včetně automatického doplnění řetězce (chodba, patro…).</p>
+        <span class="badge">Připravujeme — etapa 3</span>
+    </div>
+    @if (User.IsInRole("Admin") || User.IsInRole("Approver"))
+    {
+        <div class="card">
+            <h2 style="margin-top:0">Ke schválení</h2>
+            <p class="muted">Žádosti čekající na vaše rozhodnutí (včetně zástupů).</p>
+            <span class="badge">Připravujeme — etapa 3</span>
+        </div>
+    }
+    @if (User.IsInRole("Admin") || User.IsInRole("CardAdmin"))
+    {
+        <div class="card">
+            <h2 style="margin-top:0">Fronta správce karet</h2>
+            <p class="muted">Schválené žádosti k zadání do WIN-PAK (API / ruční potvrzení).</p>
+            <span class="badge">Připravujeme — etapa 4</span>
+        </div>
+    }
+    @if (User.IsInRole("Admin"))
+    {
+        <div class="card">
+            <h2 style="margin-top:0">Stav systému</h2>
+            <table class="data">
+                <tr><td>Uživatelů</td><td>@Model.UserCount</td></tr>
+                <tr><td>Zaměstnanců</td><td>@Model.EmployeeCount</td></tr>
+                <tr><td>Čteček</td><td>@Model.ReaderCount</td></tr>
+                <tr><td>WIN-PAK konektor</td><td>@Model.WinPakStatus</td></tr>
+            </table>
+        </div>
+    }
+</div>

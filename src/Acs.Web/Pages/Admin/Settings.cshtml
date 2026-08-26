@@ -1,0 +1,119 @@
+@page
+@model Acs.Web.Pages.Admin.SettingsModel
+@{
+    ViewData["Title"] = "Nastavení";
+}
+<h1>Nastavení</h1>
+<p class="muted">Veškerá konfigurace aplikace. Citlivé hodnoty se ukládají šifrovaně; prázdné pole u hesla/klíče znamená „ponechat stávající“.</p>
+
+@if (Model.SavedSection is not null)
+{
+    <div class="alert alert-success">Sekce „@Model.SavedSection“ uložena.</div>
+}
+
+<div class="card">
+    <h2 style="margin-top:0">Obecné</h2>
+    <form method="post" asp-page-handler="General">
+        <label>Název aplikace</label>
+        <input type="text" name="AppTitle" value="@Model.Values[SettingKeys.AppTitle]" />
+        <label>Výchozí barevné téma</label>
+        <select name="DefaultTheme">
+            @foreach (var t in new[] { "light", "dark", "blue", "green", "purple", "contrast" })
+            {
+                <option value="@t" selected="@(Model.Values[SettingKeys.DefaultTheme] == t)">@t</option>
+            }
+        </select>
+        <button class="btn" type="submit">Uložit</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">Active Directory (LDAP)</h2>
+    <form method="post" asp-page-handler="Ldap">
+        <div class="checkbox-row">
+            <input type="checkbox" id="LdapEnabled" name="LdapEnabled" value="true"
+                   checked="@(Model.Values[SettingKeys.LdapEnabled] == "true")" />
+            <label for="LdapEnabled">Povolit přihlašování přes AD</label>
+        </div>
+        <label>LDAP server (DC)</label>
+        <input type="text" name="LdapServer" value="@Model.Values[SettingKeys.LdapServer]" placeholder="dc01.fnmh.local" />
+        <label>Port</label>
+        <input type="number" name="LdapPort" value="@Model.Values[SettingKeys.LdapPort]" placeholder="636" />
+        <div class="checkbox-row">
+            <input type="checkbox" id="LdapUseSsl" name="LdapUseSsl" value="true"
+                   checked="@(Model.Values[SettingKeys.LdapUseSsl] != "false")" />
+            <label for="LdapUseSsl">LDAPS (doporučeno)</label>
+        </div>
+        <label>Base DN</label>
+        <input type="text" name="LdapBaseDn" value="@Model.Values[SettingKeys.LdapBaseDn]" placeholder="DC=fnmh,DC=local" />
+        <label>Doména (UPN sufix)</label>
+        <input type="text" name="LdapDomain" value="@Model.Values[SettingKeys.LdapDomain]" placeholder="fnmh.local" />
+        <label>Filtr uživatele ({0} = účet)</label>
+        <input type="text" name="LdapUserFilter" value="@Model.Values[SettingKeys.LdapUserFilter]"
+               placeholder="(&amp;(objectClass=user)(sAMAccountName={0}))" />
+        <button class="btn" type="submit">Uložit</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">WIN-PAK konektor</h2>
+    <form method="post" asp-page-handler="WinPak">
+        <label>Adresa konektoru</label>
+        <input type="text" name="WinPakBaseUrl" value="@Model.Values[SettingKeys.WinPakBaseUrl]"
+               placeholder="http://winpak-server:52001" />
+        <label>API klíč (prázdné = ponechat)</label>
+        <input type="password" name="WinPakApiKey" autocomplete="new-password" />
+        <div class="checkbox-row">
+            <input type="checkbox" id="WinPakSyncEnabled" name="WinPakSyncEnabled" value="true"
+                   checked="@(Model.Values[SettingKeys.WinPakSyncEnabled] == "true")" />
+            <label for="WinPakSyncEnabled">Automatická synchronizace čteček</label>
+        </div>
+        <label>Interval synchronizace (minuty)</label>
+        <input type="number" name="WinPakSyncIntervalMinutes" value="@Model.Values[SettingKeys.WinPakSyncIntervalMinutes]" placeholder="60" />
+        <button class="btn" type="submit">Uložit</button>
+        <button class="btn btn-ghost" type="submit" asp-page-handler="WinPakTest">Otestovat spojení</button>
+    </form>
+    @if (Model.WinPakTestResult is not null)
+    {
+        <p class="muted">Test spojení: @Model.WinPakTestResult</p>
+    }
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">Zdroj zaměstnanců</h2>
+    <form method="post" asp-page-handler="Employees">
+        <label>Režim</label>
+        <select name="EmployeeSourceMode">
+            @foreach (var m in new[] { "None", "Mssql", "Api" })
+            {
+                <option value="@m" selected="@(Model.Values[SettingKeys.EmployeeSourceMode] == m)">@m</option>
+            }
+        </select>
+        <label>MSSQL connection string (prázdné = ponechat)</label>
+        <input type="password" name="EmployeeMssqlConnectionString" autocomplete="new-password" />
+        <label>MSSQL dotaz (sloupce: ExternalId, PersonalNumber, FirstName, LastName, Email, Department, AdAccount, CardNumber)</label>
+        <textarea name="EmployeeMssqlQuery" rows="3">@Model.Values[SettingKeys.EmployeeMssqlQuery]</textarea>
+        <label>API URL (alternativa k MSSQL)</label>
+        <input type="text" name="EmployeeApiUrl" value="@Model.Values[SettingKeys.EmployeeApiUrl]" />
+        <label>API klíč (prázdné = ponechat)</label>
+        <input type="password" name="EmployeeApiKey" autocomplete="new-password" />
+        <button class="btn" type="submit">Uložit</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">Notifikace (SMTP)</h2>
+    <form method="post" asp-page-handler="Smtp">
+        <label>SMTP server</label>
+        <input type="text" name="SmtpHost" value="@Model.Values[SettingKeys.SmtpHost]" />
+        <label>Port</label>
+        <input type="number" name="SmtpPort" value="@Model.Values[SettingKeys.SmtpPort]" placeholder="25" />
+        <label>Uživatel</label>
+        <input type="text" name="SmtpUser" value="@Model.Values[SettingKeys.SmtpUser]" />
+        <label>Heslo (prázdné = ponechat)</label>
+        <input type="password" name="SmtpPassword" autocomplete="new-password" />
+        <label>Odesílatel</label>
+        <input type="email" name="SmtpFrom" value="@Model.Values[SettingKeys.SmtpFrom]" placeholder="acs@fnmh.network" />
+        <button class="btn" type="submit">Uložit</button>
+    </form>
+</div>

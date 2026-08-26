@@ -1,0 +1,30 @@
+@page
+@model Acs.Web.Pages.Admin.AuditModel
+@{
+    ViewData["Title"] = "Audit";
+}
+<h1>Auditní záznamy</h1>
+
+<div class="card">
+    <table class="data">
+        <thead>
+        <tr><th>Čas (UTC)</th><th>Uživatel</th><th>Akce</th><th>Entita</th><th>Detail</th></tr>
+        </thead>
+        <tbody>
+        @foreach (var log in Model.Logs)
+        {
+            <tr>
+                <td>@log.At.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                <td>@log.UserName</td>
+                <td><span class="badge badge-primary">@log.Action</span></td>
+                <td>@log.Entity @log.EntityId</td>
+                <td class="muted">@log.Details</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Logs.Count == 0)
+    {
+        <p class="muted">Zatím žádné záznamy.</p>
+    }
+</div>

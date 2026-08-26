@@ -1,0 +1,78 @@
+@page
+@using Acs.Domain.Entities
+@model Acs.Web.Pages.Admin.Users.IndexModel
+@{
+    ViewData["Title"] = "Uživatelé";
+    var allRoles = new[] { AppRole.Admin, AppRole.CatalogManager, AppRole.Approver, AppRole.CardAdmin, AppRole.Employee };
+}
+<h1>Uživatelé a role</h1>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="card">
+    <table class="data">
+        <thead>
+        <tr>
+            <th>Účet</th><th>Jméno</th><th>Typ</th><th>Role</th><th>Aktivní</th><th>Poslední přihlášení</th><th></th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var user in Model.Users)
+        {
+            <tr>
+                <td>@user.UserName</td>
+                <td>@user.DisplayName</td>
+                <td>@(user.IsLocal ? "lokální" : "AD")</td>
+                <td>
+                    <form method="post" asp-page-handler="Roles" class="inline-form">
+                        <input type="hidden" name="userId" value="@user.Id" />
+                        @foreach (var role in allRoles)
+                        {
+                            <label style="display:inline-flex;align-items:center;gap:0.2rem;margin:0 0.5rem 0 0;font-size:0.8rem">
+                                <input type="checkbox" name="roles" value="@role"
+                                       checked="@user.Roles.HasFlag(role)" /> @role
+                            </label>
+                        }
+                        <button class="btn btn-sm" type="submit">Uložit</button>
+                    </form>
+                </td>
+                <td>@(user.IsActive ? "ano" : "ne")</td>
+                <td class="muted">@(user.LastLoginAt?.ToLocalTime().ToString("g") ?? "—")</td>
+                <td>
+                    <form method="post" asp-page-handler="ToggleActive" class="inline-form">
+                        <input type="hidden" name="userId" value="@user.Id" />
+                        <button class="btn btn-sm btn-ghost" type="submit">@(user.IsActive ? "Deaktivovat" : "Aktivovat")</button>
+                    </form>
+                    @if (user.IsLocal)
+                    {
+                        <form method="post" asp-page-handler="ResetPassword" class="inline-form">
+                            <input type="hidden" name="userId" value="@user.Id" />
+                            <button class="btn btn-sm btn-ghost" type="submit">Reset hesla</button>
+                        </form>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+<div class="card" style="max-width:480px">
+    <h2 style="margin-top:0">Nový lokální účet</h2>
+    <form method="post" asp-page-handler="Create">
+        <label>Uživatelské jméno</label>
+        <input type="text" name="userName" required />
+        <label>Zobrazované jméno</label>
+        <input type="text" name="displayName" />
+        <label>Počáteční heslo (uživatel si ho při prvním přihlášení změní)</label>
+        <input type="password" name="password" required autocomplete="new-password" />
+        <button class="btn" type="submit">Vytvořit</button>
+    </form>
+</div>
