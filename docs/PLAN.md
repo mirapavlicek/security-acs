@@ -158,8 +158,8 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
    ✅ Implementováno (`src/Acs.Web`, `src/Acs.Infrastructure`, `src/Acs.Domain`).
 2. **Autentizace a autorizace** — AD (LDAPS) login, lokální admin (seed při
    prvním startu, vynucená změna hesla), role: `Admin`, `CatalogManager`,
-   `Approver`, `CardAdmin`, `Employee`. ✅ Implementováno (mapování AD skupin
-   na role zbývá).
+   `Approver`, `CardAdmin`, `Employee`. ✅ Implementováno včetně mapování
+   AD skupin na role (konfigurace v GUI, přepočet při každém přihlášení).
 3. **Nastavení v GUI** — administrace všech parametrů: připojení WinPak
    Connector, LDAP, zdroj zaměstnanců, SMTP, plány synchronizací, témata;
    citlivé hodnoty šifrované (Data Protection) v DB. ✅ Implementováno.
@@ -204,8 +204,9 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
     přeskakují. ✅ Implementováno (revokační workflow má připravený model,
     GUI přijde s frontou správce karet).
 14. **Notifikace** — e-mail schvalovatelům a žadateli při změně stavu
-    (SMTP — viz otázka č. 13). ⏳ Nastavení SMTP v GUI hotové, odesílání
-    přijde v etapě 4.
+    (SMTP — viz otázka č. 13). ✅ Implementováno (schvalovatelům při čekající
+    úrovni, žadateli při rozhodnutí/zápisu; bez SMTP konfigurace se tiše
+    vynechají a nikdy neshodí workflow).
 
 ### D. Výstupy
 15. **„Moje přístupy“** — přehled pro zaměstnance: jaké přístupy má, co čeká
@@ -216,7 +217,8 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
     ✅ Implementováno (`/CardQueue`) včetně revokací („Požádat o odebrání“
     v Moje přístupy prochází stejným workflow a po provedení označí původní
     přístup jako odebraný).
-17. **Reporty** — kdo má kam přístup (per místnost / per člověk), export CSV.
+17. **Reporty** — kdo má kam přístup (per čtečka / per člověk), export CSV.
+    ✅ Implementováno (`/Reports`).
 
 ### E. Provoz a nasazení
 18. **Deploy tooling** — instalace .NET na RHEL, systemd unit `acs-web`

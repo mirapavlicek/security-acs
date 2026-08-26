@@ -17,10 +17,11 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
     [
         SettingKeys.AppTitle, SettingKeys.DefaultTheme,
         SettingKeys.LdapEnabled, SettingKeys.LdapServer, SettingKeys.LdapPort, SettingKeys.LdapUseSsl,
-        SettingKeys.LdapBaseDn, SettingKeys.LdapDomain, SettingKeys.LdapUserFilter,
+        SettingKeys.LdapBaseDn, SettingKeys.LdapDomain, SettingKeys.LdapUserFilter, SettingKeys.LdapGroupRoleMap,
         SettingKeys.WinPakBaseUrl, SettingKeys.WinPakSyncEnabled, SettingKeys.WinPakSyncIntervalMinutes,
         SettingKeys.EmployeeSourceMode, SettingKeys.EmployeeMssqlQuery, SettingKeys.EmployeeApiUrl,
         SettingKeys.SmtpHost, SettingKeys.SmtpPort, SettingKeys.SmtpUser, SettingKeys.SmtpFrom,
+        SettingKeys.SmtpUseTls,
     ];
 
     public async Task OnGetAsync() => await LoadAsync();
@@ -42,8 +43,10 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
 
     public async Task<IActionResult> OnPostLdapAsync(
         string? ldapEnabled, string? ldapServer, string? ldapPort, string? ldapUseSsl,
-        string? ldapBaseDn, string? ldapDomain, string? ldapUserFilter, string? ldapBindPassword)
+        string? ldapBaseDn, string? ldapDomain, string? ldapUserFilter, string? ldapBindPassword,
+        string? ldapGroupRoleMap)
     {
+        await settings.SetAsync(SettingKeys.LdapGroupRoleMap, ldapGroupRoleMap, UserName);
         await settings.SetAsync(SettingKeys.LdapEnabled, ldapEnabled == "true" ? "true" : "false", UserName);
         await settings.SetAsync(SettingKeys.LdapServer, ldapServer, UserName);
         await settings.SetAsync(SettingKeys.LdapPort, ldapPort, UserName);
@@ -98,13 +101,15 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
     }
 
     public async Task<IActionResult> OnPostSmtpAsync(
-        string? smtpHost, string? smtpPort, string? smtpUser, string? smtpPassword, string? smtpFrom)
+        string? smtpHost, string? smtpPort, string? smtpUser, string? smtpPassword, string? smtpFrom,
+        string? smtpUseTls)
     {
         await settings.SetAsync(SettingKeys.SmtpHost, smtpHost, UserName);
         await settings.SetAsync(SettingKeys.SmtpPort, smtpPort, UserName);
         await settings.SetAsync(SettingKeys.SmtpUser, smtpUser, UserName);
         await settings.SetIfProvidedAsync(SettingKeys.SmtpPassword, smtpPassword, UserName);
         await settings.SetAsync(SettingKeys.SmtpFrom, smtpFrom, UserName);
+        await settings.SetAsync(SettingKeys.SmtpUseTls, smtpUseTls == "true" ? "true" : "false", UserName);
         return await SavedAsync("SMTP");
     }
 

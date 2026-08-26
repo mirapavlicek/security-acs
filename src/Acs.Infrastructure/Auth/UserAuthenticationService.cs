@@ -1,5 +1,6 @@
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Data;
+using Acs.Infrastructure.Settings;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -13,6 +14,7 @@ namespace Acs.Infrastructure.Auth;
 public class UserAuthenticationService(
     AcsDbContext db,
     LdapAuthenticator ldap,
+    SettingsService settings,
     ILogger<UserAuthenticationService> logger)
 {
     public async Task<AppUser?> AuthenticateAsync(string userName, string password, CancellationToken ct = default)
@@ -61,8 +63,46 @@ public class UserAuthenticationService(
         user.DisplayName = ldapUser.DisplayName ?? user.DisplayName;
         user.Email = ldapUser.Email ?? user.Email;
         user.LastLoginAt = DateTime.UtcNow;
+
+        // Mapování AD skupin na role: je-li nakonfigurováno, role AD uživatele
+        // se při každém přihlášení přepočítají podle členství ve skupinách.
+        var mapText = await settings.GetAsync(SettingKeys.LdapGroupRoleMap, ct);
+        if (!string.IsNullOrWhiteSpace(mapText))
+            user.Roles = ResolveRolesFromGroups(ldapUser.Groups, mapText);
+
         await db.SaveChangesAsync(ct);
         return user;
+    }
+
+    /// <summary>
+    /// Řádky „NázevSkupiny=Role1,Role2“. Skupina se porovnává s celým DN
+    /// i s jeho CN (case-insensitive). Každý AD uživatel má vždy roli Employee.
+    /// </summary>
+    public static AppRole ResolveRolesFromGroups(IReadOnlyList<string> groups, string mapText)
+    {
+        var groupNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var dn in groups)
+        {
+            groupNames.Add(dn);
+            var cn = dn.Split(',')[0];
+            groupNames.Add(cn.StartsWith("CN=", StringComparison.OrdinalIgnoreCase) ? cn[3..] : cn);
+        }
+
+        var roles = AppRole.Employee;
+        foreach (var line in mapText.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var parts = line.Split('=', 2);
+            if (parts.Length != 2 || !groupNames.Contains(parts[0].Trim()))
+                continue;
+
+            foreach (var roleName in parts[1].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (Enum.TryParse<AppRole>(roleName, ignoreCase: true, out var role))
+                    roles |= role;
+            }
+        }
+
+        return roles;
     }
 
     /// <summary>Zajistí existenci lokálního admin účtu (první start aplikace).</summary>

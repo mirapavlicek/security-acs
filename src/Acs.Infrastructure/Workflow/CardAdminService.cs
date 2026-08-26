@@ -1,6 +1,7 @@
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Data;
+using Acs.Infrastructure.Notifications;
 using Acs.Infrastructure.WinPak;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,7 +11,8 @@ namespace Acs.Infrastructure.Workflow;
 /// Fronta správce karet: schválené položky se předávají do WIN-PAK buď
 /// voláním API (přes konektor), nebo je správce zadá ručně a v ACS potvrdí.
 /// </summary>
-public class CardAdminService(AcsDbContext db, WinPakClient winPak, AuditService audit)
+public class CardAdminService(AcsDbContext db, WinPakClient winPak, AuditService audit,
+    INotificationService? notifier = null)
 {
     /// <summary>Schválené položky čekající na zadání do WIN-PAK.</summary>
     public Task<List<AccessRequestItem>> GetQueueAsync(CancellationToken ct = default)
@@ -52,6 +54,8 @@ public class CardAdminService(AcsDbContext db, WinPakClient winPak, AuditService
         await db.SaveChangesAsync(ct);
         await audit.LogAsync(userName, "item-pushed-to-winpak", "AccessRequestItem", item.Id.ToString(),
             item.PushResult, ct);
+        if (notifier is not null)
+            await notifier.NotifyDecidedAsync(item.Id, ct);
     }
 
     /// <summary>Správce karet zadal přístup do WIN-PAK ručně a potvrzuje to.</summary>
@@ -74,6 +78,8 @@ public class CardAdminService(AcsDbContext db, WinPakClient winPak, AuditService
         item.PushedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         await audit.LogAsync(userName, "item-confirmed-manually", "AccessRequestItem", item.Id.ToString(), null, ct);
+        if (notifier is not null)
+            await notifier.NotifyDecidedAsync(item.Id, ct);
     }
 
     private async Task<AccessRequestItem> LoadItemAsync(int itemId, CancellationToken ct)

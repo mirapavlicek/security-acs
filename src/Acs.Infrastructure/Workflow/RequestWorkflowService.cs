@@ -1,6 +1,7 @@
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Data;
+using Acs.Infrastructure.Notifications;
 using Microsoft.EntityFrameworkCore;
 
 namespace Acs.Infrastructure.Workflow;
@@ -15,7 +16,7 @@ namespace Acs.Infrastructure.Workflow;
 /// </list>
 /// Položky bez matice jsou schválené rovnou (míří do fronty správce karet).
 /// </summary>
-public class RequestWorkflowService(AcsDbContext db, AuditService audit)
+public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotificationService? notifier = null)
 {
     // ---------- Podání žádosti ----------
 
@@ -104,6 +105,18 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit)
         await db.SaveChangesAsync(ct);
         await audit.LogAsync(null, "request-created", "AccessRequest", request.Id.ToString(),
             $"zaměstnanec {targetEmployeeId}, položek {request.Items.Count}", ct);
+
+        if (notifier is not null)
+        {
+            foreach (var item in request.Items)
+            {
+                if (item.Status == RequestStatus.Pending)
+                    await notifier.NotifyPendingAsync(item.Id, ct);
+                else if (item.Status == RequestStatus.Approved)
+                    await notifier.NotifyDecidedAsync(item.Id, ct);
+            }
+        }
+
         return request;
     }
 
@@ -238,6 +251,14 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit)
         await audit.LogAsync(null, approve ? "item-approved" : "item-rejected",
             "AccessRequestItem", item.Id.ToString(),
             onBehalfOf is null ? $"uživatel {userId}" : $"uživatel {userId} v zástupu za {onBehalfOf}", ct);
+
+        if (notifier is not null)
+        {
+            if (item.Status is RequestStatus.Approved or RequestStatus.Rejected)
+                await notifier.NotifyDecidedAsync(item.Id, ct);
+            else if (item.Status == RequestStatus.Pending)
+                await notifier.NotifyPendingAsync(item.Id, ct); // postup na další úroveň
+        }
     }
 
     /// <summary>Vyhodnotí, zda je úroveň po posledním schválení splněna (Any / All / Quorum).</summary>

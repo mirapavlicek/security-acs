@@ -51,6 +51,8 @@
         <label>Filtr uživatele ({0} = účet)</label>
         <input type="text" name="LdapUserFilter" value="@Model.Values[SettingKeys.LdapUserFilter]"
                placeholder="(&amp;(objectClass=user)(sAMAccountName={0}))" />
+        <label>Mapování AD skupin na role (řádky „Skupina=Role1,Role2“; role: Admin, CatalogManager, Approver, CardAdmin, Employee; prázdné = role se spravují ručně)</label>
+        <textarea name="LdapGroupRoleMap" rows="4" placeholder="ACS-Spravci=Admin&#10;ACS-SpravciKaret=CardAdmin&#10;ACS-Schvalovatele=Approver">@Model.Values[SettingKeys.LdapGroupRoleMap]</textarea>
         <button class="btn" type="submit">Uložit</button>
     </form>
 </div>
@@ -114,6 +116,11 @@
         <input type="password" name="SmtpPassword" autocomplete="new-password" />
         <label>Odesílatel</label>
         <input type="email" name="SmtpFrom" value="@Model.Values[SettingKeys.SmtpFrom]" placeholder="acs@fnmh.network" />
+        <div class="checkbox-row">
+            <input type="checkbox" id="SmtpUseTls" name="SmtpUseTls" value="true"
+                   checked="@(Model.Values[SettingKeys.SmtpUseTls] == "true")" />
+            <label for="SmtpUseTls">TLS</label>
+        </div>
         <button class="btn" type="submit">Uložit</button>
     </form>
 </div>

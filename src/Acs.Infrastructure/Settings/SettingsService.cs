@@ -23,6 +23,9 @@ public static class SettingKeys
     public const string LdapUserFilter = "Ldap:UserFilter";
     public const string LdapDomain = "Ldap:Domain";
 
+    /// <summary>Mapování AD skupin na role, řádky ve tvaru „NázevSkupiny=Role1,Role2“.</summary>
+    public const string LdapGroupRoleMap = "Ldap:GroupRoleMap";
+
     // WinPak Connector
     public const string WinPakBaseUrl = "WinPak:BaseUrl";
     public const string WinPakApiKey = "WinPak:ApiKey";              // secret

@@ -46,6 +46,8 @@ matice s neomezenou hloubkou, zástupy, žádosti s automatickým doplněním
 řetězce čteček, moje přístupy (včetně žádosti o odebrání), fronta správce
 karet s předáním do WIN-PAK přes API a plány pater s vyznačením čteček
 a vlastních přístupů.
-Zbývá: e-mailové notifikace, reporty (CSV), mapování AD skupin na role
-a napojení konektoru na reálný WIN-PAK (MSSQL/SDK po dodání přístupů).
-Otevřené otázky: kapitola 8 v `docs/PLAN.md`.
+Dále hotovo: e-mailové notifikace (SMTP), reporty kdo-má-kam s CSV exportem
+a mapování AD skupin na role.
+Zbývá: nasazení na cílové servery (skripty připraveny, spouští se z macOS-ai
+proxyhubu) a napojení konektoru na reálný WIN-PAK (MSSQL přístup / licence
+SDK — viz otevřené otázky, kapitola 8 v `docs/PLAN.md`).
