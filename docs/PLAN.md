@@ -168,6 +168,8 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
 5. **WinPak Connector** (Windows služba) — REST fasáda nad WIN-PAK SDK;
    fallback read-only nad MSSQL; endpointy: seznam čteček (se všemi
    informacemi), access levels, zápis přístupu držiteli karty.
+   ✅ **Implementováno** v [`src/Acs.WinPakConnector`](../src/Acs.WinPakConnector/README.md)
+   (režimy Mock / Mssql / Sdk-placeholder, API klíč, integrační testy).
 6. **Synchronizace čteček** — plánovaný import z Connectoru, párování na
    existující záznamy, ruční editace a přidávání, označení „ručně vytvořeno /
    importováno“.
