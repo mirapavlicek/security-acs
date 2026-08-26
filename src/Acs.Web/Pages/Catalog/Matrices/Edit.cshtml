@@ -1,0 +1,105 @@
+@page "{id:int}"
+@using Acs.Domain.Entities
+@model Acs.Web.Pages.Catalog.Matrices.EditModel
+@{
+    ViewData["Title"] = $"Matice: {Model.Matrix.Name}";
+}
+<h1>@ViewData["Title"]</h1>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="card" style="max-width:640px">
+    <form method="post" asp-page-handler="Rename">
+        <label>Název</label>
+        <input type="text" name="name" value="@Model.Matrix.Name" required />
+        <label>Popis</label>
+        <input type="text" name="description" value="@Model.Matrix.Description" />
+        <div class="checkbox-row">
+            <input type="checkbox" id="isActive" name="isActive" value="true" checked="@Model.Matrix.IsActive" />
+            <label for="isActive">Aktivní</label>
+        </div>
+        <button class="btn" type="submit">Uložit</button>
+        <a class="btn btn-ghost" asp-page="Index">Zpět na seznam</a>
+    </form>
+</div>
+
+<h2>Úrovně schvalování (žádost jimi prochází postupně; hloubka není omezena)</h2>
+
+@foreach (var level in Model.Matrix.Levels.OrderBy(l => l.Order))
+{
+    <div class="card" style="max-width:760px">
+        <h3 style="margin-top:0">
+            Úroveň @level.Order @(level.Name is null ? "" : $"— {level.Name}")
+            <form method="post" asp-page-handler="RemoveLevel" class="inline-form" style="float:right">
+                <input type="hidden" name="levelId" value="@level.Id" />
+                <button class="btn btn-sm btn-danger" type="submit"
+                        onclick="return confirm('Smazat úroveň @level.Order?')">Smazat úroveň</button>
+            </form>
+        </h3>
+
+        <form method="post" asp-page-handler="UpdateLevel" class="inline-form">
+            <input type="hidden" name="levelId" value="@level.Id" />
+            <label>Režim schválení</label>
+            <select name="mode">
+                <option value="Any" selected="@(level.Mode == ApprovalMode.Any)">Stačí kterýkoli schvalovatel</option>
+                <option value="All" selected="@(level.Mode == ApprovalMode.All)">Musí schválit všichni</option>
+                <option value="Quorum" selected="@(level.Mode == ApprovalMode.Quorum)">Alespoň N schvalovatelů</option>
+            </select>
+            <label>N (jen pro režim „alespoň N“)</label>
+            <input type="number" name="requiredCount" value="@level.RequiredCount" min="1" style="max-width:100px" />
+            <button class="btn btn-sm" type="submit">Uložit úroveň</button>
+        </form>
+
+        <h4 style="margin-bottom:0.3rem">Schvalovatelé</h4>
+        <table class="data">
+            @foreach (var approver in level.Approvers)
+            {
+                <tr>
+                    <td>
+                        @if (approver.User is not null)
+                        {
+                            @(approver.User.DisplayName ?? approver.User.UserName)
+                        }
+                        else
+                        {
+                            <span class="badge">AD skupina</span> @approver.AdGroup
+                        }
+                    </td>
+                    <td style="width:1%">
+                        <form method="post" asp-page-handler="RemoveApprover" class="inline-form">
+                            <input type="hidden" name="approverId" value="@approver.Id" />
+                            <button class="btn btn-sm btn-ghost" type="submit">Odebrat</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+        </table>
+
+        <form method="post" asp-page-handler="AddApprover" class="inline-form" style="display:block;margin-top:0.5rem">
+            <input type="hidden" name="levelId" value="@level.Id" />
+            <select name="userId" style="max-width:280px;display:inline-block">
+                <option value="">— vyberte uživatele —</option>
+                @foreach (var user in Model.Users)
+                {
+                    <option value="@user.Id">@(user.DisplayName ?? user.UserName)</option>
+                }
+            </select>
+            <button class="btn btn-sm" type="submit">Přidat schvalovatele</button>
+        </form>
+    </div>
+}
+
+<div class="card" style="max-width:480px">
+    <h2 style="margin-top:0">Přidat úroveň</h2>
+    <form method="post" asp-page-handler="AddLevel">
+        <input type="text" name="name" placeholder="Název úrovně (volitelné, např. Vedoucí oddělení)" />
+        <button class="btn" type="submit">Přidat úroveň @(Model.Matrix.Levels.Count + 1)</button>
+    </form>
+</div>

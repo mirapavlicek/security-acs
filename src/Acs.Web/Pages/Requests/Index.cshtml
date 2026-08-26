@@ -1,0 +1,60 @@
+@page
+@using Acs.Domain.Entities
+@model Acs.Web.Pages.Requests.IndexModel
+@{
+    ViewData["Title"] = "Žádosti";
+}
+<h1>Žádosti</h1>
+
+<a class="btn" asp-page="New">+ Nová žádost</a>
+
+@if (Model.PendingForMe.Count > 0)
+{
+    <h2>Čeká na moje schválení (@Model.PendingForMe.Count)</h2>
+    <div class="card">
+        <table class="data">
+            <thead>
+            <tr><th>Žádost</th><th>Zaměstnanec</th><th>Čtečka</th><th>Úroveň</th><th>Podal</th><th></th></tr>
+            </thead>
+            <tbody>
+            @foreach (var item in Model.PendingForMe)
+            {
+                <tr>
+                    <td>#@item.RequestId</td>
+                    <td>@item.Request?.TargetEmployee?.FullName</td>
+                    <td>@item.Reader?.Name @(item.AutoAdded ? Html.Raw("<span class=\"badge\">řetězec</span>") : Html.Raw(""))</td>
+                    <td>@item.CurrentLevelOrder</td>
+                    <td class="muted">@(item.Request?.RequesterUser?.DisplayName ?? item.Request?.RequesterUser?.UserName)</td>
+                    <td><a class="btn btn-sm" asp-page="Detail" asp-route-id="@item.RequestId">Rozhodnout</a></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+<h2>Moje žádosti</h2>
+<div class="card">
+    <table class="data">
+        <thead>
+        <tr><th>#</th><th>Pro</th><th>Položek</th><th>Stav</th><th>Podáno</th><th></th></tr>
+        </thead>
+        <tbody>
+        @foreach (var request in Model.MyRequests)
+        {
+            <tr>
+                <td>@request.Id</td>
+                <td>@request.TargetEmployee?.FullName</td>
+                <td>@request.Items.Count</td>
+                <td>@Model.Summarize(request)</td>
+                <td class="muted">@request.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                <td><a class="btn btn-sm btn-ghost" asp-page="Detail" asp-route-id="@request.Id">Detail</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.MyRequests.Count == 0)
+    {
+        <p class="muted">Zatím žádné žádosti.</p>
+    }
+</div>

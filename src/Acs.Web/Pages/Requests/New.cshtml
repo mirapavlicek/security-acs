@@ -1,0 +1,55 @@
+@page
+@model Acs.Web.Pages.Requests.NewModel
+@{
+    ViewData["Title"] = "Nová žádost o přístup";
+}
+<h1>Nová žádost o přístup</h1>
+
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="card" style="max-width:720px">
+    <form method="post">
+        <label>Pro zaměstnance</label>
+        <select name="targetEmployeeId" required>
+            <option value="">— vyberte —</option>
+            @foreach (var employee in Model.Employees)
+            {
+                <option value="@employee.Id" selected="@(employee.Id == Model.MyEmployeeId)">
+                    @employee.FullName @(employee.Department is null ? "" : $"({employee.Department})")
+                </option>
+            }
+        </select>
+
+        <label>Čtečky (vyžadované čtečky z řetězce se doplní automaticky)</label>
+        <div style="max-height:300px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:0.5rem">
+            @foreach (var reader in Model.Readers)
+            {
+                <div class="checkbox-row" style="margin:0.25rem 0">
+                    <input type="checkbox" name="readerIds" value="@reader.Id" id="reader-@reader.Id" />
+                    <label for="reader-@reader.Id">
+                        @reader.Name
+                        @if (reader.Room is not null)
+                        {
+                            <span class="muted"> — @reader.Room.Floor?.Building?.Name / @reader.Room.Floor?.Name / @reader.Room.Name</span>
+                        }
+                        @if (reader.Dependencies.Count > 0)
+                        {
+                            <span class="badge" title="Automaticky doplní: @string.Join(", ", reader.Dependencies.Select(d => d.RequiresReader?.Name))">
+                                +@reader.Dependencies.Count v řetězci
+                            </span>
+                        }
+                    </label>
+                </div>
+            }
+        </div>
+
+        <label>Zdůvodnění</label>
+        <textarea name="justification" rows="3" placeholder="Proč je přístup potřeba…"></textarea>
+
+        <button class="btn" type="submit">Podat žádost</button>
+        <a class="btn btn-ghost" asp-page="Index">Zpět</a>
+    </form>
+</div>

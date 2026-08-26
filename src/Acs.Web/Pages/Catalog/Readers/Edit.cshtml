@@ -30,6 +30,14 @@
                 <option value="@room.Id">@room.Floor?.Building?.Name / @room.Floor?.Name / @room.Name</option>
             }
         </select>
+        <label>Schvalovací matice</label>
+        <select asp-for="Reader.ApprovalMatrixId">
+            <option value="">— bez schvalování —</option>
+            @foreach (var matrix in Model.Matrices)
+            {
+                <option value="@matrix.Id">@matrix.Name</option>
+            }
+        </select>
         <div class="checkbox-row">
             <input type="checkbox" asp-for="Reader.IsActive" />
             <label asp-for="Reader.IsActive">Aktivní</label>

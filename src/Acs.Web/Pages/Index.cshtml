@@ -9,21 +9,18 @@
     <div class="card">
         <h2 style="margin-top:0">Moje přístupy</h2>
         <p class="muted">Přehled přístupů, které máte přiděleny, a stav vašich žádostí.</p>
-        <span class="badge">Připravujeme — etapa 3</span>
+        <a class="btn" asp-page="/MyAccess">Otevřít</a>
     </div>
     <div class="card">
         <h2 style="margin-top:0">Nová žádost</h2>
         <p class="muted">Žádost o přístup ke čtečce včetně automatického doplnění řetězce (chodba, patro…).</p>
-        <span class="badge">Připravujeme — etapa 3</span>
+        <a class="btn" asp-page="/Requests/New">Podat žádost</a>
     </div>
-    @if (User.IsInRole("Admin") || User.IsInRole("Approver"))
-    {
-        <div class="card">
-            <h2 style="margin-top:0">Ke schválení</h2>
-            <p class="muted">Žádosti čekající na vaše rozhodnutí (včetně zástupů).</p>
-            <span class="badge">Připravujeme — etapa 3</span>
-        </div>
-    }
+    <div class="card">
+        <h2 style="margin-top:0">Ke schválení</h2>
+        <p class="muted">Žádosti čekající na vaše rozhodnutí (včetně zástupů).</p>
+        <a class="btn" asp-page="/Requests/Index">Otevřít žádosti</a>
+    </div>
     @if (User.IsInRole("Admin") || User.IsInRole("CardAdmin"))
     {
         <div class="card">

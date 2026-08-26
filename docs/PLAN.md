@@ -184,24 +184,29 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
    místnosti/čtečky na plán), zobrazení stavu přístupů na plánu.
 
 ### C. Schvalovací workflow
-10. **Editor schvalovací matice** — stromová struktura bez omezení hloubky,
-    na každé úrovni jeden/více schvalovatelů, režim „všichni“ / „kterýkoli“ /
-    „N z M“; možnost šablon (stejná matice pro více čteček).
+10. **Editor schvalovací matice** — neomezený počet úrovní, na každé úrovni
+    jeden/více schvalovatelů, režim „všichni“ / „kterýkoli“ / „N z M“;
+    matice je znovupoužitelná pro více čteček. ✅ Implementováno
+    (`/Catalog/Matrices`; schvalovatel = uživatel, AD skupiny připraveny
+    v modelu).
 11. **Zástupy** — delegace schvalování (kdo, za koho, od–do), automatické
-    uplatnění v běžících žádostech, auditované.
+    uplatnění v běžících žádostech, auditované. ✅ Implementováno
+    (`/Deputies`).
 12. **Řetězce čteček** — definice závislostí, automatické rozšíření žádosti
-    o vyžadované čtečky, detekce cyklů, vizualizace řetězce.
-    ⏳ Editace závislostí s detekcí cyklů hotová (editace čtečky);
-    automatické rozšíření žádosti přijde s workflow (etapa 3).
-13. **Životní cyklus žádosti** — podání (pro sebe / pro podřízeného),
-    postup po úrovních matice, zamítnutí s důvodem, eskalace/připomínky,
-    odebrání přístupu (revokace) stejným workflow.
+    o vyžadované čtečky (tranzitivní uzávěr), detekce cyklů.
+    ✅ Implementováno.
+13. **Životní cyklus žádosti** — podání (pro sebe / pro jiného zaměstnance),
+    postup po úrovních matice, zamítnutí s povinným důvodem; čtečky bez
+    matice jdou rovnou do fronty správce karet; duplicitní žádosti se
+    přeskakují. ✅ Implementováno (revokační workflow má připravený model,
+    GUI přijde s frontou správce karet).
 14. **Notifikace** — e-mail schvalovatelům a žadateli při změně stavu
-    (SMTP — viz otázka č. 13).
+    (SMTP — viz otázka č. 13). ⏳ Nastavení SMTP v GUI hotové, odesílání
+    přijde v etapě 4.
 
 ### D. Výstupy
 15. **„Moje přístupy“** — přehled pro zaměstnance: jaké přístupy má, co čeká
-    na schválení, historie.
+    na schválení, historie. ✅ Implementováno (`/MyAccess`).
 16. **Fronta správce karet** — seznam schváleného k zadání; tlačítko
     **Předat do systému** (volání Connectoru, výsledek se zapíše) nebo
     **Potvrdit ručně** (zadal do WIN-PAK sám); stav synchronizace.

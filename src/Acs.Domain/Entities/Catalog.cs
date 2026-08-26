@@ -63,6 +63,10 @@ public class Reader
     public int? RoomId { get; set; }
     public Room? Room { get; set; }
 
+    /// <summary>Schvalovací matice pro žádosti o tuto čtečku (null = bez schvalování).</summary>
+    public int? ApprovalMatrixId { get; set; }
+    public ApprovalMatrix? ApprovalMatrix { get; set; }
+
     /// <summary>Pozice na schématu patra (procenta 0–100), pro grafické plány.</summary>
     public double? SchemaX { get; set; }
     public double? SchemaY { get; set; }

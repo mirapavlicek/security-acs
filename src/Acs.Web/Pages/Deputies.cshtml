@@ -1,0 +1,77 @@
+@page
+@model Acs.Web.Pages.DeputiesModel
+@{
+    ViewData["Title"] = "Zástupy";
+}
+<h1>Zástupy</h1>
+<p class="muted">Zástup smí ve zvoleném období schvalovat žádosti za zastupovaného. Vlastní zástup si nastavuje každý sám; administrátor může spravovat všechny.</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="card">
+    <table class="data">
+        <thead>
+        <tr><th>Zastupovaný</th><th>Zástup</th><th>Od</th><th>Do</th><th>Poznámka</th><th></th></tr>
+        </thead>
+        <tbody>
+        @foreach (var deputy in Model.Deputies)
+        {
+            <tr>
+                <td>@(deputy.PrincipalUser?.DisplayName ?? deputy.PrincipalUser?.UserName)</td>
+                <td>@(deputy.DeputyUser?.DisplayName ?? deputy.DeputyUser?.UserName)</td>
+                <td>@deputy.ValidFrom.ToString("yyyy-MM-dd")</td>
+                <td>@deputy.ValidTo.ToString("yyyy-MM-dd")</td>
+                <td class="muted">@deputy.Note</td>
+                <td>
+                    <form method="post" asp-page-handler="Delete" class="inline-form">
+                        <input type="hidden" name="deputyId" value="@deputy.Id" />
+                        <button class="btn btn-sm btn-danger" type="submit">Zrušit</button>
+                    </form>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Deputies.Count == 0)
+    {
+        <p class="muted">Žádné zástupy.</p>
+    }
+</div>
+
+<div class="card" style="max-width:520px">
+    <h2 style="margin-top:0">Nový zástup</h2>
+    <form method="post" asp-page-handler="Create">
+        @if (User.IsInRole("Admin"))
+        {
+            <label>Zastupovaný</label>
+            <select name="principalUserId">
+                @foreach (var user in Model.Users)
+                {
+                    <option value="@user.Id" selected="@(user.UserName == User.Identity!.Name)">@(user.DisplayName ?? user.UserName)</option>
+                }
+            </select>
+        }
+        <label>Zástup (kdo bude schvalovat)</label>
+        <select name="deputyUserId" required>
+            <option value="">— vyberte —</option>
+            @foreach (var user in Model.Users)
+            {
+                <option value="@user.Id">@(user.DisplayName ?? user.UserName)</option>
+            }
+        </select>
+        <label>Platnost od</label>
+        <input type="date" name="validFrom" required value="@DateTime.Today.ToString("yyyy-MM-dd")" />
+        <label>Platnost do</label>
+        <input type="date" name="validTo" required />
+        <label>Poznámka</label>
+        <input type="text" name="note" placeholder="např. dovolená" />
+        <button class="btn" type="submit">Vytvořit zástup</button>
+    </form>
+</div>

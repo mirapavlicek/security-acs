@@ -22,13 +22,16 @@
     {
         <nav class="mainnav">
             <a asp-page="/Index">Přehled</a>
+            <a asp-page="/Requests/Index">Žádosti</a>
+            <a asp-page="/MyAccess">Moje přístupy</a>
+            <a asp-page="/Deputies">Zástupy</a>
             @if (HasRole("CatalogManager"))
             {
                 <a asp-page="/Catalog/Readers/Index">Čtečky</a>
                 <a asp-page="/Catalog/Employees/Index">Zaměstnanci</a>
                 <a asp-page="/Catalog/Places">Budovy</a>
+                <a asp-page="/Catalog/Matrices/Index">Matice</a>
             }
-            <span class="nav-soon" title="Připravujeme">Žádosti</span>
             @if (HasRole("CardAdmin"))
             {
                 <span class="nav-soon" title="Připravujeme">Fronta karet</span>

@@ -1,0 +1,91 @@
+@page "{id:int}"
+@using Acs.Domain.Entities
+@model Acs.Web.Pages.Requests.DetailModel
+@{
+    ViewData["Title"] = $"Žádost #{Model.Request.Id}";
+
+    string StatusLabel(RequestStatus status) => status switch
+    {
+        RequestStatus.Pending => "čeká na schválení",
+        RequestStatus.Approved => "schváleno — u správce karet",
+        RequestStatus.PushedToWinPak => "zapsáno do WIN-PAK",
+        RequestStatus.ManuallyConfirmed => "potvrzeno ručně",
+        RequestStatus.Rejected => "zamítnuto",
+        RequestStatus.Revoked => "odebráno",
+        RequestStatus.Cancelled => "zrušeno",
+        _ => status.ToString(),
+    };
+}
+<h1>@ViewData["Title"]</h1>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="card">
+    <table class="data">
+        <tr><td>Pro zaměstnance</td><td>@Model.Request.TargetEmployee?.FullName (@Model.Request.TargetEmployee?.Department)</td></tr>
+        <tr><td>Podal</td><td>@(Model.Request.RequesterUser?.DisplayName ?? Model.Request.RequesterUser?.UserName)</td></tr>
+        <tr><td>Podáno</td><td>@Model.Request.CreatedAt.ToString("yyyy-MM-dd HH:mm") UTC</td></tr>
+        <tr><td>Zdůvodnění</td><td>@Model.Request.Justification</td></tr>
+    </table>
+</div>
+
+@foreach (var item in Model.Request.Items)
+{
+    <div class="card">
+        <h2 style="margin-top:0">
+            @item.Reader?.Name
+            @if (item.AutoAdded)
+            {
+                <span class="badge" title="Doplněno automaticky z řetězce čteček">řetězec</span>
+            }
+            <span class="badge badge-primary">@StatusLabel(item.Status)</span>
+            @if (item.Status == RequestStatus.Pending)
+            {
+                <span class="muted" style="font-size:0.85rem">— úroveň @item.CurrentLevelOrder</span>
+            }
+        </h2>
+
+        @if (item.Decisions.Count > 0)
+        {
+            <table class="data">
+                <thead><tr><th>Úroveň</th><th>Schvalovatel</th><th>Rozhodnutí</th><th>Komentář</th><th>Kdy</th></tr></thead>
+                <tbody>
+                @foreach (var decision in item.Decisions.OrderBy(d => d.DecidedAt))
+                {
+                    <tr>
+                        <td>@decision.LevelOrder</td>
+                        <td>
+                            @(decision.ApproverUser?.DisplayName ?? decision.ApproverUser?.UserName)
+                            @if (decision.OnBehalfOfUserId is not null)
+                            {
+                                <span class="badge">v zástupu</span>
+                            }
+                        </td>
+                        <td>@(decision.Approved ? "✔ schváleno" : "✖ zamítnuto")</td>
+                        <td class="muted">@decision.Comment</td>
+                        <td class="muted">@decision.DecidedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+
+        @if (Model.CanDecide.Contains(item.Id))
+        {
+            <form method="post" style="margin-top:0.6rem">
+                <input type="hidden" name="itemId" value="@item.Id" />
+                <label>Komentář (u zamítnutí povinný)</label>
+                <input type="text" name="comment" />
+                <button class="btn" type="submit" asp-page-handler="Approve">Schválit</button>
+                <button class="btn btn-danger" type="submit" asp-page-handler="Reject">Zamítnout</button>
+            </form>
+        }
+    </div>
+}

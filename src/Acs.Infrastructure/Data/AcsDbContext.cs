@@ -50,6 +50,7 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
             e.HasIndex(x => x.ExternalId);
             e.Property(x => x.Name).HasMaxLength(256);
             e.HasOne(x => x.Room).WithMany(r => r.Readers).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.ApprovalMatrix).WithMany().OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<ReaderDependency>(e =>
@@ -59,11 +60,6 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
                 .HasForeignKey(x => x.ReaderId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.RequiresReader).WithMany()
                 .HasForeignKey(x => x.RequiresReaderId).OnDelete(DeleteBehavior.Cascade);
-        });
-
-        modelBuilder.Entity<ApprovalMatrix>(e =>
-        {
-            e.HasOne(x => x.Reader).WithMany().OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<ApprovalLevel>(e =>

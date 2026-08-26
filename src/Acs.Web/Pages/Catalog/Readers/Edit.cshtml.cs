@@ -13,6 +13,7 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
     public Reader Reader { get; set; } = new() { Name = "" };
 
     public List<Room> Rooms { get; private set; } = [];
+    public List<ApprovalMatrix> Matrices { get; private set; } = [];
     public List<ReaderDependency> Dependencies { get; private set; } = [];
     public List<Reader> DependencyCandidates { get; private set; } = [];
 
@@ -58,6 +59,7 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
             existing.PanelName = Reader.PanelName;
             existing.AccessLevelExternalId = Reader.AccessLevelExternalId;
             existing.RoomId = Reader.RoomId;
+            existing.ApprovalMatrixId = Reader.ApprovalMatrixId;
             existing.IsActive = Reader.IsActive;
             await db.SaveChangesAsync();
             await audit.LogAsync(User.Identity?.Name, "reader-updated", "Reader", existing.Id.ToString(), existing.Name);
@@ -135,6 +137,8 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
             .Include(r => r.Floor).ThenInclude(f => f!.Building)
             .OrderBy(r => r.Floor!.Building!.Name).ThenBy(r => r.Floor!.SortOrder).ThenBy(r => r.Name)
             .ToListAsync();
+
+        Matrices = await db.ApprovalMatrices.Where(m => m.IsActive).OrderBy(m => m.Name).ToListAsync();
 
         if (id is not null)
         {

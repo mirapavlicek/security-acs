@@ -244,12 +244,7 @@ namespace Acs.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
-                    b.Property<int?>("ReaderId")
-                        .HasColumnType("int");
-
                     b.HasKey("Id");
-
-                    b.HasIndex("ReaderId");
 
                     b.ToTable("ApprovalMatrices");
                 });
@@ -474,6 +469,9 @@ namespace Acs.Infrastructure.Data.Migrations
                     b.Property<string>("AccountName")
                         .HasColumnType("longtext");
 
+                    b.Property<int?>("ApprovalMatrixId")
+                        .HasColumnType("int");
+
                     b.Property<string>("Description")
                         .HasColumnType("longtext");
 
@@ -507,6 +505,8 @@ namespace Acs.Infrastructure.Data.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ApprovalMatrixId");
 
                     b.HasIndex("ExternalId");
 
@@ -684,16 +684,6 @@ namespace Acs.Infrastructure.Data.Migrations
                     b.Navigation("Matrix");
                 });
 
-            modelBuilder.Entity("Acs.Domain.Entities.ApprovalMatrix", b =>
-                {
-                    b.HasOne("Acs.Domain.Entities.Reader", "Reader")
-                        .WithMany()
-                        .HasForeignKey("ReaderId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Reader");
-                });
-
             modelBuilder.Entity("Acs.Domain.Entities.Approver", b =>
                 {
                     b.HasOne("Acs.Domain.Entities.ApprovalLevel", "Level")
@@ -744,10 +734,17 @@ namespace Acs.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("Acs.Domain.Entities.Reader", b =>
                 {
+                    b.HasOne("Acs.Domain.Entities.ApprovalMatrix", "ApprovalMatrix")
+                        .WithMany()
+                        .HasForeignKey("ApprovalMatrixId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Acs.Domain.Entities.Room", "Room")
                         .WithMany("Readers")
                         .HasForeignKey("RoomId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("ApprovalMatrix");
 
                     b.Navigation("Room");
                 });

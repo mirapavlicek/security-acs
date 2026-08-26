@@ -12,18 +12,15 @@ public enum ApprovalMode
 }
 
 /// <summary>
-/// Schvalovací matice. Může být vázaná na konkrétní čtečku, nebo sloužit
-/// jako šablona přiřaditelná více čtečkám.
+/// Schvalovací matice — znovupoužitelná definice schvalovacího procesu.
+/// Čtečky na ni odkazují přes <see cref="Reader.ApprovalMatrixId"/>;
+/// jedna matice může sloužit libovolnému počtu čteček.
 /// </summary>
 public class ApprovalMatrix
 {
     public int Id { get; set; }
     public required string Name { get; set; }
     public string? Description { get; set; }
-
-    /// <summary>Čtečka, pro kterou matice platí (null = šablona).</summary>
-    public int? ReaderId { get; set; }
-    public Reader? Reader { get; set; }
 
     public bool IsActive { get; set; } = true;
 

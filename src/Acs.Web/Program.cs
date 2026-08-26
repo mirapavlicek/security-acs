@@ -62,6 +62,9 @@ builder.Services.AddScoped<Acs.Infrastructure.Sync.EmployeeSourceFactory>();
 builder.Services.AddHttpClient(nameof(Acs.Infrastructure.Sync.ApiEmployeeSource));
 builder.Services.AddHostedService<Acs.Infrastructure.Sync.SyncScheduler>();
 
+// Schvalovací workflow.
+builder.Services.AddScoped<Acs.Infrastructure.Workflow.RequestWorkflowService>();
+
 // ---------- Autentizace a autorizace ----------
 builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)

@@ -16,6 +16,24 @@ namespace Acs.Infrastructure.Data.Migrations
                 .Annotation("MySql:CharSet", "utf8mb4");
 
             migrationBuilder.CreateTable(
+                name: "ApprovalMatrices",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
+                    Name = table.Column<string>(type: "longtext", nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    Description = table.Column<string>(type: "longtext", nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    IsActive = table.Column<bool>(type: "tinyint(1)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ApprovalMatrices", x => x.Id);
+                })
+                .Annotation("MySql:CharSet", "utf8mb4");
+
+            migrationBuilder.CreateTable(
                 name: "AuditLogs",
                 columns: table => new
                 {
@@ -126,6 +144,31 @@ namespace Acs.Infrastructure.Data.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Settings", x => x.Key);
+                })
+                .Annotation("MySql:CharSet", "utf8mb4");
+
+            migrationBuilder.CreateTable(
+                name: "ApprovalLevels",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
+                    MatrixId = table.Column<int>(type: "int", nullable: false),
+                    Order = table.Column<int>(type: "int", nullable: false),
+                    Name = table.Column<string>(type: "longtext", nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    Mode = table.Column<int>(type: "int", nullable: false),
+                    RequiredCount = table.Column<int>(type: "int", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ApprovalLevels", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ApprovalLevels_ApprovalMatrices_MatrixId",
+                        column: x => x.MatrixId,
+                        principalTable: "ApprovalMatrices",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                 })
                 .Annotation("MySql:CharSet", "utf8mb4");
 
@@ -248,6 +291,35 @@ namespace Acs.Infrastructure.Data.Migrations
                 .Annotation("MySql:CharSet", "utf8mb4");
 
             migrationBuilder.CreateTable(
+                name: "Approvers",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
+                    LevelId = table.Column<int>(type: "int", nullable: false),
+                    UserId = table.Column<int>(type: "int", nullable: true),
+                    AdGroup = table.Column<string>(type: "longtext", nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Approvers", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Approvers_ApprovalLevels_LevelId",
+                        column: x => x.LevelId,
+                        principalTable: "ApprovalLevels",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_Approvers_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                })
+                .Annotation("MySql:CharSet", "utf8mb4");
+
+            migrationBuilder.CreateTable(
                 name: "Deputies",
                 columns: table => new
                 {
@@ -299,6 +371,7 @@ namespace Acs.Infrastructure.Data.Migrations
                     IsActive = table.Column<bool>(type: "tinyint(1)", nullable: false),
                     Source = table.Column<int>(type: "int", nullable: false),
                     RoomId = table.Column<int>(type: "int", nullable: true),
+                    ApprovalMatrixId = table.Column<int>(type: "int", nullable: true),
                     SchemaX = table.Column<double>(type: "double", nullable: true),
                     SchemaY = table.Column<double>(type: "double", nullable: true),
                     LastSyncedAt = table.Column<DateTime>(type: "datetime(6)", nullable: true)
@@ -306,6 +379,12 @@ namespace Acs.Infrastructure.Data.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Readers", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Readers_ApprovalMatrices_ApprovalMatrixId",
+                        column: x => x.ApprovalMatrixId,
+                        principalTable: "ApprovalMatrices",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
                     table.ForeignKey(
                         name: "FK_Readers_Rooms_RoomId",
                         column: x => x.RoomId,
@@ -347,31 +426,6 @@ namespace Acs.Infrastructure.Data.Migrations
                         principalTable: "Readers",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
-                })
-                .Annotation("MySql:CharSet", "utf8mb4");
-
-            migrationBuilder.CreateTable(
-                name: "ApprovalMatrices",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
-                    Name = table.Column<string>(type: "longtext", nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    Description = table.Column<string>(type: "longtext", nullable: true)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    ReaderId = table.Column<int>(type: "int", nullable: true),
-                    IsActive = table.Column<bool>(type: "tinyint(1)", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_ApprovalMatrices", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_ApprovalMatrices_Readers_ReaderId",
-                        column: x => x.ReaderId,
-                        principalTable: "Readers",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.SetNull);
                 })
                 .Annotation("MySql:CharSet", "utf8mb4");
 
@@ -435,60 +489,6 @@ namespace Acs.Infrastructure.Data.Migrations
                 })
                 .Annotation("MySql:CharSet", "utf8mb4");
 
-            migrationBuilder.CreateTable(
-                name: "ApprovalLevels",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
-                    MatrixId = table.Column<int>(type: "int", nullable: false),
-                    Order = table.Column<int>(type: "int", nullable: false),
-                    Name = table.Column<string>(type: "longtext", nullable: true)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    Mode = table.Column<int>(type: "int", nullable: false),
-                    RequiredCount = table.Column<int>(type: "int", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_ApprovalLevels", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_ApprovalLevels_ApprovalMatrices_MatrixId",
-                        column: x => x.MatrixId,
-                        principalTable: "ApprovalMatrices",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                })
-                .Annotation("MySql:CharSet", "utf8mb4");
-
-            migrationBuilder.CreateTable(
-                name: "Approvers",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
-                    LevelId = table.Column<int>(type: "int", nullable: false),
-                    UserId = table.Column<int>(type: "int", nullable: true),
-                    AdGroup = table.Column<string>(type: "longtext", nullable: true)
-                        .Annotation("MySql:CharSet", "utf8mb4")
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_Approvers", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_Approvers_ApprovalLevels_LevelId",
-                        column: x => x.LevelId,
-                        principalTable: "ApprovalLevels",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_Approvers_Users_UserId",
-                        column: x => x.UserId,
-                        principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                })
-                .Annotation("MySql:CharSet", "utf8mb4");
-
             migrationBuilder.CreateIndex(
                 name: "IX_AccessRequestItems_ReaderId",
                 table: "AccessRequestItems",
@@ -524,11 +524,6 @@ namespace Acs.Infrastructure.Data.Migrations
                 table: "ApprovalLevels",
                 columns: new[] { "MatrixId", "Order" },
                 unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_ApprovalMatrices_ReaderId",
-                table: "ApprovalMatrices",
-                column: "ReaderId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Approvers_LevelId",
@@ -580,6 +575,11 @@ namespace Acs.Infrastructure.Data.Migrations
                 name: "IX_ReaderDependencies_RequiresReaderId",
                 table: "ReaderDependencies",
                 column: "RequiresReaderId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Readers_ApprovalMatrixId",
+                table: "Readers",
+                column: "ApprovalMatrixId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Readers_ExternalId",
@@ -642,19 +642,19 @@ namespace Acs.Infrastructure.Data.Migrations
                 name: "AccessRequests");
 
             migrationBuilder.DropTable(
-                name: "ApprovalMatrices");
+                name: "Readers");
 
             migrationBuilder.DropTable(
                 name: "Users");
 
             migrationBuilder.DropTable(
-                name: "Readers");
-
-            migrationBuilder.DropTable(
-                name: "Employees");
+                name: "ApprovalMatrices");
 
             migrationBuilder.DropTable(
                 name: "Rooms");
+
+            migrationBuilder.DropTable(
+                name: "Employees");
 
             migrationBuilder.DropTable(
                 name: "Floors");
