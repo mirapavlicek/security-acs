@@ -175,6 +175,13 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
    existující záznamy, ruční editace a přidávání, označení „ručně vytvořeno /
    importováno“. ✅ Implementováno (ruční tlačítko + automatický plánovač
    `SyncScheduler` s DB zámkem GET_LOCK — běží vždy jen na jednom nodu).
+6b. **Zpětná synchronizace stavu z WIN-PAK** — změny provedené přímo ve
+   WIN-PAK se propíší do ACS: externí udělení přístupu se zaeviduje jako
+   systémová potvrzená žádost, externí odebrání označí položku jako
+   odebranou, položky z fronty správce karet zadané rovnou ve WIN-PAK se
+   automaticky potvrdí; aktualizují se i čísla karet a dopáruje card holder
+   podle čísla karty. ✅ Implementováno (`AccessSyncService` — plánovač
+   + ruční tlačítko ve frontě správce karet).
 7. **Zdroj zaměstnanců** — adaptérové rozhraní `IEmployeeSource`
    s implementacemi `MssqlEmployeeSource` a `ApiEmployeeSource`
    (výběr a konfigurace v GUI — zadání nechává otevřené). ✅ Implementováno.

@@ -1,5 +1,6 @@
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Settings;
+using Acs.Infrastructure.Sync;
 using Acs.Infrastructure.WinPak;
 using Acs.Infrastructure.Workflow;
 using Microsoft.AspNetCore.Authorization;
@@ -9,7 +10,9 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace Acs.Web.Pages;
 
 [Authorize(Policy = "CardAdmin")]
-public class CardQueueModel(CardAdminService cardAdmin, SettingsService settings, WinPakClient winPak) : PageModel
+public class CardQueueModel(
+    CardAdminService cardAdmin, SettingsService settings, WinPakClient winPak,
+    AccessSyncService accessSync) : PageModel
 {
     public List<AccessRequestItem> Queue { get; private set; } = [];
     public string ConnectorStatus { get; private set; } = "—";
@@ -62,6 +65,21 @@ public class CardQueueModel(CardAdminService cardAdmin, SettingsService settings
         catch (Exception ex)
         {
             ErrorMessage = $"Předání selhalo: {ex.Message}";
+        }
+
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostSyncFromWinPakAsync()
+    {
+        try
+        {
+            var result = await accessSync.SyncAsync(User.Identity?.Name);
+            Message = $"Stav načten z WIN-PAK: {result}.";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Zpětná synchronizace selhala: {ex.Message}";
         }
 
         return RedirectToPage();

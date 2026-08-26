@@ -58,6 +58,7 @@ builder.Services.AddHttpClient<WinPakClient>();
 // Synchronizace číselníků (ruční tlačítka + automatický plánovač s DB zámkem).
 builder.Services.AddScoped<Acs.Infrastructure.Sync.ReaderSyncService>();
 builder.Services.AddScoped<Acs.Infrastructure.Sync.EmployeeSyncService>();
+builder.Services.AddScoped<Acs.Infrastructure.Sync.AccessSyncService>();
 builder.Services.AddScoped<Acs.Infrastructure.Sync.EmployeeSourceFactory>();
 builder.Services.AddHttpClient(nameof(Acs.Infrastructure.Sync.ApiEmployeeSource));
 builder.Services.AddHostedService<Acs.Infrastructure.Sync.SyncScheduler>();

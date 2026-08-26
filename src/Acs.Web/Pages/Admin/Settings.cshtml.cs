@@ -19,6 +19,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         SettingKeys.LdapEnabled, SettingKeys.LdapServer, SettingKeys.LdapPort, SettingKeys.LdapUseSsl,
         SettingKeys.LdapBaseDn, SettingKeys.LdapDomain, SettingKeys.LdapUserFilter, SettingKeys.LdapGroupRoleMap,
         SettingKeys.WinPakBaseUrl, SettingKeys.WinPakSyncEnabled, SettingKeys.WinPakSyncIntervalMinutes,
+        SettingKeys.WinPakAccessSyncEnabled, SettingKeys.WinPakAccessSyncIntervalMinutes,
         SettingKeys.EmployeeSourceMode, SettingKeys.EmployeeMssqlQuery, SettingKeys.EmployeeApiUrl,
         SettingKeys.SmtpHost, SettingKeys.SmtpPort, SettingKeys.SmtpUser, SettingKeys.SmtpFrom,
         SettingKeys.SmtpUseTls,
@@ -59,19 +60,24 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
     }
 
     public async Task<IActionResult> OnPostWinPakAsync(
-        string? winPakBaseUrl, string? winPakApiKey, string? winPakSyncEnabled, string? winPakSyncIntervalMinutes)
+        string? winPakBaseUrl, string? winPakApiKey, string? winPakSyncEnabled, string? winPakSyncIntervalMinutes,
+        string? winPakAccessSyncEnabled, string? winPakAccessSyncIntervalMinutes)
     {
         await settings.SetAsync(SettingKeys.WinPakBaseUrl, winPakBaseUrl, UserName);
         await settings.SetIfProvidedAsync(SettingKeys.WinPakApiKey, winPakApiKey, UserName);
         await settings.SetAsync(SettingKeys.WinPakSyncEnabled, winPakSyncEnabled == "true" ? "true" : "false", UserName);
         await settings.SetAsync(SettingKeys.WinPakSyncIntervalMinutes, winPakSyncIntervalMinutes, UserName);
+        await settings.SetAsync(SettingKeys.WinPakAccessSyncEnabled, winPakAccessSyncEnabled == "true" ? "true" : "false", UserName);
+        await settings.SetAsync(SettingKeys.WinPakAccessSyncIntervalMinutes, winPakAccessSyncIntervalMinutes, UserName);
         return await SavedAsync("WIN-PAK");
     }
 
     public async Task<IActionResult> OnPostWinPakTestAsync(
-        string? winPakBaseUrl, string? winPakApiKey, string? winPakSyncEnabled, string? winPakSyncIntervalMinutes)
+        string? winPakBaseUrl, string? winPakApiKey, string? winPakSyncEnabled, string? winPakSyncIntervalMinutes,
+        string? winPakAccessSyncEnabled, string? winPakAccessSyncIntervalMinutes)
     {
-        await OnPostWinPakAsync(winPakBaseUrl, winPakApiKey, winPakSyncEnabled, winPakSyncIntervalMinutes);
+        await OnPostWinPakAsync(winPakBaseUrl, winPakApiKey, winPakSyncEnabled, winPakSyncIntervalMinutes,
+            winPakAccessSyncEnabled, winPakAccessSyncIntervalMinutes);
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));

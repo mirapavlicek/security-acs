@@ -17,6 +17,7 @@ public class SyncScheduler(IServiceScopeFactory scopeFactory, ILogger<SyncSchedu
 {
     private const string ReadersLastRunKey = "Sync:ReadersLastRunUtc";
     private const string EmployeesLastRunKey = "Sync:EmployeesLastRunUtc";
+    private const string AccessLastRunKey = "Sync:AccessLastRunUtc";
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -44,8 +45,10 @@ public class SyncScheduler(IServiceScopeFactory scopeFactory, ILogger<SyncSchedu
             SettingKeys.WinPakSyncIntervalMinutes, ReadersLastRunKey, ct);
         var employeesDue = await IsDueAsync(settings, SettingKeys.EmployeeSyncEnabled,
             SettingKeys.EmployeeSyncIntervalMinutes, EmployeesLastRunKey, ct);
+        var accessDue = await IsDueAsync(settings, SettingKeys.WinPakAccessSyncEnabled,
+            SettingKeys.WinPakAccessSyncIntervalMinutes, AccessLastRunKey, ct);
 
-        if (!readersDue && !employeesDue)
+        if (!readersDue && !employeesDue && !accessDue)
             return;
 
         await using var dbLock = await TryAcquireLockAsync(db, ct);
@@ -69,6 +72,14 @@ public class SyncScheduler(IServiceScopeFactory scopeFactory, ILogger<SyncSchedu
             var result = await sync.SyncAsync("system", ct);
             await settings.SetAsync(EmployeesLastRunKey, DateTime.UtcNow.ToString("O"), "system", ct);
             logger.LogInformation("Synchronizace zaměstnanců: {Result}", result);
+        }
+
+        if (accessDue)
+        {
+            var sync = scope.ServiceProvider.GetRequiredService<AccessSyncService>();
+            var result = await sync.SyncAsync("system", ct);
+            await settings.SetAsync(AccessLastRunKey, DateTime.UtcNow.ToString("O"), "system", ct);
+            logger.LogInformation("Zpětná synchronizace stavu z WIN-PAK: {Result}", result);
         }
     }
 

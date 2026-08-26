@@ -32,6 +32,10 @@ public static class SettingKeys
     public const string WinPakSyncEnabled = "WinPak:SyncEnabled";
     public const string WinPakSyncIntervalMinutes = "WinPak:SyncIntervalMinutes";
 
+    // Zpětná synchronizace stavu přístupů z WIN-PAK do ACS
+    public const string WinPakAccessSyncEnabled = "WinPak:AccessSyncEnabled";
+    public const string WinPakAccessSyncIntervalMinutes = "WinPak:AccessSyncIntervalMinutes";
+
     // Zdroj zaměstnanců
     public const string EmployeeSourceMode = "Employees:SourceMode"; // None | Mssql | Api
     public const string EmployeeMssqlConnectionString = "Employees:MssqlConnectionString"; // secret

@@ -70,8 +70,15 @@
                    checked="@(Model.Values[SettingKeys.WinPakSyncEnabled] == "true")" />
             <label for="WinPakSyncEnabled">Automatická synchronizace čteček</label>
         </div>
-        <label>Interval synchronizace (minuty)</label>
+        <label>Interval synchronizace čteček (minuty)</label>
         <input type="number" name="WinPakSyncIntervalMinutes" value="@Model.Values[SettingKeys.WinPakSyncIntervalMinutes]" placeholder="60" />
+        <div class="checkbox-row">
+            <input type="checkbox" id="WinPakAccessSyncEnabled" name="WinPakAccessSyncEnabled" value="true"
+                   checked="@(Model.Values[SettingKeys.WinPakAccessSyncEnabled] == "true")" />
+            <label for="WinPakAccessSyncEnabled">Zpětná synchronizace stavu přístupů (změny provedené přímo ve WIN-PAK se propíší do ACS)</label>
+        </div>
+        <label>Interval zpětné synchronizace (minuty)</label>
+        <input type="number" name="WinPakAccessSyncIntervalMinutes" value="@Model.Values[SettingKeys.WinPakAccessSyncIntervalMinutes]" placeholder="15" />
         <button class="btn" type="submit">Uložit</button>
         <button class="btn btn-ghost" type="submit" asp-page-handler="WinPakTest">Otestovat spojení</button>
     </form>

@@ -6,6 +6,9 @@ namespace Acs.Infrastructure.WinPak;
 public record WinPakReader(string Id, string Name, string? Description, string? PanelName, string? AccountName, bool IsActive);
 public record WinPakAccessLevel(string Id, string Name, string? Description);
 public record WinPakInfo(string Version, string ProviderMode, bool SupportsWrite);
+public record WinPakCard(string CardNumber, string? Status, DateTime? ActivationDate, DateTime? ExpirationDate);
+public record WinPakCardHolder(string Id, string FirstName, string LastName, string? Note,
+    IReadOnlyList<WinPakCard> Cards, IReadOnlyList<string> AccessLevelIds);
 
 /// <summary>
 /// HTTP klient pro WinPak Connector (src/Acs.WinPakConnector) běžící na WIN-PAK serveru.
@@ -40,6 +43,13 @@ public class WinPakClient(HttpClient httpClient, SettingsService settings)
     {
         var client = await PrepareAsync(ct);
         return await client.GetFromJsonAsync<List<WinPakAccessLevel>>("api/v1/access-levels", ct) ?? [];
+    }
+
+    /// <summary>Načte držitele karet včetně jejich aktuálních access levelů (zpětná synchronizace).</summary>
+    public async Task<IReadOnlyList<WinPakCardHolder>> GetCardHoldersAsync(CancellationToken ct = default)
+    {
+        var client = await PrepareAsync(ct);
+        return await client.GetFromJsonAsync<List<WinPakCardHolder>>("api/v1/cardholders", ct) ?? [];
     }
 
     /// <summary>Přiřadí access level držiteli karty (fronta správce karet → „Předat do systému“).</summary>

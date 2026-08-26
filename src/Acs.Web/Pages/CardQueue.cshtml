@@ -11,6 +11,13 @@
     Stav konektoru: <strong>@Model.ConnectorStatus</strong>
 </p>
 
+<form method="post" asp-page-handler="SyncFromWinPak" class="inline-form">
+    <button class="btn btn-ghost" type="submit"
+            title="Načte aktuální stav z WIN-PAK: potvrdí položky zadané přímo tam, propíše externí udělení i odebrání.">
+        Načíst stav z WIN-PAK
+    </button>
+</form>
+
 @if (Model.Message is not null)
 {
     <div class="alert alert-success">@Model.Message</div>
