@@ -37,14 +37,17 @@ Pozn.: pokud je repozitář privátní, nastavte na nodech přístup ke čtení
 ## Po instalaci
 
 1. HAProxy: přidejte backend dle `haproxy.cfg.example` (terminuje HTTPS).
-2. **Počáteční heslo administrátora** je náhodné a vypsané do logu — přečtěte
-   ho na nodu, kde proběhla první inicializace DB:
+2. **Počáteční heslo administrátora**:
+   - Pokud jste v `deploy/acs.env` nastavili `ACS_BOOTSTRAP_ADMIN_PASSWORD`,
+     přihlašte se tímto heslem.
+   - Jinak se vygenerovalo náhodné heslo do logu — přečtěte ho na nodu, kde
+     proběhla první inicializace DB:
 
-   ```bash
-   journalctl -u acs-web | grep "počátečním heslem"
-   ```
+     ```bash
+     journalctl -u acs-web | grep "počátečním heslem"
+     ```
 
-3. Otevřete `https://acs.fnmh.network`, přihlaste se `admin` a přečteným
+3. Otevřete `https://acs.fnmh.network`, přihlaste se jménem `admin` a tímto
    heslem — aplikace vynutí okamžitou změnu.
 4. V **Nastavení** (GUI) nakonfigurujte Active Directory (LDAPS, mapování
    skupin na role), WIN-PAK konektor (adresa + API klíč) a zdroj zaměstnanců.

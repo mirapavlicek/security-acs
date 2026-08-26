@@ -12,7 +12,8 @@ namespace Acs.Infrastructure.Data;
 /// </summary>
 public static class DatabaseInitializer
 {
-    public static async Task InitializeAsync(AcsDbContext db, ILogger? logger = null, CancellationToken ct = default)
+    public static async Task InitializeAsync(AcsDbContext db, ILogger? logger = null,
+        string? bootstrapAdminPassword = null, CancellationToken ct = default)
     {
         if (db.Database.ProviderName?.Contains("MySql", StringComparison.OrdinalIgnoreCase) == true)
         {
@@ -44,6 +45,6 @@ public static class DatabaseInitializer
             await db.Database.EnsureCreatedAsync(ct);
         }
 
-        await UserAuthenticationService.SeedLocalAdminAsync(db, logger, ct);
+        await UserAuthenticationService.SeedLocalAdminAsync(db, logger, bootstrapAdminPassword, ct);
     }
 }

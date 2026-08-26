@@ -107,16 +107,20 @@ public class UserAuthenticationService(
 
     /// <summary>
     /// Zajistí existenci lokálního admin účtu (první start aplikace).
-    /// Heslo se generuje náhodně a jednorázově vypíše do logu (žádné výchozí
-    /// „admin/admin“); operátor ho přečte z <c>journalctl -u acs-web</c> a při
-    /// prvním přihlášení je vynucena jeho změna.
+    /// Pokud je zadáno <paramref name="bootstrapPassword"/> (nastavení
+    /// <c>Admin:BootstrapPassword</c> / env <c>ACS_BOOTSTRAP_ADMIN_PASSWORD</c>),
+    /// použije se jako počáteční heslo (operátor ho už zná, do logu se nevypisuje).
+    /// Jinak se vygeneruje náhodné heslo a jednorázově se vypíše do logu.
+    /// V obou případech je při prvním přihlášení vynucena změna hesla.
     /// </summary>
-    public static async Task SeedLocalAdminAsync(AcsDbContext db, ILogger? logger = null, CancellationToken ct = default)
+    public static async Task SeedLocalAdminAsync(
+        AcsDbContext db, ILogger? logger = null, string? bootstrapPassword = null, CancellationToken ct = default)
     {
         if (await db.Users.AnyAsync(u => u.IsLocal && u.Roles.HasFlag(AppRole.Admin), ct))
             return;
 
-        var initialPassword = GenerateInitialPassword();
+        var operatorSupplied = !string.IsNullOrWhiteSpace(bootstrapPassword);
+        var initialPassword = operatorSupplied ? bootstrapPassword! : GenerateInitialPassword();
         db.Users.Add(new AppUser
         {
             UserName = "admin",
@@ -127,6 +131,14 @@ public class UserAuthenticationService(
             Roles = AppRole.Admin,
         });
         await db.SaveChangesAsync(ct);
+
+        if (operatorSupplied)
+        {
+            var msg = "==== ACS: vytvořen lokální účet 'admin' s počátečním heslem zadaným v konfiguraci "
+                    + "(ACS_BOOTSTRAP_ADMIN_PASSWORD); při prvním přihlášení bude vynucena změna ====";
+            if (logger is not null) logger.LogWarning("{Message}", msg); else Console.WriteLine(msg);
+            return;
+        }
 
         var message = "==== ACS: vytvořen lokální účet 'admin' s počátečním heslem: {Password} "
                     + "(při prvním přihlášení bude vynucena změna) ====";

@@ -20,7 +20,7 @@ Shrnutí bezpečnostního review a zavedených opatření.
 | 2 | IDOR — detail cizí žádosti | Medium | Detail vidí jen žadatel, cílový zaměstnanec, aktuální schvalovatel, správce karet nebo admin. |
 | 3 | Důvěra ve WIN-PAK konektor při zpětné synchronizaci | Medium | Doporučení mTLS / síťové ACL / rotace klíče v `src/Acs.WinPakConnector/README.md`; konektor je fail-closed a přístupný jen app serverům. |
 | 4 | Auto-update nasazoval každý commit v `main` | Medium | Výchozí režim `ACS_UPDATE_MODE=tag` nasazuje jen release tagy `vX.Y.Z`; `branch` je volitelný pro rychlé iterace. |
-| 5 | Bootstrap `admin`/`admin` | Medium | Počáteční heslo je **náhodné** (20 znaků), jednorázově vypsané do logu (`journalctl -u acs-web`); při prvním přihlášení vynucena změna. |
+| 5 | Bootstrap `admin`/`admin` | Medium | Počáteční heslo je buď zadané operátorem (`ACS_BOOTSTRAP_ADMIN_PASSWORD` v `acs.env`), nebo **náhodné** (20 znaků) jednorázově vypsané do logu (`journalctl -u acs-web`); v obou případech je při prvním přihlášení vynucena změna. |
 | 6 | Cookies bez `Secure` za TLS-terminující HAProxy | Medium | `ForwardedHeaders` (čtení `X-Forwarded-Proto/For`), auth cookie `SecurePolicy=Always` v produkci, `HttpOnly`, `SameSite=Lax`; HSTS v produkci. |
 
 ## Další zavedená hardening opatření

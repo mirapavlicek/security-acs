@@ -141,7 +141,10 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AcsDbContext>();
     var initLogger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>()
         .CreateLogger("Acs.DatabaseInitializer");
-    await DatabaseInitializer.InitializeAsync(db, initLogger);
+    // Volitelné počáteční heslo admina z konfigurace (ACS_BOOTSTRAP_ADMIN_PASSWORD).
+    var bootstrapAdminPassword = builder.Configuration["Admin:BootstrapPassword"]
+        ?? Environment.GetEnvironmentVariable("ACS_BOOTSTRAP_ADMIN_PASSWORD");
+    await DatabaseInitializer.InitializeAsync(db, initLogger, bootstrapAdminPassword);
 }
 
 app.UseForwardedHeaders();
