@@ -55,6 +55,15 @@
                 <input type="text" name="name" placeholder="Nová místnost…" required style="max-width:220px;display:inline-block" />
                 <button class="btn btn-sm" type="submit">Přidat místnost</button>
             </form>
+            <form method="post" asp-page-handler="UploadSchema" enctype="multipart/form-data" class="inline-form" style="margin-left:1rem">
+                <input type="hidden" name="floorId" value="@floor.Id" />
+                <input type="file" name="file" accept="image/png,image/jpeg,image/svg+xml" style="display:inline-block;max-width:230px" />
+                <button class="btn btn-sm btn-ghost" type="submit">Nahrát schéma</button>
+            </form>
+            @if (floor.SchemaImage is not null)
+            {
+                <a class="btn btn-sm btn-ghost" asp-page="FloorPlan" asp-route-id="@floor.Id">Editor plánu</a>
+            }
         }
 
         <form method="post" asp-page-handler="AddFloor" class="inline-form" style="display:block;margin-top:0.8rem">

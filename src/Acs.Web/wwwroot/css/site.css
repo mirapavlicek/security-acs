@@ -166,3 +166,17 @@ table.data tr:hover td { background: color-mix(in srgb, var(--primary) 6%, var(-
 .login-box .brand-mark { font-size: 2rem; }
 
 .muted { color: var(--muted); }
+
+/* ===== Plány pater (hotspoty čteček) ===== */
+.hotspot {
+  position: absolute;
+  width: 16px; height: 16px;
+  margin: -8px 0 0 -8px;
+  border-radius: 50%;
+  background: var(--muted);
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--border);
+  cursor: help;
+}
+.hotspot-mine { background: var(--success); }
+.hotspot-inline { position: static; display: inline-block; margin: 0 0.2rem -3px 0; cursor: default; }

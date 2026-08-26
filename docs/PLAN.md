@@ -182,6 +182,9 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
    ✅ Implementováno (`/Catalog/Places`).
 9. **Grafická schémata** — upload podkladu, editor hotspotů (umístění
    místnosti/čtečky na plán), zobrazení stavu přístupů na plánu.
+   ✅ Implementováno (upload PNG/JPEG/SVG per patro v Budovách, editor pozic
+   kliknutím do plánu, prohlížeč `/Plans` se zvýrazněním vlastních přístupů;
+   obrázky v DB → dostupné z obou HA nodů).
 
 ### C. Schvalovací workflow
 10. **Editor schvalovací matice** — neomezený počet úrovní, na každé úrovni

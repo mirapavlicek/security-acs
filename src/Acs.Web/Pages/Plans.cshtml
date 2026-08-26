@@ -1,0 +1,45 @@
+@page "{floorId:int?}"
+@model Acs.Web.Pages.PlansModel
+@{
+    ViewData["Title"] = "Plány budov";
+}
+<h1>Plány budov</h1>
+
+<div class="card">
+    <form method="get">
+        <label>Patro</label>
+        <select name="floorId" onchange="this.form.submit()" style="max-width:360px">
+            <option value="">— vyberte patro —</option>
+            @foreach (var floor in Model.FloorsWithSchema)
+            {
+                <option value="@floor.Id" selected="@(floor.Id == Model.SelectedFloor?.Id)">
+                    @floor.Building?.Name / @floor.Name
+                </option>
+            }
+        </select>
+    </form>
+
+    @if (Model.FloorsWithSchema.Count == 0)
+    {
+        <p class="muted">Zatím nejsou nahraná žádná schémata (nahrává správce číselníků v Budovách).</p>
+    }
+</div>
+
+@if (Model.SelectedFloor is not null)
+{
+    <div class="card">
+        <p>
+            <span class="hotspot hotspot-inline hotspot-mine"></span> máte přístup&nbsp;&nbsp;
+            <span class="hotspot hotspot-inline"></span> bez přístupu
+        </p>
+        <div style="position:relative;border:1px solid var(--border)">
+            <img src="/floors/@Model.SelectedFloor.Id/schema" alt="Schéma patra" style="display:block;width:100%" />
+            @foreach (var reader in Model.Readers.Where(r => r.SchemaX is not null && r.SchemaY is not null))
+            {
+                <div class="hotspot @(Model.MyReaderIds.Contains(reader.Id) ? "hotspot-mine" : "")"
+                     style="left:@(reader.SchemaX!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture))%;top:@(reader.SchemaY!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture))%"
+                     title="@reader.Name@(Model.MyReaderIds.Contains(reader.Id) ? " — máte přístup" : "")"></div>
+            }
+        </div>
+    </div>
+}

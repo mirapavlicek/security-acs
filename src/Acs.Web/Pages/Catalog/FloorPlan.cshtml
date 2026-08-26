@@ -1,0 +1,54 @@
+@page "{id:int}"
+@model Acs.Web.Pages.Catalog.FloorPlanModel
+@{
+    ViewData["Title"] = $"Plán: {Model.Floor.Building?.Name} / {Model.Floor.Name}";
+}
+<h1>@ViewData["Title"]</h1>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+
+<p class="muted">Vyberte čtečku a kliknutím do plánu jí nastavte pozici. Čtečky patří na plán tohoto patra podle přiřazené místnosti.</p>
+
+<div class="card">
+    <form method="post" id="position-form">
+        <label>Čtečka</label>
+        <select name="readerId" required style="max-width:320px">
+            @foreach (var reader in Model.Readers)
+            {
+                <option value="@reader.Id">@reader.Name @(reader.SchemaX is null ? "(bez pozice)" : "")</option>
+            }
+        </select>
+        <input type="hidden" name="x" id="pos-x" />
+        <input type="hidden" name="y" id="pos-y" />
+        <span class="muted" id="pos-info">— klikněte do plánu —</span>
+        <button class="btn" type="submit" id="save-btn" disabled>Uložit pozici</button>
+        <a class="btn btn-ghost" asp-page="Places">Zpět</a>
+    </form>
+
+    <div style="position:relative;margin-top:1rem;border:1px solid var(--border)" id="plan-wrap">
+        <img src="/floors/@Model.Floor.Id/schema" alt="Schéma patra" id="plan-img" style="display:block;width:100%" />
+        @foreach (var reader in Model.Readers.Where(r => r.SchemaX is not null && r.SchemaY is not null))
+        {
+            <div class="hotspot" style="left:@(reader.SchemaX!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture))%;top:@(reader.SchemaY!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture))%"
+                 title="@reader.Name"></div>
+        }
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    const img = document.getElementById('plan-img');
+    img.addEventListener('click', e => {
+        const rect = img.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width * 100).toFixed(2);
+        const y = ((e.clientY - rect.top) / rect.height * 100).toFixed(2);
+        document.getElementById('pos-x').value = x;
+        document.getElementById('pos-y').value = y;
+        document.getElementById('pos-info').textContent = `pozice: ${x} %, ${y} %`;
+        document.getElementById('save-btn').disabled = false;
+    });
+</script>
+}

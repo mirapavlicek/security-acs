@@ -39,11 +39,13 @@ První přihlášení: `admin` / `admin` (aplikace vynutí změnu hesla).
 
 ## Stav
 
-Hotové: etapy 1–4 — skeleton s autentizací (AD + lokální admin), nastavení
-v GUI, deploy s auto-update z Git `main`, WinPak Connector, číselníky se
-synchronizací, schvalovací matice s neomezenou hloubkou, zástupy, žádosti
-s automatickým doplněním řetězce čteček, moje přístupy (včetně žádosti
-o odebrání) a fronta správce karet s předáním do WIN-PAK přes API.
-Zbývá (etapa 5): e-mailové notifikace, grafická schémata pater s hotspoty,
-reporty a mapování AD skupin na role.
+Hotové: etapy 1–4 a grafická schémata — skeleton s autentizací (AD +
+lokální admin), nastavení v GUI, barevná témata, deploy s auto-update
+z Git `main`, WinPak Connector, číselníky se synchronizací, schvalovací
+matice s neomezenou hloubkou, zástupy, žádosti s automatickým doplněním
+řetězce čteček, moje přístupy (včetně žádosti o odebrání), fronta správce
+karet s předáním do WIN-PAK přes API a plány pater s vyznačením čteček
+a vlastních přístupů.
+Zbývá: e-mailové notifikace, reporty (CSV), mapování AD skupin na role
+a napojení konektoru na reálný WIN-PAK (MSSQL/SDK po dodání přístupů).
 Otevřené otázky: kapitola 8 v `docs/PLAN.md`.

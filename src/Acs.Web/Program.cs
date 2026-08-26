@@ -168,6 +168,15 @@ app.MapPost("/set-theme", async (HttpContext context, AcsDbContext db) =>
         : referer);
 }).AllowAnonymous().DisableAntiforgery();
 
+// Schéma patra (obrázek uložený v DB — dostupný z obou HA nodů).
+app.MapGet("/floors/{id:int}/schema", async (int id, AcsDbContext db) =>
+{
+    var floor = await db.Floors.AsNoTracking().FirstOrDefaultAsync(f => f.Id == id);
+    return floor?.SchemaImage is null
+        ? Results.NotFound()
+        : Results.File(floor.SchemaImage, floor.SchemaContentType ?? "image/png");
+});
+
 app.MapRazorPages();
 
 app.Run();

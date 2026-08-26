@@ -79,6 +79,34 @@ public class PlacesModel(AcsDbContext db, AuditService audit) : PageModel
         return RedirectToPage();
     }
 
+    public async Task<IActionResult> OnPostUploadSchemaAsync(int floorId, IFormFile? file)
+    {
+        var floor = await db.Floors.FindAsync(floorId);
+        if (floor is null)
+            return NotFound();
+
+        if (file is null || file.Length == 0)
+        {
+            ErrorMessage = "Vyberte soubor se schématem (PNG, JPEG nebo SVG).";
+            return RedirectToPage();
+        }
+
+        if (file.Length > 5 * 1024 * 1024)
+        {
+            ErrorMessage = "Schéma je příliš velké (max 5 MB).";
+            return RedirectToPage();
+        }
+
+        using var stream = new MemoryStream();
+        await file.CopyToAsync(stream);
+        floor.SchemaImage = stream.ToArray();
+        floor.SchemaContentType = file.ContentType;
+        await db.SaveChangesAsync();
+        await audit.LogAsync(User.Identity?.Name, "floor-schema-uploaded", "Floor", floorId.ToString(), file.FileName);
+        Message = $"Schéma patra {floor.Name} nahráno.";
+        return RedirectToPage();
+    }
+
     public async Task<IActionResult> OnPostAddRoomAsync(int floorId, string name)
     {
         db.Rooms.Add(new Room { FloorId = floorId, Name = name.Trim() });
