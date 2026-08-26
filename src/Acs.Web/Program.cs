@@ -55,6 +55,13 @@ builder.Services.AddScoped<UserAuthenticationService>();
 builder.Services.AddScoped<AuditService>();
 builder.Services.AddHttpClient<WinPakClient>();
 
+// Synchronizace číselníků (ruční tlačítka + automatický plánovač s DB zámkem).
+builder.Services.AddScoped<Acs.Infrastructure.Sync.ReaderSyncService>();
+builder.Services.AddScoped<Acs.Infrastructure.Sync.EmployeeSyncService>();
+builder.Services.AddScoped<Acs.Infrastructure.Sync.EmployeeSourceFactory>();
+builder.Services.AddHttpClient(nameof(Acs.Infrastructure.Sync.ApiEmployeeSource));
+builder.Services.AddHostedService<Acs.Infrastructure.Sync.SyncScheduler>();
+
 // ---------- Autentizace a autorizace ----------
 builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -83,6 +90,7 @@ builder.Services.AddRazorPages(options =>
     options.Conventions.AllowAnonymousToPage("/Account/Denied");
     options.Conventions.AllowAnonymousToPage("/Error");
     options.Conventions.AuthorizeFolder("/Admin", "Admin");
+    options.Conventions.AuthorizeFolder("/Catalog", "CatalogManager");
 });
 
 var app = builder.Build();

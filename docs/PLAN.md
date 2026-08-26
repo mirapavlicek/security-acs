@@ -173,11 +173,13 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
    (režimy Mock / Mssql / Sdk-placeholder, API klíč, integrační testy).
 6. **Synchronizace čteček** — plánovaný import z Connectoru, párování na
    existující záznamy, ruční editace a přidávání, označení „ručně vytvořeno /
-   importováno“.
+   importováno“. ✅ Implementováno (ruční tlačítko + automatický plánovač
+   `SyncScheduler` s DB zámkem GET_LOCK — běží vždy jen na jednom nodu).
 7. **Zdroj zaměstnanců** — adaptérové rozhraní `IEmployeeSource`
    s implementacemi `MssqlEmployeeSource` a `ApiEmployeeSource`
-   (výběr a konfigurace v GUI — zadání nechává otevřené).
+   (výběr a konfigurace v GUI — zadání nechává otevřené). ✅ Implementováno.
 8. **Správa budov / pater / místností** — CRUD + přiřazení čteček.
+   ✅ Implementováno (`/Catalog/Places`).
 9. **Grafická schémata** — upload podkladu, editor hotspotů (umístění
    místnosti/čtečky na plán), zobrazení stavu přístupů na plánu.
 
@@ -189,6 +191,8 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
     uplatnění v běžících žádostech, auditované.
 12. **Řetězce čteček** — definice závislostí, automatické rozšíření žádosti
     o vyžadované čtečky, detekce cyklů, vizualizace řetězce.
+    ⏳ Editace závislostí s detekcí cyklů hotová (editace čtečky);
+    automatické rozšíření žádosti přijde s workflow (etapa 3).
 13. **Životní cyklus žádosti** — podání (pro sebe / pro podřízeného),
     postup po úrovních matice, zamítnutí s důvodem, eskalace/připomínky,
     odebrání přístupu (revokace) stejným workflow.

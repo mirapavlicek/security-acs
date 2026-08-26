@@ -1,0 +1,54 @@
+@page
+@using Acs.Domain.Entities
+@model Acs.Web.Pages.Catalog.Readers.IndexModel
+@{
+    ViewData["Title"] = "Čtečky";
+}
+<h1>Čtečky</h1>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="card">
+    <form method="get" class="inline-form">
+        <input type="text" name="search" value="@Model.Search" placeholder="Hledat podle názvu, panelu…" style="max-width:300px;display:inline-block" />
+        <button class="btn btn-sm" type="submit">Hledat</button>
+    </form>
+    <form method="post" asp-page-handler="Sync" class="inline-form" style="float:right">
+        <button class="btn btn-sm" type="submit">Synchronizovat z WIN-PAK</button>
+    </form>
+    <a class="btn btn-sm btn-ghost" style="float:right;margin-right:0.5rem" asp-page="Edit">+ Nová čtečka</a>
+</div>
+
+<div class="card">
+    <table class="data">
+        <thead>
+        <tr><th>Název</th><th>Panel</th><th>Místnost</th><th>Zdroj</th><th>Vyžaduje</th><th>Aktivní</th><th>Synchronizováno</th><th></th></tr>
+        </thead>
+        <tbody>
+        @foreach (var reader in Model.Readers)
+        {
+            <tr>
+                <td>@reader.Name</td>
+                <td class="muted">@reader.PanelName</td>
+                <td>@(reader.Room is null ? "—" : $"{reader.Room.Floor?.Building?.Name} / {reader.Room.Floor?.Name} / {reader.Room.Name}")</td>
+                <td><span class="badge">@(reader.Source == RecordSource.Imported ? "WIN-PAK" : "ruční")</span></td>
+                <td class="muted">@string.Join(", ", reader.Dependencies.Select(d => d.RequiresReader?.Name))</td>
+                <td>@(reader.IsActive ? "ano" : "ne")</td>
+                <td class="muted">@(reader.LastSyncedAt?.ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
+                <td><a class="btn btn-sm btn-ghost" asp-page="Edit" asp-route-id="@reader.Id">Upravit</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Readers.Count == 0)
+    {
+        <p class="muted">Žádné čtečky. Spusťte synchronizaci z WIN-PAK, nebo přidejte čtečku ručně.</p>
+    }
+</div>

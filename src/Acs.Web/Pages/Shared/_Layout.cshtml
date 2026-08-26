@@ -24,7 +24,9 @@
             <a asp-page="/Index">Přehled</a>
             @if (HasRole("CatalogManager"))
             {
-                <span class="nav-soon" title="Připravujeme">Číselníky</span>
+                <a asp-page="/Catalog/Readers/Index">Čtečky</a>
+                <a asp-page="/Catalog/Employees/Index">Zaměstnanci</a>
+                <a asp-page="/Catalog/Places">Budovy</a>
             }
             <span class="nav-soon" title="Připravujeme">Žádosti</span>
             @if (HasRole("CardAdmin"))

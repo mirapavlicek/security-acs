@@ -1,0 +1,43 @@
+@page "{id:int?}"
+@model Acs.Web.Pages.Catalog.Employees.EditModel
+@{
+    ViewData["Title"] = Model.Employee.Id == 0 ? "Nový zaměstnanec" : $"Zaměstnanec: {Model.Employee.FullName}";
+}
+<h1>@ViewData["Title"]</h1>
+
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="card" style="max-width:640px">
+    <form method="post">
+        <input type="hidden" asp-for="Employee.Id" />
+        <label>Jméno</label>
+        <input asp-for="Employee.FirstName" required />
+        <label>Příjmení</label>
+        <input asp-for="Employee.LastName" required />
+        <label>Osobní číslo</label>
+        <input asp-for="Employee.PersonalNumber" />
+        <label>E-mail</label>
+        <input asp-for="Employee.Email" type="email" />
+        <label>Oddělení</label>
+        <input asp-for="Employee.Department" />
+        <label>AD účet (sAMAccountName) — pro párování s přihlášením</label>
+        <input asp-for="Employee.AdAccount" />
+        <label>WIN-PAK card holder id</label>
+        <input asp-for="Employee.WinPakCardHolderId" />
+        <label>Číslo karty</label>
+        <input asp-for="Employee.CardNumber" />
+        <div class="checkbox-row">
+            <input type="checkbox" asp-for="Employee.IsActive" />
+            <label asp-for="Employee.IsActive">Aktivní</label>
+        </div>
+        @if (Model.Employee.ExternalId is not null)
+        {
+            <p class="muted">Importováno ze zdroje (id @Model.Employee.ExternalId) — importovaná pole se při synchronizaci přepíší.</p>
+        }
+        <button class="btn" type="submit">Uložit</button>
+        <a class="btn btn-ghost" asp-page="Index">Zpět</a>
+    </form>
+</div>

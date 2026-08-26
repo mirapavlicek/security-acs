@@ -39,6 +39,8 @@ První přihlášení: `admin` / `admin` (aplikace vynutí změnu hesla).
 
 ## Stav
 
-Hotová etapa 1 (skeleton, autentizace, nastavení v GUI, deploy + auto-update)
-a WinPak Connector. Následuje etapa 2 — číselníky a synchronizace.
+Hotové: etapa 1 (skeleton, autentizace, nastavení v GUI, deploy +
+auto-update), WinPak Connector a etapa 2 (číselníky čteček/zaměstnanců/budov,
+synchronizace s plánovačem, řetězce čteček s detekcí cyklů).
+Následuje etapa 3 — schvalovací matice a workflow žádostí.
 Otevřené otázky: kapitola 8 v `docs/PLAN.md`.
