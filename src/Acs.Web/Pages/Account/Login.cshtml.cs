@@ -7,10 +7,12 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Acs.Web.Pages.Account;
 
 [AllowAnonymous]
+[EnableRateLimiting("login")]
 public class LoginModel(UserAuthenticationService auth, AuditService audit) : PageModel
 {
     [BindProperty]

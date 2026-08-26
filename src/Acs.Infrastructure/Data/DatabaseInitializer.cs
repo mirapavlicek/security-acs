@@ -1,5 +1,6 @@
 using Acs.Infrastructure.Auth;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using MySqlConnector;
 
 namespace Acs.Infrastructure.Data;
@@ -11,7 +12,7 @@ namespace Acs.Infrastructure.Data;
 /// </summary>
 public static class DatabaseInitializer
 {
-    public static async Task InitializeAsync(AcsDbContext db, CancellationToken ct = default)
+    public static async Task InitializeAsync(AcsDbContext db, ILogger? logger = null, CancellationToken ct = default)
     {
         if (db.Database.ProviderName?.Contains("MySql", StringComparison.OrdinalIgnoreCase) == true)
         {
@@ -43,6 +44,6 @@ public static class DatabaseInitializer
             await db.Database.EnsureCreatedAsync(ct);
         }
 
-        await UserAuthenticationService.SeedLocalAdminAsync(db, ct);
+        await UserAuthenticationService.SeedLocalAdminAsync(db, logger, ct);
     }
 }

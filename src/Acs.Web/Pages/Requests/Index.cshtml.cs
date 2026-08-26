@@ -25,7 +25,7 @@ public class IndexModel(AcsDbContext db, RequestWorkflowService workflow) : Page
             .Take(100)
             .ToListAsync();
 
-        PendingForMe = await workflow.GetPendingForApproverAsync(userId);
+        PendingForMe = await workflow.GetPendingForApproverAsync(userId, User.IsInRole("Admin"));
     }
 
     public string Summarize(AccessRequest request)

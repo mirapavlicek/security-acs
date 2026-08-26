@@ -2,6 +2,8 @@ using System.Net;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Mvc.Testing.Handlers;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Acs.Tests;
@@ -70,6 +72,17 @@ public class WebAppTests(AcsWebFactory factory) : IClassFixture<AcsWebFactory>
     [Fact]
     public async Task DefaultAdmin_CanLogIn_AndIsForcedToChangePassword()
     {
+        // Počáteční heslo admina je náhodné (bezpečnostní opatření) — pro test
+        // ho nastavíme na známou hodnotu přímo v DB.
+        const string knownPassword = "Znam3Heslo!Admin";
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Acs.Infrastructure.Data.AcsDbContext>();
+            var admin = await db.Users.FirstAsync(u => u.UserName == "admin");
+            admin.PasswordHash = Acs.Infrastructure.Auth.PasswordHasher.Hash(knownPassword);
+            await db.SaveChangesAsync();
+        }
+
         var client = CreateClientWithCookies(allowRedirects: true);
 
         var loginPage = await client.GetStringAsync("/Account/Login");
@@ -79,7 +92,7 @@ public class WebAppTests(AcsWebFactory factory) : IClassFixture<AcsWebFactory>
             new Dictionary<string, string>
             {
                 ["UserName"] = "admin",
-                ["Password"] = "admin",
+                ["Password"] = knownPassword,
                 ["__RequestVerificationToken"] = token,
             }));
 

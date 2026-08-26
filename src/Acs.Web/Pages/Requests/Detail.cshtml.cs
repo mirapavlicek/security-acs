@@ -17,6 +17,7 @@ public class DetailModel(AcsDbContext db, RequestWorkflowService workflow) : Pag
     [TempData] public string? ErrorMessage { get; set; }
 
     private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    private bool IsAdmin => User.IsInRole("Admin");
 
     public async Task<IActionResult> OnGetAsync(int id)
     {
@@ -29,9 +30,22 @@ public class DetailModel(AcsDbContext db, RequestWorkflowService workflow) : Pag
         if (request is null)
             return NotFound();
 
-        Request = request;
-        var pending = await workflow.GetPendingForApproverAsync(CurrentUserId);
+        var pending = await workflow.GetPendingForApproverAsync(CurrentUserId, IsAdmin);
         CanDecide = pending.Where(i => i.RequestId == id).Select(i => i.Id).ToHashSet();
+
+        // Autorizace zobrazení detailu (ochrana proti IDOR): žadatel, cílový
+        // zaměstnanec, aktuální schvalovatel položky, správce karet nebo admin.
+        var myEmployeeId = await db.Users.Where(u => u.Id == CurrentUserId)
+            .Select(u => u.EmployeeId).FirstOrDefaultAsync();
+        var canView = IsAdmin
+            || User.IsInRole("CardAdmin")
+            || request.RequesterUserId == CurrentUserId
+            || (myEmployeeId is not null && request.TargetEmployeeId == myEmployeeId)
+            || CanDecide.Count > 0;
+        if (!canView)
+            return Forbid();
+
+        Request = request;
         return Page();
     }
 
@@ -51,7 +65,7 @@ public class DetailModel(AcsDbContext db, RequestWorkflowService workflow) : Pag
 
         try
         {
-            await workflow.DecideAsync(itemId, CurrentUserId, approve, comment);
+            await workflow.DecideAsync(itemId, CurrentUserId, approve, comment, IsAdmin);
             Message = approve ? "Položka schválena." : "Položka zamítnuta.";
         }
         catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException)

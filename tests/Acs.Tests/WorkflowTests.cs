@@ -77,7 +77,8 @@ public sealed class WorkflowTests : IDisposable
     public async Task CreateRequest_ExpandsDependencyChain_Transitively()
     {
         var request = await _workflow.CreateRequestAsync(
-            _requester.Id, _employee.Id, [_room.Id], "potřebuji do serverovny");
+            _requester.Id, _employee.Id, [_room.Id], "potřebuji do serverovny",
+            requesterCanActForOthers: true);
 
         Assert.Equal(3, request.Items.Count);
 
@@ -88,16 +89,54 @@ public sealed class WorkflowTests : IDisposable
         var corridorItem = request.Items.Single(i => i.ReaderId == _corridor.Id);
         Assert.True(corridorItem.AutoAdded);
 
-        // Patro nemá matici → schváleno rovnou (jde do fronty správce karet).
+        // Patro nemá matici → NESCHVALUJE se automaticky, čeká na rozhodnutí admina.
         var floorItem = request.Items.Single(i => i.ReaderId == _floor.Id);
         Assert.True(floorItem.AutoAdded);
-        Assert.Equal(RequestStatus.Approved, floorItem.Status);
+        Assert.Equal(RequestStatus.Pending, floorItem.Status);
+        Assert.Null(floorItem.MatrixId);
+    }
+
+    [Fact]
+    public async Task NonAdmin_CannotRequestForOtherEmployee()
+    {
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(
+            () => _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [_corridor.Id], null));
+    }
+
+    [Fact]
+    public async Task ReaderWithoutMatrix_RequiresAdminApproval()
+    {
+        var request = await _workflow.CreateRequestAsync(
+            _requester.Id, _employee.Id, [_floor.Id], null, requesterCanActForOthers: true);
+        var item = request.Items.Single(i => i.ReaderId == _floor.Id);
+
+        // Běžný schvalovatel položku bez matice nevidí.
+        Assert.Empty(await _workflow.GetPendingForApproverAsync(_boss.Id, isAdmin: false));
+        // Admin ano a smí ji schválit.
+        Assert.Contains(await _workflow.GetPendingForApproverAsync(_boss.Id, isAdmin: true),
+            i => i.Id == item.Id);
+
+        await _workflow.DecideAsync(item.Id, _boss.Id, approve: true, null, isAdmin: true);
+        await _db.Entry(item).ReloadAsync();
+        Assert.Equal(RequestStatus.Approved, item.Status);
+    }
+
+    [Fact]
+    public async Task ReaderWithoutMatrix_NonAdminCannotDecide()
+    {
+        var request = await _workflow.CreateRequestAsync(
+            _requester.Id, _employee.Id, [_floor.Id], null, requesterCanActForOthers: true);
+        var item = request.Items.Single(i => i.ReaderId == _floor.Id);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(
+            () => _workflow.DecideAsync(item.Id, _boss.Id, approve: true, null, isAdmin: false));
     }
 
     [Fact]
     public async Task Approval_WalksThroughLevels_ThenApproves()
     {
-        var request = await _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [_room.Id], null);
+        var request = await _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [_room.Id], null,
+            requesterCanActForOthers: true);
         var item = request.Items.Single(i => i.ReaderId == _room.Id);
 
         // Úroveň 1: vedoucí je schvalovatel, žadatel ne.
@@ -119,7 +158,8 @@ public sealed class WorkflowTests : IDisposable
     [Fact]
     public async Task Rejection_StopsItem()
     {
-        var request = await _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [_corridor.Id], null);
+        var request = await _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [_corridor.Id], null,
+            requesterCanActForOthers: true);
         var item = request.Items.Single(i => i.ReaderId == _corridor.Id);
 
         await _workflow.DecideAsync(item.Id, _boss.Id, approve: false, "neopodstatněné");
@@ -139,7 +179,8 @@ public sealed class WorkflowTests : IDisposable
         });
         await _db.SaveChangesAsync();
 
-        var request = await _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [_corridor.Id], null);
+        var request = await _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [_corridor.Id], null,
+            requesterCanActForOthers: true);
         var item = request.Items.Single(i => i.ReaderId == _corridor.Id);
 
         var pendingForDeputy = await _workflow.GetPendingForApproverAsync(_deputy.Id);
@@ -163,7 +204,8 @@ public sealed class WorkflowTests : IDisposable
         });
         await _db.SaveChangesAsync();
 
-        var request = await _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [_corridor.Id], null);
+        var request = await _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [_corridor.Id], null,
+            requesterCanActForOthers: true);
         var item = request.Items.Single(i => i.ReaderId == _corridor.Id);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(
@@ -190,7 +232,8 @@ public sealed class WorkflowTests : IDisposable
         _db.Readers.Add(reader);
         await _db.SaveChangesAsync();
 
-        var request = await _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [reader.Id], null);
+        var request = await _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [reader.Id], null,
+            requesterCanActForOthers: true);
         var item = request.Items.Single();
 
         await _workflow.DecideAsync(item.Id, _boss.Id, approve: true, null);
@@ -205,8 +248,10 @@ public sealed class WorkflowTests : IDisposable
     [Fact]
     public async Task DuplicatePendingRequest_IsSkipped()
     {
-        await _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [_floor.Id], null);
+        await _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [_floor.Id], null,
+            requesterCanActForOthers: true);
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [_floor.Id], null));
+            () => _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [_floor.Id], null,
+                requesterCanActForOthers: true));
     }
 }

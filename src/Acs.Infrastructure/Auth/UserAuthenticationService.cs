@@ -105,21 +105,42 @@ public class UserAuthenticationService(
         return roles;
     }
 
-    /// <summary>Zajistí existenci lokálního admin účtu (první start aplikace).</summary>
-    public static async Task SeedLocalAdminAsync(AcsDbContext db, CancellationToken ct = default)
+    /// <summary>
+    /// Zajistí existenci lokálního admin účtu (první start aplikace).
+    /// Heslo se generuje náhodně a jednorázově vypíše do logu (žádné výchozí
+    /// „admin/admin“); operátor ho přečte z <c>journalctl -u acs-web</c> a při
+    /// prvním přihlášení je vynucena jeho změna.
+    /// </summary>
+    public static async Task SeedLocalAdminAsync(AcsDbContext db, ILogger? logger = null, CancellationToken ct = default)
     {
         if (await db.Users.AnyAsync(u => u.IsLocal && u.Roles.HasFlag(AppRole.Admin), ct))
             return;
 
+        var initialPassword = GenerateInitialPassword();
         db.Users.Add(new AppUser
         {
             UserName = "admin",
             DisplayName = "Lokální administrátor",
             IsLocal = true,
-            PasswordHash = PasswordHasher.Hash("admin"),
+            PasswordHash = PasswordHasher.Hash(initialPassword),
             MustChangePassword = true,
             Roles = AppRole.Admin,
         });
         await db.SaveChangesAsync(ct);
+
+        var message = "==== ACS: vytvořen lokální účet 'admin' s počátečním heslem: {Password} "
+                    + "(při prvním přihlášení bude vynucena změna) ====";
+        if (logger is not null)
+            logger.LogWarning(message, initialPassword);
+        else
+            Console.WriteLine(message.Replace("{Password}", initialPassword));
+    }
+
+    private static string GenerateInitialPassword()
+    {
+        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+        return new string(Enumerable.Range(0, 20)
+            .Select(_ => chars[System.Security.Cryptography.RandomNumberGenerator.GetInt32(chars.Length)])
+            .ToArray());
     }
 }

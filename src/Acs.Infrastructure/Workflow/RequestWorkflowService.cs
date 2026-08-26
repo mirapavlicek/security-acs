@@ -14,7 +14,13 @@ namespace Acs.Infrastructure.Workflow;
 ///   <item>zástupy (deputy) — rozhodování za jiného schvalovatele v daném období,</item>
 ///   <item>zamítnutí kdykoli ukončí položku.</item>
 /// </list>
-/// Položky bez matice jsou schválené rovnou (míří do fronty správce karet).
+/// Bezpečnostní pravidla:
+/// <list type="bullet">
+///   <item>žádost pro jiného zaměstnance smí podat jen uživatel s oprávněním
+///     (Admin / CardAdmin / CatalogManager); běžný uživatel jen sám za sebe,</item>
+///   <item>čtečka bez aktivní matice se <b>neschvaluje automaticky</b> — vyžaduje
+///     rozhodnutí administrátora (žádný přístup neobejde lidské schválení).</item>
+/// </list>
 /// </summary>
 public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotificationService? notifier = null)
 {
@@ -43,12 +49,31 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotifi
         return result;
     }
 
+    /// <param name="requesterCanActForOthers">
+    /// true pro uživatele s oprávněním podat žádost i za jiné zaměstnance
+    /// (Admin / CardAdmin / CatalogManager). Pro běžného uživatele false —
+    /// pak smí žádat jen za zaměstnance navázaného na jeho účet.
+    /// Systémové volání (zpětná synchronizace) používá <c>true</c>.
+    /// </param>
     public async Task<AccessRequest> CreateRequestAsync(
         int requesterUserId, int targetEmployeeId, IReadOnlyCollection<int> readerIds,
-        string? justification, RequestKind kind = RequestKind.Grant, CancellationToken ct = default)
+        string? justification, RequestKind kind = RequestKind.Grant,
+        bool requesterCanActForOthers = false, CancellationToken ct = default)
     {
         if (readerIds.Count == 0)
             throw new InvalidOperationException("Žádost musí obsahovat alespoň jednu čtečku.");
+
+        // Autorizace: kdo smí žádat za koho.
+        if (!requesterCanActForOthers)
+        {
+            var ownEmployeeId = await db.Users
+                .Where(u => u.Id == requesterUserId)
+                .Select(u => u.EmployeeId)
+                .FirstOrDefaultAsync(ct);
+            if (ownEmployeeId is null || ownEmployeeId.Value != targetEmployeeId)
+                throw new UnauthorizedAccessException(
+                    "Nemáte oprávnění podat žádost za jiného zaměstnance.");
+        }
 
         var allIds = kind == RequestKind.Grant
             ? await ExpandWithDependenciesAsync(readerIds, ct)
@@ -87,12 +112,14 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotifi
                 ? reader.ApprovalMatrix
                 : null;
 
+            // Čtečka bez matice se NESCHVALUJE automaticky — zůstává Pending
+            // a smí ji schválit pouze administrátor (viz GetPendingForApproverAsync).
             request.Items.Add(new AccessRequestItem
             {
                 ReaderId = reader.Id,
                 AutoAdded = !explicitIds.Contains(reader.Id),
                 MatrixId = matrix?.Id,
-                Status = matrix is null ? RequestStatus.Approved : RequestStatus.Pending,
+                Status = RequestStatus.Pending,
                 CurrentLevelOrder = matrix?.Levels.Min(l => l.Order) ?? 0,
             });
         }
@@ -133,8 +160,13 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotifi
         return [userId, .. principals];
     }
 
-    /// <summary>Položky čekající na rozhodnutí daného uživatele (včetně zástupů).</summary>
-    public async Task<List<AccessRequestItem>> GetPendingForApproverAsync(int userId, CancellationToken ct = default)
+    /// <summary>
+    /// Položky čekající na rozhodnutí daného uživatele (včetně zástupů).
+    /// Administrátor (<paramref name="isAdmin"/>) navíc vidí položky bez matice,
+    /// které musí schválit ručně.
+    /// </summary>
+    public async Task<List<AccessRequestItem>> GetPendingForApproverAsync(
+        int userId, bool isAdmin = false, CancellationToken ct = default)
     {
         var identities = await GetActingIdentitiesAsync(userId, ct);
 
@@ -143,10 +175,10 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotifi
             .Include(i => i.Request!).ThenInclude(r => r.RequesterUser)
             .Include(i => i.Reader)
             .Include(i => i.Decisions)
-            .Where(i => i.Status == RequestStatus.Pending && i.MatrixId != null)
+            .Where(i => i.Status == RequestStatus.Pending)
             .ToListAsync(ct);
 
-        var matrixIds = items.Select(i => i.MatrixId!.Value).Distinct().ToList();
+        var matrixIds = items.Where(i => i.MatrixId != null).Select(i => i.MatrixId!.Value).Distinct().ToList();
         var levels = await db.ApprovalLevels
             .Include(l => l.Approvers)
             .Where(l => matrixIds.Contains(l.MatrixId))
@@ -154,6 +186,10 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotifi
 
         return items.Where(item =>
         {
+            // Položka bez matice — smí rozhodnout jen administrátor.
+            if (item.MatrixId is null)
+                return isAdmin;
+
             var level = levels.FirstOrDefault(l =>
                 l.MatrixId == item.MatrixId && l.Order == item.CurrentLevelOrder);
             if (level is null)
@@ -175,7 +211,8 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotifi
 
     // ---------- Rozhodnutí ----------
 
-    public async Task DecideAsync(int itemId, int userId, bool approve, string? comment, CancellationToken ct = default)
+    public async Task DecideAsync(int itemId, int userId, bool approve, string? comment,
+        bool isAdmin = false, CancellationToken ct = default)
     {
         var item = await db.AccessRequestItems
             .Include(i => i.Decisions)
@@ -183,8 +220,33 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotifi
             .FirstOrDefaultAsync(i => i.Id == itemId, ct)
             ?? throw new KeyNotFoundException("Položka žádosti nenalezena.");
 
-        if (item.Status != RequestStatus.Pending || item.MatrixId is null)
+        if (item.Status != RequestStatus.Pending)
             throw new InvalidOperationException("Položka nečeká na schválení.");
+
+        // Položka bez matice — rozhoduje výhradně administrátor (žádné úrovně).
+        if (item.MatrixId is null)
+        {
+            if (!isAdmin)
+                throw new UnauthorizedAccessException(
+                    "Čtečku bez schvalovací matice smí schválit pouze administrátor.");
+
+            item.Decisions.Add(new ApprovalDecision
+            {
+                LevelOrder = 0,
+                ApproverUserId = userId,
+                Approved = approve,
+                Comment = comment,
+            });
+            item.Status = approve ? RequestStatus.Approved : RequestStatus.Rejected;
+            item.DecidedAt = DateTime.UtcNow;
+
+            await db.SaveChangesAsync(ct);
+            await audit.LogAsync(null, approve ? "item-approved-admin" : "item-rejected-admin",
+                "AccessRequestItem", item.Id.ToString(), $"administrátor {userId} (bez matice)", ct);
+            if (notifier is not null)
+                await notifier.NotifyDecidedAsync(item.Id, ct);
+            return;
+        }
 
         var level = await db.ApprovalLevels
             .Include(l => l.Approvers)

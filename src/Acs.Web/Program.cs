@@ -1,3 +1,4 @@
+using System.Threading.RateLimiting;
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Auth;
@@ -7,6 +8,7 @@ using Acs.Infrastructure.WinPak;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -79,7 +81,38 @@ builder.Services
         options.AccessDeniedPath = "/Account/Denied";
         options.ExpireTimeSpan = TimeSpan.FromHours(10);
         options.SlidingExpiration = true;
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Lax;
+        // V produkci (za TLS-terminující HAProxy) vždy Secure; ve vývoji přes
+        // plné HTTP by Always cookie zahodilo, proto SameAsRequest.
+        options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+            ? CookieSecurePolicy.SameAsRequest
+            : CookieSecurePolicy.Always;
     });
+
+// Aplikace běží za HAProxy, který terminuje TLS — čti X-Forwarded-* hlavičky,
+// aby aplikace znala reálné schéma (https) a IP klienta (rate-limit, audit).
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // HAProxy je v interní síti; známé proxy se nevynucují (jinak nutná konfigurace IP).
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
+// Rate-limit na přihlašování (obrana proti hádání hesel), per IP klienta.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("login", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+        }));
+});
 
 builder.Services.AddAuthorization(options =>
 {
@@ -106,14 +139,35 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AcsDbContext>();
-    await DatabaseInitializer.InitializeAsync(db);
+    var initLogger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("Acs.DatabaseInitializer");
+    await DatabaseInitializer.InitializeAsync(db, initLogger);
 }
 
+app.UseForwardedHeaders();
+
 if (!app.Environment.IsDevelopment())
+{
     app.UseExceptionHandler("/Error");
+    app.UseHsts();
+}
+
+// Bezpečnostní hlavičky pro všechny odpovědi.
+app.Use(async (context, next) =>
+{
+    var headers = context.Response.Headers;
+    headers["X-Content-Type-Options"] = "nosniff";
+    headers["X-Frame-Options"] = "DENY";
+    headers["Referrer-Policy"] = "same-origin";
+    headers["Content-Security-Policy"] =
+        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+        + "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+    await next();
+});
 
 app.UseStaticFiles();
 app.UseRouting();
+app.UseRateLimiter();
 app.UseAuthentication();
 
 // Vynucení změny výchozího hesla lokálních účtů.

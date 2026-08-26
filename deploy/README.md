@@ -36,11 +36,27 @@ Pozn.: pokud je repozitář privátní, nastavte na nodech přístup ke čtení
 
 ## Po instalaci
 
-1. HAProxy: přidejte backend dle `haproxy.cfg.example`.
-2. Otevřete `http://acs.fnmh.network`, přihlaste se `admin` / `admin`
-   — aplikace vynutí změnu hesla.
-3. V **Nastavení** (GUI) nakonfigurujte Active Directory (LDAPS),
-   WIN-PAK konektor (adresa + API klíč) a zdroj zaměstnanců.
+1. HAProxy: přidejte backend dle `haproxy.cfg.example` (terminuje HTTPS).
+2. **Počáteční heslo administrátora** je náhodné a vypsané do logu — přečtěte
+   ho na nodu, kde proběhla první inicializace DB:
+
+   ```bash
+   journalctl -u acs-web | grep "počátečním heslem"
+   ```
+
+3. Otevřete `https://acs.fnmh.network`, přihlaste se `admin` a přečteným
+   heslem — aplikace vynutí okamžitou změnu.
+4. V **Nastavení** (GUI) nakonfigurujte Active Directory (LDAPS, mapování
+   skupin na role), WIN-PAK konektor (adresa + API klíč) a zdroj zaměstnanců.
+
+## Bezpečnostní poznámky k nasazení
+
+- Auto-update jede ve výchozím režimu `ACS_UPDATE_MODE=tag` — na nody se
+  nasazují jen release tagy `vX.Y.Z`. Pro nasazení vydání vytvořte a pushněte
+  tag: `git tag v1.0.0 && git push origin v1.0.0`.
+- Port 52000 je firewallem otevřen jen pro app servery; HTTPS terminuje
+  HAProxy. Nikdy nevystavujte 52000 veřejně.
+- Viz `docs/SECURITY.md` pro kompletní přehled bezpečnostních opatření.
 
 ## Užitečné příkazy na nodech
 

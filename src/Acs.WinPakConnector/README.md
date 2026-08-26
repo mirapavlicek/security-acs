@@ -87,6 +87,22 @@ curl -H "X-Api-Key: <klic>" http://localhost:52001/api/v1/readers
 
 6. Ověření: `curl http://<winpak-server>:52001/health` → `{"status":"ok"}`.
 
+## Bezpečnost konektoru
+
+ACS považuje data z konektoru za autoritativní (zpětná synchronizace zakládá
+potvrzené přístupy). Kompromitovaný konektor nebo odposlech linky proto může
+ovlivnit stav přístupů v ACS. Doporučení:
+
+- **Síťové omezení** — port konektoru zpřístupněte firewallem výhradně
+  aplikačním serverům (viz pravidlo výše); nikdy ne veřejně.
+- **API klíč** — silný, náhodný (`openssl rand -hex 32`), pravidelně rotovaný;
+  týž klíč se zadává v ACS (Nastavení → WIN-PAK).
+- **TLS/mTLS** — na produkci provozujte konektor za reverzní proxy s TLS
+  (nebo nakonfigurujte Kestrel s certifikátem) a ideálně vyžadujte klientský
+  certifikát aplikačních serverů (mTLS). Nešifrovaný HTTP používejte jen
+  v izolované důvěryhodné síti.
+- **Nejmenší oprávnění** — SQL login pro režim `Mssql` má mít pouze `SELECT`.
+
 ## Napojení na skutečný WIN-PAK
 
 - **Režim `Mssql`:** doplňte do `WinPak:Mssql` connection string k WIN-PAK
