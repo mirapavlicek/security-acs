@@ -11,6 +11,10 @@ public class IndexModel(AcsDbContext db, AuditService audit) : PageModel
 {
     public List<ApprovalMatrix> Matrices { get; private set; } = [];
     public Dictionary<int, int> UsageCounts { get; private set; } = new();
+    public Dictionary<int, int> GroupUsageCounts { get; private set; } = new();
+
+    /// <summary>Čtečky, které zatím nemají matici — smí je schvalovat jen administrátor.</summary>
+    public int ReadersWithoutMatrix { get; private set; }
 
     [TempData] public string? Message { get; set; }
 
@@ -22,6 +26,12 @@ public class IndexModel(AcsDbContext db, AuditService audit) : PageModel
             .GroupBy(r => r.ApprovalMatrixId!.Value)
             .Select(g => new { g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count);
+        GroupUsageCounts = await db.ReaderGroups
+            .Where(g => g.ApprovalMatrixId != null)
+            .GroupBy(g => g.ApprovalMatrixId!.Value)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count);
+        ReadersWithoutMatrix = await db.Readers.CountAsync(r => r.ApprovalMatrixId == null);
     }
 
     public async Task<IActionResult> OnPostCreateAsync(string name)

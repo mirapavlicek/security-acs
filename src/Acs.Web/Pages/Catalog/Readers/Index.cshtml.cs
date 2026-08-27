@@ -1,32 +1,69 @@
 using Acs.Domain.Entities;
+using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Data;
 using Acs.Infrastructure.Sync;
+using Acs.Infrastructure.Workflow;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 
 namespace Acs.Web.Pages.Catalog.Readers;
 
-public class IndexModel(AcsDbContext db, ReaderSyncService readerSync) : PageModel
+public class IndexModel(
+    AcsDbContext db,
+    ReaderSyncService readerSync,
+    ReaderGroupService groupService,
+    AuditService audit) : PageModel
 {
-    public List<Reader> Readers { get; private set; } = [];
+    /// <summary>Hodnota filtru matice, která znamená „čtečky bez matice“.</summary>
+    public const string NoMatrixFilter = "none";
 
-    [BindProperty(SupportsGet = true)]
-    public string? Search { get; set; }
+    public List<Reader> Readers { get; private set; } = [];
+    public List<ApprovalMatrix> Matrices { get; private set; } = [];
+    public List<Building> Buildings { get; private set; } = [];
+    public List<Floor> Floors { get; private set; } = [];
+    public List<ReaderGroup> Groups { get; private set; } = [];
+
+    [BindProperty(SupportsGet = true)] public string? Search { get; set; }
+    [BindProperty(SupportsGet = true)] public int? BuildingId { get; set; }
+    [BindProperty(SupportsGet = true)] public int? FloorId { get; set; }
+    [BindProperty(SupportsGet = true)] public int? GroupId { get; set; }
+
+    /// <summary>Prázdné = všechny, <see cref="NoMatrixFilter"/> = bez matice, jinak id matice.</summary>
+    [BindProperty(SupportsGet = true)] public string? Matrix { get; set; }
 
     [TempData] public string? Message { get; set; }
     [TempData] public string? ErrorMessage { get; set; }
 
+    public bool HasFilter =>
+        !string.IsNullOrWhiteSpace(Search) || BuildingId is not null || FloorId is not null
+        || GroupId is not null || !string.IsNullOrWhiteSpace(Matrix);
+
     public async Task OnGetAsync()
     {
-        var query = db.Readers
+        var query = (await FilteredQueryAsync())
             .Include(r => r.Room).ThenInclude(room => room!.Floor).ThenInclude(f => f!.Building)
             .Include(r => r.Room).ThenInclude(room => room!.Floor).ThenInclude(f => f!.Section)
             .Include(r => r.Room).ThenInclude(room => room!.Corridor)
             .Include(r => r.Corridor).ThenInclude(c => c!.Floor).ThenInclude(f => f!.Building)
             .Include(r => r.Corridor).ThenInclude(c => c!.Floor).ThenInclude(f => f!.Section)
-            .Include(r => r.Dependencies).ThenInclude(d => d.RequiresReader)
-            .AsQueryable();
+            .Include(r => r.ApprovalMatrix)
+            .Include(r => r.Dependencies).ThenInclude(d => d.RequiresReader);
+
+        Readers = await query.OrderBy(r => r.Name).ToListAsync();
+        Matrices = await db.ApprovalMatrices.Where(m => m.IsActive).OrderBy(m => m.Name).ToListAsync();
+        Buildings = await db.Buildings.OrderBy(b => b.Name).ToListAsync();
+        Floors = await db.Floors.Include(f => f.Building)
+            .Where(f => BuildingId == null || f.BuildingId == BuildingId)
+            .OrderBy(f => f.Building!.Name).ThenBy(f => f.SortOrder)
+            .ToListAsync();
+        Groups = await db.ReaderGroups.OrderBy(g => g.Name).ToListAsync();
+    }
+
+    /// <summary>Dotaz zúžený aktuálním filtrem — sdílí ho výpis i hromadné přiřazení „všem odpovídajícím“.</summary>
+    private async Task<IQueryable<Reader>> FilteredQueryAsync(CancellationToken ct = default)
+    {
+        var query = db.Readers.AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(Search))
         {
@@ -36,7 +73,33 @@ public class IndexModel(AcsDbContext db, ReaderSyncService readerSync) : PageMod
                 || (r.Description != null && r.Description.Contains(Search)));
         }
 
-        Readers = await query.OrderBy(r => r.Name).ToListAsync();
+        if (BuildingId is not null)
+        {
+            query = query.Where(r =>
+                (r.Room != null && r.Room.Floor!.BuildingId == BuildingId)
+                || (r.Corridor != null && r.Corridor.Floor!.BuildingId == BuildingId));
+        }
+
+        if (FloorId is not null)
+        {
+            query = query.Where(r =>
+                (r.Room != null && r.Room.FloorId == FloorId)
+                || (r.Corridor != null && r.Corridor.FloorId == FloorId));
+        }
+
+        if (GroupId is not null)
+        {
+            // Skupina se rozbaluje rekurzivně, aby filtr sedl i na vnořené skupiny.
+            var memberIds = await groupService.ExpandReaderIdsAsync(GroupId.Value, ct);
+            query = query.Where(r => memberIds.Contains(r.Id));
+        }
+
+        if (Matrix == NoMatrixFilter)
+            query = query.Where(r => r.ApprovalMatrixId == null);
+        else if (int.TryParse(Matrix, out var matrixId))
+            query = query.Where(r => r.ApprovalMatrixId == matrixId);
+
+        return query;
     }
 
     public async Task<IActionResult> OnPostSyncAsync()
@@ -51,6 +114,71 @@ public class IndexModel(AcsDbContext db, ReaderSyncService readerSync) : PageMod
             ErrorMessage = $"Synchronizace selhala: {ex.Message}";
         }
 
-        return RedirectToPage();
+        return RedirectToFilteredPage();
     }
+
+    /// <summary>Přiřadí matici zaškrtnutým čtečkám.</summary>
+    public async Task<IActionResult> OnPostAssignAsync(int[] readerIds, int? matrixId)
+    {
+        if (readerIds.Length == 0)
+        {
+            ErrorMessage = "Nevybrali jste žádnou čtečku.";
+            return RedirectToFilteredPage();
+        }
+
+        var matrix = await ResolveMatrixAsync(matrixId);
+        if (matrixId is not null && matrix is null)
+            return RedirectToFilteredPage();
+
+        var changed = await db.Readers.Where(r => readerIds.Contains(r.Id))
+            .ExecuteUpdateAsync(s => s.SetProperty(r => r.ApprovalMatrixId, matrixId));
+
+        await LogBulkAsync(changed, matrix, "výběr");
+        return RedirectToFilteredPage();
+    }
+
+    /// <summary>Přiřadí matici všem čtečkám, které odpovídají aktuálnímu filtru (i mimo obrazovku).</summary>
+    public async Task<IActionResult> OnPostAssignFilteredAsync(int? matrixId)
+    {
+        var matrix = await ResolveMatrixAsync(matrixId);
+        if (matrixId is not null && matrix is null)
+            return RedirectToFilteredPage();
+
+        var query = await FilteredQueryAsync();
+        var changed = await query.ExecuteUpdateAsync(s => s.SetProperty(r => r.ApprovalMatrixId, matrixId));
+
+        await LogBulkAsync(changed, matrix, HasFilter ? "filtr" : "všechny čtečky");
+        return RedirectToFilteredPage();
+    }
+
+    private async Task<ApprovalMatrix?> ResolveMatrixAsync(int? matrixId)
+    {
+        if (matrixId is null)
+            return null;
+
+        var matrix = await db.ApprovalMatrices.FirstOrDefaultAsync(m => m.Id == matrixId);
+        if (matrix is null)
+            ErrorMessage = "Vybraná matice neexistuje.";
+        else if (!matrix.IsActive)
+            ErrorMessage = $"Matice {matrix.Name} je neaktivní — žádosti by se podle ní neschvalovaly.";
+
+        return ErrorMessage is null ? matrix : null;
+    }
+
+    private async Task LogBulkAsync(int changed, ApprovalMatrix? matrix, string scope)
+    {
+        var target = matrix?.Name ?? "bez schvalování";
+        await audit.LogAsync(User.Identity?.Name, "readers-matrix-bulk-assigned", "Reader", null,
+            $"{changed} čteček ({scope}) → {target}");
+        Message = $"Matice „{target}“ nastavena u {changed} čteček.";
+    }
+
+    private RedirectToPageResult RedirectToFilteredPage() => RedirectToPage(new
+    {
+        search = Search,
+        buildingId = BuildingId,
+        floorId = FloorId,
+        groupId = GroupId,
+        matrix = Matrix,
+    });
 }

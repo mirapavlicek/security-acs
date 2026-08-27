@@ -195,6 +195,17 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); o
 
 .inline-form { display: inline; }
 
+/* Řádek filtrů nad tabulkou a lišta hromadné akce (drží se nahoře i při rolování). */
+.filterbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.filterbar input, .filterbar select { display: inline-block; width: auto; margin: 0; }
+.bulkbar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem;
+  padding: 0.7rem 1rem;
+}
+.bulkbar select { display: inline-block; width: auto; max-width: 260px; margin: 0; }
+.bulkbar .btn { margin-top: 0; }
+
 /* Rozbalovací strom budov — obsah se dotahuje až po kliknutí. */
 details.tree-node > summary {
   cursor: pointer; padding: 0.5rem 0.2rem; list-style: none;
