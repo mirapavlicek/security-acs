@@ -1,0 +1,54 @@
+@page "/ui/features"
+@model Acs.WinPakConnector.Pages.Features.FeaturesIndexModel
+@{
+    ViewData["Title"] = "Funkce";
+}
+<h1>Funkce WIN-PAK API</h1>
+<p class="muted">
+    Konektor umí celé WIN-PAK API, ale hlavní aplikace ACS z něj při schvalování přístupů
+    využívá jen část. Zbytek je tady — ať je vidět, co systém umí, a ať to jde bez psaní
+    HTTP požadavků vyzkoušet nebo v nouzi rovnou použít.
+    Aktuální režim: <span class="badge badge-primary">@Model.Mode</span>.
+</p>
+
+@if (Model.LoadError is not null)
+{
+    <div class="alert alert-error">@Model.LoadError</div>
+}
+else if (string.Equals(Model.Mode, ProviderModes.Mock, StringComparison.OrdinalIgnoreCase))
+{
+    <div class="alert alert-warning">
+        Běží režim Mock — všechno funguje proti ukázkovým datům v paměti, takže si sekci
+        můžete projít i bez WIN-PAKu. Zápisy se restartem služby ztratí.
+    </div>
+}
+else if (!Model.SupportsWrite)
+{
+    <div class="alert alert-warning">
+        Režim @Model.Mode je jen pro čtení — zápisové akce v této sekci skončí hláškou,
+        že je režim nepodporuje.
+    </div>
+}
+
+<div class="cards-grid">
+    @foreach (var area in Acs.WinPakConnector.Pages.Features.FeaturesIndexModel.Areas)
+    {
+        <div class="card">
+            <h2>@area.Title</h2>
+            <p class="muted">@area.Description</p>
+            <p class="hint"><strong>Používá ACS:</strong> @area.UsedByAcs</p>
+            <div class="btn-row">
+                <a class="btn" asp-page="@area.Page">Otevřít</a>
+            </div>
+        </div>
+    }
+</div>
+
+<div class="card">
+    <h2>Než začnete</h2>
+    <ul class="muted">
+        <li>Akce se provádějí <strong>okamžitě a proti ostrému WIN-PAKu</strong>, pokud běží režim Com. Odemknutí dveří opravdu odemkne dveře.</li>
+        <li>Identifikátory zařízení jsou <span class="mono">HID</span> — stejné číslo, jaké má čtečka v seznamu v ACS.</li>
+        <li>Co režim neumí, skončí hláškou; nic se nerozbije.</li>
+    </ul>
+</div>

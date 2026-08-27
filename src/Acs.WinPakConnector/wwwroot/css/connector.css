@@ -85,7 +85,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); b
 .btn:hover { filter: brightness(1.08); text-decoration: none; }
 .btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
 .btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
-.btn-row { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-top: 1.2rem; }
+.btn-row { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-top: 1rem; }
+.btn-row input, .btn-row select, .btn-row textarea { width: auto; }
+.btn-sm { padding: 0.25rem 0.6rem; font-size: 0.85rem; }
+form.inline { display: flex; gap: 0.4rem; align-items: center; }
 
 table.data { width: 100%; border-collapse: collapse; }
 table.data th, table.data td {
@@ -112,3 +115,8 @@ table.data th { color: var(--muted); font-weight: 600; }
 
 /* Sekce nastavení se přepínají podle zvoleného režimu. */
 .mode-section[hidden] { display: none; }
+
+/* Sekce Funkce: hodně formulářů pod sebou, proto užší mezery a čitelné oddělovače. */
+.card h3 + .btn-row { margin-top: 0.5rem; }
+.card h3 { border-top: 1px solid var(--border); padding-top: 0.9rem; }
+.card h3:first-of-type { border-top: none; }

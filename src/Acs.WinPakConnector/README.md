@@ -21,7 +21,28 @@ zapisují do `appsettings.Local.json` vedle programu a použijí se okamžitě
 | --- | --- |
 | Přehled | verze, režim, podpora zápisu a dveří, maskovaný API klíč, stav serverů WIN-PAK a seznam věcí, které je potřeba dořešit |
 | Nastavení | režim, API klíč (i generování nového), heslo administrace, přihlášení operátora WIN-PAK, účet a podúčet, komunikační server, ProgID objektů, SQL dotazy pro režim Mssql |
+| Funkce | GUI na části API, které ACS nepoužívá (viz níže) |
 | Diagnostika | živé volání WIN-PAKu — účty, čtečky, přístupové úrovně, držitelé, systémové údaje, časové zóny, panely — a poslední události z panelů |
+
+### Funkce
+
+Konektor umí celé WIN-PAK API, ale ACS z něj při schvalování přístupů využívá jen
+část. Zbytek má GUI v sekci **Funkce** (`/ui/features`) — ať je vidět, co systém
+umí, a ať to jde bez psaní HTTP požadavků vyzkoušet nebo v nouzi rovnou použít:
+
+| Stránka | Co obsahuje |
+| --- | --- |
+| Dveře a zařízení | stav dveří, zamknutí a odemknutí, puls i časovaný, režim dveří a NetAXS režim, vstupní body podle bodu, alarmy (potvrzení, zrušení, poznámka, detail transakce), shunt, buffer, spínání výstupů, návrat pod časovou zónu, vlastní příkaz |
+| Panely | výstupy a skupiny s jejich časovými zónami, časové zóny a skupiny svátků panelu, inicializace panelu a její zrušení, refresh zón, hromadné zamknutí dveří účtu, refresh dveří, door schedule |
+| Karty a držitelé | hledání a zápis karty včetně NetAXS voleb, hromadné založení a rušení rozsahu, karty bez držitele, správa držitelů, vyhledávání v databázi WIN-PAK, poznámková pole, fotky a podpisy |
+| Přístupové úrovně | detail a strom přístupů, zakládání (obě varianty), konfigurace čteček a jednotlivých vstupů, úplný zápis, dotčené karty, přeřazení a smazání i s náhradou |
+| Číselníky | časové zóny s intervaly, přehled kdo zónu používá, přeřazení na jinou zónu, odebrání z panelů, svátky a skupiny svátků |
+| Systém a události | údaje o instalaci, účty, drobné dotazy na názvy, plány a šablony reportů, odznaky, muster report, filtry událostí a živý výpis událostí z panelů |
+
+Akce se provádějí okamžitě a v režimu Com proti ostrému WIN-PAKu — odemknutí dveří
+opravdu odemkne dveře. V režimu Mock funguje celá sekce proti datům v paměti, takže
+se dá projít i bez WIN-PAKu. Co daný režim neumí, skončí hláškou, ne chybou.
+Zařízení se adresují číselným `HID`, stejně jako je adresuje komunikační server.
 
 Přihlášení: heslem z pole „Heslo administrace“. Dokud není nastavené, přihlašuje
 se **API klíčem** — ten už dnes umožňuje i odemykat dveře, takže tím nevzniká

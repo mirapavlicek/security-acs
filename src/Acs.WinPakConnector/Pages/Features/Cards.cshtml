@@ -1,0 +1,305 @@
+@page "/ui/features/cards"
+@model Acs.WinPakConnector.Pages.Features.CardsModel
+@{
+    ViewData["Title"] = "Karty a držitelé";
+}
+<h1>Karty a držitelé</h1>
+<p class="muted">
+    ACS z této oblasti čte držitele a zapisuje jim přístupové úrovně. Zbytek — zakládání karet,
+    hromadné operace, správa držitelů, fotky a podpisy — se dělá ve WIN-PAKu a je dostupný tady.
+    Pozor: <strong>oprávnění nese karta, ne držitel.</strong>
+</p>
+
+<partial name="_FeatureMessages" model="Model" />
+
+<div class="card">
+    <h2>Karta podle čísla</h2>
+    <form method="post" asp-page-handler="FindCard" class="btn-row">
+        <input type="text" name="cardNumber" value="@Model.CardNumber" placeholder="číslo karty" required style="max-width:14rem" />
+        <button class="btn" type="submit">Najít</button>
+    </form>
+
+    @if (Model.DetailError is not null)
+    {
+        <div class="alert alert-error">@Model.DetailError</div>
+    }
+    @if (Model.CardNumber is { Length: > 0 } && Model.Card is null && Model.DetailError is null)
+    {
+        <p class="muted">Karta @Model.CardNumber ve WIN-PAKu není.</p>
+    }
+
+    @if (Model.Card is { } card)
+    {
+        <h3>Karta @card.CardNumber</h3>
+        <form method="post" asp-page-handler="SaveCard">
+            <input type="hidden" name="cardNumber" value="@card.CardNumber" />
+            <label>Držitel (id)</label>
+            <input type="text" name="cardHolderId" value="@card.CardHolderId" />
+            <label>Stav</label>
+            <select name="status">
+                @foreach (var status in Enum.GetValues<CardStatus>())
+                {
+                    <option value="@((int)status)" selected="@(status == card.Status)">@status</option>
+                }
+            </select>
+            <label>Issue</label>
+            <input type="number" name="issue" value="@card.Issue" />
+            <label>Platnost od</label>
+            <input type="text" name="activationDate" value="@card.ActivationDate?.ToString("yyyy-MM-dd")" placeholder="rrrr-mm-dd" />
+            <label>Platnost do</label>
+            <input type="text" name="expirationDate" value="@card.ExpirationDate?.ToString("yyyy-MM-dd")" placeholder="rrrr-mm-dd" />
+            <label>PIN (prázdné = beze změny)</label>
+            <input type="password" name="pin" autocomplete="new-password" />
+            <label>Přístupové úrovně</label>
+            @foreach (var level in Model.AccessLevels)
+            {
+                <div class="checkbox-row">
+                    <input type="checkbox" id="al-@level.Id" name="accessLevelIds" value="@level.Id"
+                           checked="@card.AccessLevelIds.Contains(level.Id)" />
+                    <label for="al-@level.Id">@level.Name <span class="muted">@level.Description</span></label>
+                </div>
+            }
+            <div class="btn-row">
+                <button class="btn" type="submit">Uložit kartu</button>
+            </div>
+        </form>
+
+        <form method="post" asp-page-handler="DeleteCard" class="btn-row">
+            <input type="hidden" name="cardNumber" value="@card.CardNumber" />
+            <button class="btn btn-danger" type="submit"
+                    onclick="return confirm('Opravdu zrušit kartu @card.CardNumber?')">Zrušit kartu</button>
+        </form>
+
+        <h3>NetAXS volby</h3>
+        <p class="hint">Dočasná či omezená karta, typ a limit použití — jen pro panely NetAXS.</p>
+        <form method="post" asp-page-handler="SaveCardNetAxs">
+            <input type="hidden" name="cardNumber" value="@card.CardNumber" />
+            <input type="hidden" name="cardHolderId" value="@card.CardHolderId" />
+            <input type="hidden" name="status" value="@((int)card.Status)" />
+            <div class="checkbox-row">
+                <input type="checkbox" id="temp" name="temporaryCard" value="true" />
+                <label for="temp">Dočasná karta</label>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="limited" name="limitedCard" value="true" />
+                <label for="limited">Omezená karta</label>
+            </div>
+            <label>Typ karty</label>
+            <input type="number" name="cardType" value="0" />
+            <label>Limit použití</label>
+            <input type="number" name="usageLimit" value="0" />
+            <label>Trigger</label>
+            <input type="number" name="trigger" value="0" />
+            <div class="btn-row">
+                <button class="btn btn-ghost" type="submit">Uložit s NetAXS volbami</button>
+            </div>
+        </form>
+    }
+</div>
+
+<div class="card">
+    <h2>Hromadné operace s rozsahem karet</h2>
+    <form method="post" asp-page-handler="BulkAdd">
+        <div class="btn-row">
+            <input type="text" name="startNumber" placeholder="od čísla" required style="max-width:10rem" />
+            <input type="text" name="stopNumber" placeholder="do čísla" required style="max-width:10rem" />
+            <select name="status" style="width:auto">
+                @foreach (var status in Enum.GetValues<CardStatus>())
+                {
+                    <option value="@((int)status)" selected="@(status == CardStatus.Active)">@status</option>
+                }
+            </select>
+            <input type="text" name="activationDate" placeholder="od (rrrr-mm-dd)" style="max-width:11rem" />
+            <input type="text" name="expirationDate" placeholder="do (rrrr-mm-dd)" style="max-width:11rem" />
+        </div>
+        @foreach (var level in Model.AccessLevels)
+        {
+            <div class="checkbox-row">
+                <input type="checkbox" id="bulk-al-@level.Id" name="accessLevelIds" value="@level.Id" />
+                <label for="bulk-al-@level.Id">@level.Name</label>
+            </div>
+        }
+        <div class="btn-row">
+            <button class="btn" type="submit">Založit rozsah karet</button>
+        </div>
+    </form>
+
+    <form method="post" asp-page-handler="BulkDelete" class="btn-row">
+        <input type="text" name="startNumber" placeholder="od čísla" required style="max-width:10rem" />
+        <input type="text" name="stopNumber" placeholder="do čísla" required style="max-width:10rem" />
+        <button class="btn btn-danger" type="submit"
+                onclick="return confirm('Opravdu zrušit celý rozsah karet?')">Zrušit rozsah karet</button>
+    </form>
+
+    @if (Model.CardsWithoutHolder.Count > 0)
+    {
+        <h3>Karty bez držitele (@Model.CardsWithoutHolder.Count)</h3>
+        <table class="data">
+            <thead><tr><th>Číslo</th><th>Stav</th><th>Platnost do</th></tr></thead>
+            <tbody>
+            @foreach (var freeCard in Model.CardsWithoutHolder.Take(50))
+            {
+                <tr>
+                    <td class="mono">@freeCard.CardNumber</td>
+                    <td>@freeCard.Status</td>
+                    <td class="muted">@freeCard.ExpirationDate?.ToString("yyyy-MM-dd")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+<div class="card">
+    <h2>Držitelé karet</h2>
+
+    <h3>Vyhledávání v databázi WIN-PAK</h3>
+    <p class="hint">Používá vyhledávací pole nakonfigurovaná v účtu, ne filtrování v konektoru.</p>
+    <form method="post" asp-page-handler="SearchHolders" class="btn-row">
+        <select name="field" style="width:auto">
+            @foreach (var field in Model.SearchFields)
+            {
+                <option value="@field.Name">@field.Name</option>
+            }
+        </select>
+        <input type="text" name="value" placeholder="hledaná hodnota" required style="max-width:14rem" />
+        <select name="comparisonType" style="width:auto" title="Typ porovnání podle číselníku ComparisonType">
+            <option value="0">obsahuje</option>
+            <option value="1">rovná se</option>
+        </select>
+        <button class="btn btn-ghost" type="submit">Hledat</button>
+    </form>
+
+    <h3>Nový držitel</h3>
+    <form method="post" asp-page-handler="AddHolder" class="btn-row">
+        <input type="text" name="firstName" placeholder="jméno" style="max-width:11rem" />
+        <input type="text" name="lastName" placeholder="příjmení" required style="max-width:11rem" />
+        <input type="text" name="note" placeholder="poznámka" style="max-width:14rem" />
+        <button class="btn" type="submit">Založit</button>
+    </form>
+
+    <h3>Seznam</h3>
+    <table class="data">
+        <thead><tr><th>Id</th><th>Jméno</th><th>Poznámka</th><th>Karet</th><th>Úrovně</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var holder in Model.CardHolders.Take(100))
+        {
+            <tr>
+                <td class="mono">@holder.Id</td>
+                <td>@holder.LastName @holder.FirstName</td>
+                <td class="muted">@holder.Note</td>
+                <td>@holder.Cards.Count</td>
+                <td class="muted">@string.Join(", ", holder.AccessLevelIds)</td>
+                <td><a class="btn btn-sm btn-ghost" asp-page="/Features/Cards" asp-route-holderId="@holder.Id">Detail</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.CardHolders.Count == 0)
+    {
+        <p class="muted">Žádní držitelé se nenačetli.</p>
+    }
+</div>
+
+@if (Model.Holder is { } detail)
+{
+    <div class="card">
+        <h2>Držitel @detail.Id</h2>
+        <form method="post" asp-page-handler="EditHolder">
+            <input type="hidden" name="holderId" value="@detail.Id" />
+            <label>Jméno</label>
+            <input type="text" name="firstName" value="@detail.FirstName" />
+            <label>Příjmení</label>
+            <input type="text" name="lastName" value="@detail.LastName" />
+            <label>Poznámka</label>
+            <input type="text" name="note" value="@detail.Note" />
+            <div class="btn-row">
+                <button class="btn" type="submit">Uložit</button>
+            </div>
+        </form>
+
+        <h3>Karty držitele</h3>
+        @if (detail.Cards.Count == 0)
+        {
+            <p class="muted">Držitel nemá žádnou kartu — není kam zapsat přístup.</p>
+        }
+        else
+        {
+            <table class="data">
+                <thead><tr><th>Číslo</th><th>Stav</th><th>Platnost</th><th>Úrovně</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var holderCard in detail.Cards)
+                {
+                    <tr>
+                        <td class="mono">@holderCard.CardNumber</td>
+                        <td>@holderCard.Status</td>
+                        <td class="muted">@holderCard.ActivationDate?.ToString("yyyy-MM-dd") – @holderCard.ExpirationDate?.ToString("yyyy-MM-dd")</td>
+                        <td class="muted">@string.Join(", ", holderCard.AccessLevelIds)</td>
+                        <td><a class="btn btn-sm btn-ghost" asp-page="/Features/Cards" asp-route-cardNumber="@holderCard.CardNumber">Upravit</a></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+
+        <h3>Fotka a podpis</h3>
+        @if (Model.Photo is { ContentBase64: { Length: > 0 } content })
+        {
+            <p><img src="data:image/*;base64,@content" alt="Fotka držitele" style="max-height:160px" /></p>
+        }
+        else
+        {
+            <p class="muted">Držitel nemá uloženou fotku.</p>
+        }
+        <form method="post" asp-page-handler="UploadImage" enctype="multipart/form-data" class="btn-row">
+            <input type="hidden" name="holderId" value="@detail.Id" />
+            <input type="number" name="index" value="0" style="width:5rem" title="Pořadí obrázku" />
+            <select name="signature" style="width:auto">
+                <option value="false">fotka</option>
+                <option value="true">podpis</option>
+            </select>
+            <input type="file" name="file" accept="image/*" />
+            <button class="btn btn-ghost" type="submit">Nahrát</button>
+        </form>
+        <form method="post" asp-page-handler="DeleteImage" class="btn-row">
+            <input type="hidden" name="holderId" value="@detail.Id" />
+            <input type="number" name="index" value="0" style="width:5rem" />
+            <select name="signature" style="width:auto">
+                <option value="false">fotka</option>
+                <option value="true">podpis</option>
+            </select>
+            <button class="btn btn-ghost" type="submit">Smazat</button>
+        </form>
+
+        <h3>Smazání držitele</h3>
+        <form method="post" asp-page-handler="DeleteHolder" class="btn-row">
+            <input type="hidden" name="holderId" value="@detail.Id" />
+            <div class="checkbox-row">
+                <input type="checkbox" id="delCards" name="deleteCards" value="true" checked />
+                <label for="delCards">smazat i karty</label>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="delImages" name="deleteImages" value="true" checked />
+                <label for="delImages">smazat i obrázky</label>
+            </div>
+            <button class="btn btn-danger" type="submit"
+                    onclick="return confirm('Opravdu smazat držitele @detail.Id?')">Smazat držitele</button>
+        </form>
+    </div>
+}
+
+@if (Model.NoteFields.Count > 0)
+{
+    <div class="card">
+        <h2>Poznámková pole účtu</h2>
+        <table class="data">
+            <thead><tr><th>Index</th><th>Název</th><th>Definice</th></tr></thead>
+            <tbody>
+            @foreach (var field in Model.NoteFields)
+            {
+                <tr><td class="mono">@field.Index</td><td>@field.Name</td><td class="muted">@field.Definition</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}

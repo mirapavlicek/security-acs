@@ -309,7 +309,7 @@ public sealed class CatalogEndpointTests(ConnectorFactory factory) : IClassFixtu
     }
 
     [Theory]
-    [InlineData("DeviceName", "R-001")]
+    [InlineData("DeviceName", "101")]
     [InlineData("AccessLevelName", "AL-01")]
     [InlineData("TimeZoneName", "1")]
     [InlineData("AccountEmails", "")]
@@ -329,7 +329,7 @@ public sealed class CatalogEndpointTests(ConnectorFactory factory) : IClassFixtu
         var client = CreateClient();
 
         Assert.Equal(HttpStatusCode.OK,
-            (await client.GetAsync("/api/v1/associated-time-zone?accessLevelName=Serverovna&readerName=R-004")).StatusCode);
+            (await client.GetAsync("/api/v1/associated-time-zone?accessLevelName=Serverovna&readerName=104")).StatusCode);
         Assert.Equal(HttpStatusCode.OK,
             (await client.GetAsync("/api/v1/associated-time-zone?panelId=1&outputId=101")).StatusCode);
     }

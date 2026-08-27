@@ -1,0 +1,240 @@
+@page "/ui/features/system"
+@model Acs.WinPakConnector.Pages.Features.SystemModel
+@{
+    ViewData["Title"] = "Systém a události";
+}
+<h1>Systém a události</h1>
+<p class="muted">
+    Údaje o instalaci WIN-PAK, pomocné dotazy, reporty a živý výpis událostí z panelů.
+    ACS z toho nic nepoužívá — slouží pro správu a diagnostiku.
+</p>
+
+<partial name="_FeatureMessages" model="Model" />
+
+@if (Model.SystemInfo is { } info)
+{
+    <div class="cards-grid">
+        <div class="card">
+            <h2>Instalace</h2>
+            <table class="data">
+                <tr><th>Zdroj dat</th><td class="mono">@info.DataSourceName</td></tr>
+                <tr><th>Časová zóna serveru</th><td>@info.ServerTimeZone</td></tr>
+                <tr><th>Letní čas</th><td>@(info.DaylightSavingEnabled ? "zapnutý" : "vypnutý")</td></tr>
+                <tr><th>Posun zóny</th><td>@info.ServerTimeZoneOffsetMinutes min</td></tr>
+                <tr><th>Max. délka čísla karty</th><td>@info.MaxCardNumberLength</td></tr>
+                <tr><th>Číselné karty</th><td>@(info.CardNumbersAreNumeric ? "ano" : "ne")</td></tr>
+                <tr><th>Typ přístupových úrovní</th><td>@info.AccessLevelType</td></tr>
+                <tr><th>Operátor</th><td>@info.CurrentOperator?.Name (@info.CurrentOperator?.Id)</td></tr>
+                <tr><th>Domény</th><td>@string.Join(", ", info.Domains)</td></tr>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>Účty</h2>
+            <table class="data">
+                <thead><tr><th>Id</th><th>Název</th><th>Podúčty</th></tr></thead>
+                <tbody>
+                @foreach (var account in Model.Accounts)
+                {
+                    <tr>
+                        <td class="mono">@account.Id</td>
+                        <td>@account.Name</td>
+                        <td class="muted">@string.Join(", ", account.SubAccounts.Select(s => s.Name))</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+
+            @if (Model.Branches.Count > 0)
+            {
+                <h3>Přístupové oblasti</h3>
+                <p class="muted">@string.Join(", ", Model.Branches.Select(b => b.Name))</p>
+            }
+        </div>
+    </div>
+}
+
+<div class="card">
+    <h2>Drobné dotazy</h2>
+    <p class="hint">Překlad id na název a diagnostické souhrny, které WIN-PAK nabízí jednotlivými voláními.</p>
+    <form method="post" asp-page-handler="Lookup" class="btn-row">
+        <select name="kind" style="width:auto">
+            @foreach (var kind in Enum.GetValues<LookupKind>())
+            {
+                <option value="@kind">@kind</option>
+            }
+        </select>
+        <input type="text" name="value" placeholder="id nebo prázdné" style="max-width:12rem" />
+        <button class="btn btn-ghost" type="submit">Zjistit</button>
+    </form>
+
+    <h3>Navázaná časová zóna</h3>
+    <form method="post" asp-page-handler="AssociatedTimeZone" class="btn-row">
+        <input type="text" name="accessLevelName" placeholder="přístupová úroveň" style="max-width:12rem" />
+        <input type="text" name="readerName" placeholder="čtečka" style="max-width:12rem" />
+        <input type="number" name="panelId" placeholder="panel" style="width:7rem" />
+        <input type="number" name="outputId" placeholder="výstup" style="width:7rem" />
+        <input type="number" name="groupId" placeholder="skupina" style="width:7rem" />
+        <input type="number" name="lockUnlock" placeholder="lock" style="width:6rem" />
+        <button class="btn btn-ghost" type="submit">Zjistit</button>
+    </form>
+
+    <h3>Navázaná skupina čtečky</h3>
+    <form method="post" asp-page-handler="AssociatedGroup" class="btn-row">
+        <input type="text" name="accessLevelName" placeholder="přístupová úroveň" required style="max-width:12rem" />
+        <input type="text" name="readerName" placeholder="čtečka" required style="max-width:12rem" />
+        <button class="btn btn-ghost" type="submit">Zjistit</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Reporty a odznaky</h2>
+
+    <h3>Plán reportu</h3>
+    <form method="post" asp-page-handler="Schedule" class="btn-row">
+        <input type="text" name="scheduleId" placeholder="id plánu" required style="max-width:8rem" />
+        <button class="btn btn-ghost" type="submit">Načíst</button>
+    </form>
+    <form method="post" asp-page-handler="SaveSchedule" class="btn-row">
+        <input type="text" name="scheduleId" placeholder="id (0 = nový)" required style="max-width:8rem" />
+        <input type="text" name="name" placeholder="název" required style="max-width:12rem" />
+        <input type="number" name="scheduleType" value="1" style="width:6rem" title="Typ plánu" />
+        <input type="number" name="frequency" value="1" style="width:6rem" title="Frekvence" />
+        <input type="number" name="reportType" value="1" style="width:6rem" title="Typ reportu" />
+        <div class="checkbox-row">
+            <input type="checkbox" id="print" name="print" value="true" />
+            <label for="print">tisk</label>
+        </div>
+        <div class="checkbox-row">
+            <input type="checkbox" id="email" name="email" value="true" />
+            <label for="email">e-mail</label>
+        </div>
+        <div class="checkbox-row">
+            <input type="checkbox" id="fax" name="fax" value="true" />
+            <label for="fax">fax</label>
+        </div>
+        <button class="btn btn-ghost" type="submit">Uložit</button>
+    </form>
+    <form method="post" asp-page-handler="DeleteSchedule" class="btn-row">
+        <input type="text" name="scheduleId" placeholder="id plánu" required style="max-width:8rem" />
+        <button class="btn btn-ghost" type="submit">Smazat plán</button>
+    </form>
+
+    <h3>Šablona reportu</h3>
+    <form method="post" asp-page-handler="Template" class="btn-row">
+        <input type="text" name="templateId" placeholder="id šablony" required style="max-width:8rem" />
+        <button class="btn btn-ghost" type="submit">Načíst</button>
+    </form>
+    <form method="post" asp-page-handler="SaveTemplate" class="btn-row">
+        <input type="text" name="templateId" placeholder="id (0 = nová)" required style="max-width:8rem" />
+        <input type="text" name="name" placeholder="název" required style="max-width:12rem" />
+        <input type="number" name="type" value="1" style="width:6rem" />
+        <input type="text" name="definition" placeholder="definice" style="max-width:16rem" />
+        <button class="btn btn-ghost" type="submit">Uložit</button>
+    </form>
+    <form method="post" asp-page-handler="DeleteTemplate" class="btn-row">
+        <input type="text" name="templateId" placeholder="id šablony" required style="max-width:8rem" />
+        <button class="btn btn-ghost" type="submit">Smazat šablonu</button>
+    </form>
+
+    <h3>Odznak</h3>
+    <form method="post" asp-page-handler="Badge" class="btn-row">
+        <input type="text" name="badgeId" placeholder="id odznaku" required style="max-width:8rem" />
+        <button class="btn btn-ghost" type="submit">Načíst</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Muster report</h2>
+    <p class="hint">Kdo se nachází v dané oblasti — používá se při evakuaci.</p>
+    <form method="post" asp-page-handler="Muster" class="btn-row">
+        <input type="number" name="areaId" placeholder="oblast" required style="width:8rem" />
+        <select name="accountId" style="width:auto">
+            @foreach (var account in Model.Accounts)
+            {
+                <option value="@account.Id">@account.Name</option>
+            }
+        </select>
+        <input type="number" name="sortField" value="0" style="width:6rem" title="Řadicí pole" />
+        <input type="number" name="sortOrder" value="0" style="width:6rem" title="Směr řazení" />
+        <button class="btn btn-ghost" type="submit">Načíst</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Filtry událostí</h2>
+    <p class="hint">Omezují, které události konektor od komunikačního serveru odebírá.</p>
+    <p class="muted">
+        Podle zařízení: <span class="mono">@(Model.EventFilters.Count == 0 ? "bez filtru" : string.Join(", ", Model.EventFilters))</span><br />
+        Podle komunikačního serveru: <span class="mono">@(Model.CommServerFilters.Count == 0 ? "bez filtru" : string.Join(", ", Model.CommServerFilters))</span>
+    </p>
+    <form method="post" asp-page-handler="AddFilter" class="btn-row">
+        <input type="number" name="id" placeholder="HID nebo id serveru" required style="width:12rem" />
+        <select name="commServer" style="width:auto">
+            <option value="false">zařízení</option>
+            <option value="true">komunikační server</option>
+        </select>
+        <button class="btn btn-ghost" type="submit">Přidat filtr</button>
+    </form>
+    <form method="post" asp-page-handler="RemoveFilter" class="btn-row">
+        <input type="number" name="id" placeholder="HID nebo id serveru" required style="width:12rem" />
+        <select name="commServer" style="width:auto">
+            <option value="false">zařízení</option>
+            <option value="true">komunikační server</option>
+        </select>
+        <button class="btn btn-ghost" type="submit">Odebrat filtr</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Události z panelů</h2>
+    @if (Model.EventsNote is not null)
+    {
+        <p class="muted">@Model.EventsNote</p>
+    }
+    else if (Model.Events.Count == 0)
+    {
+        <p class="muted">Zatím nepřišla žádná událost.</p>
+    }
+    else
+    {
+        <table class="data">
+            <thead><tr><th>Čas</th><th>Typ</th><th>Kód</th><th>Zařízení</th><th>Karta</th><th>Držitel</th><th>Stav</th></tr></thead>
+            <tbody>
+            @foreach (var winPakEvent in Model.Events.Reverse())
+            {
+                <tr>
+                    <td>@(winPakEvent.At?.ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</td>
+                    <td><span class="badge @(winPakEvent.IsAlarm ? "badge-bad" : "")">@(winPakEvent.IsAlarm ? "alarm" : "událost")</span></td>
+                    <td>@winPakEvent.EventId</td>
+                    <td>@(winPakEvent.ReaderPoint ?? winPakEvent.Hid)</td>
+                    <td>@winPakEvent.CardNumber</td>
+                    <td>@winPakEvent.FullName</td>
+                    <td class="muted">@winPakEvent.Status</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+@if (Model.Devices.Count > 0)
+{
+    <div class="card">
+        <h2>Hardwarová zařízení účtu</h2>
+        <table class="data">
+            <thead><tr><th>HID</th><th>Device id</th><th>Název</th><th>Typ</th></tr></thead>
+            <tbody>
+            @foreach (var device in Model.Devices.Take(100))
+            {
+                <tr>
+                    <td class="mono">@device.Hid</td>
+                    <td class="mono">@device.DeviceId</td>
+                    <td>@device.Name</td>
+                    <td class="muted">@device.DeviceType</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}

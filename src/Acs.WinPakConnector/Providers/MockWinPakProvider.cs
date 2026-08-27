@@ -16,16 +16,18 @@ public sealed partial class MockWinPakProvider : WinPakProviderBase
     public override bool SupportsDoorControl => true;
     public override string? AccountName => "FNMH";
 
+    // Id čtečky je HWDeviceID, tedy číslo — stejně jako ve skutečném WIN-PAKu,
+    // aby proti mocku fungovalo i ovládání dveří, které adresuje zařízení číselným HID.
     private static readonly IReadOnlyList<ReaderDto> Readers =
     [
-        new("R-001", "Hlavní vchod",        "Vstup do budovy A",        "PRO4200-A1", "FNMH", true),
-        new("R-002", "Budova A - 1.patro",  "Schodiště/výtah 1. patro", "PRO4200-A1", "FNMH", true),
-        new("R-003", "Chodba A-101",        "Chodba u serverovny",      "PRO4200-A1", "FNMH", true),
-        new("R-004", "Serverovna A-105",    "Serverovna",               "PRO4200-A1", "FNMH", true),
-        new("R-005", "Budova A - 2.patro",  "Schodiště/výtah 2. patro", "PRO4200-A2", "FNMH", true),
-        new("R-006", "Kancelář A-201",      "Sekretariát",              "PRO4200-A2", "FNMH", true),
-        new("R-007", "Sklad B-001",         "Sklad materiálu, bud. B",  "MPA2-B1",    "FNMH", true),
-        new("R-008", "Lékárna B-010",       "Výdej léčiv, bud. B",      "MPA2-B1",    "FNMH", false),
+        new("101", "Hlavní vchod",        "Vstup do budovy A",        "PRO4200-A1", "FNMH", true),
+        new("102", "Budova A - 1.patro",  "Schodiště/výtah 1. patro", "PRO4200-A1", "FNMH", true),
+        new("103", "Chodba A-101",        "Chodba u serverovny",      "PRO4200-A1", "FNMH", true),
+        new("104", "Serverovna A-105",    "Serverovna",               "PRO4200-A1", "FNMH", true),
+        new("105", "Budova A - 2.patro",  "Schodiště/výtah 2. patro", "PRO4200-A2", "FNMH", true),
+        new("106", "Kancelář A-201",      "Sekretariát",              "PRO4200-A2", "FNMH", true),
+        new("107", "Sklad B-001",         "Sklad materiálu, bud. B",  "MPA2-B1",    "FNMH", true),
+        new("108", "Lékárna B-010",       "Výdej léčiv, bud. B",      "MPA2-B1",    "FNMH", false),
     ];
 
     private static readonly IReadOnlyList<AccessLevelDto> AccessLevels =

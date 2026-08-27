@@ -1,0 +1,179 @@
+@page "/ui/features/access-levels"
+@model Acs.WinPakConnector.Pages.Features.AccessLevelsModel
+@{
+    ViewData["Title"] = "Přístupové úrovně";
+}
+<h1>Přístupové úrovně</h1>
+<p class="muted">
+    Úroveň spojuje čtečky s časovou zónou a přiděluje se kartám. ACS úrovně jen čte a přiřazuje —
+    jejich zakládání a konfigurace se dělá tady nebo ve WIN-PAKu.
+</p>
+
+<partial name="_FeatureMessages" model="Model" />
+
+<div class="card">
+    <h2>Seznam</h2>
+    @if (Model.Levels.Count == 0)
+    {
+        <p class="muted">Žádné přístupové úrovně se nenačetly.</p>
+    }
+    else
+    {
+        <table class="data">
+            <thead><tr><th>Id</th><th>Název</th><th>Popis</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var level in Model.Levels)
+            {
+                <tr>
+                    <td class="mono">@level.Id</td>
+                    <td>@level.Name</td>
+                    <td class="muted">@level.Description</td>
+                    <td><a class="btn btn-sm btn-ghost" asp-page="/Features/AccessLevels" asp-route-name="@level.Name">Detail</a></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+
+    <h3>Nová úroveň</h3>
+    <form method="post" asp-page-handler="Create" class="btn-row">
+        <input type="text" name="name" placeholder="název" required style="max-width:14rem" />
+        <input type="text" name="description" placeholder="popis" style="max-width:18rem" />
+        <button class="btn" type="submit">Založit</button>
+        <button class="btn btn-ghost" type="submit" asp-page-handler="CreateObject"
+                title="Varianta AddAccessLevel přes COM objekt">Založit objektovým API</button>
+    </form>
+</div>
+
+@if (Model.Name is { Length: > 0 } name)
+{
+    <div class="card">
+        <h2>Úroveň @name</h2>
+        @if (Model.DetailError is not null)
+        {
+            <div class="alert alert-error">@Model.DetailError</div>
+        }
+        @if (Model.Level is { } level)
+        {
+            <table class="data">
+                <tr><th>Id</th><td class="mono">@level.Id</td></tr>
+                <tr><th>Popis</th><td>@level.Description</td></tr>
+            </table>
+        }
+
+        <h3>Přejmenování a popis</h3>
+        <form method="post" asp-page-handler="Rename" class="btn-row">
+            <input type="hidden" name="currentName" value="@name" />
+            <input type="text" name="name" value="@name" required style="max-width:14rem" />
+            <input type="text" name="description" value="@Model.Level?.Description" placeholder="popis" style="max-width:18rem" />
+            <button class="btn btn-ghost" type="submit">Uložit</button>
+        </form>
+
+        <h3>Čtečky úrovně</h3>
+        <p class="hint">Vybraným čtečkám se nastaví společná časová zóna (ConfigureAccessLevel).</p>
+        <form method="post" asp-page-handler="ConfigureReaders">
+            <input type="hidden" name="name" value="@name" />
+            @foreach (var reader in Model.Readers)
+            {
+                <div class="checkbox-row">
+                    <input type="checkbox" id="r-@reader.Id" name="readerNames" value="@reader.Name" />
+                    <label for="r-@reader.Id">@reader.Name <span class="muted">@reader.PanelName</span></label>
+                </div>
+            }
+            <div class="btn-row">
+                <select name="timeZoneName" style="width:auto">
+                    @foreach (var zone in Model.TimeZones)
+                    {
+                        <option value="@zone.Name">@zone.Name</option>
+                    }
+                </select>
+                <button class="btn" type="submit">Nastavit čtečky</button>
+            </div>
+        </form>
+
+        <h3>Jeden vstup včetně skupiny</h3>
+        <form method="post" asp-page-handler="ConfigureEntrance" class="btn-row">
+            <input type="hidden" name="name" value="@name" />
+            <select name="readerName" style="width:auto">
+                @foreach (var reader in Model.Readers)
+                {
+                    <option value="@reader.Name">@reader.Name</option>
+                }
+            </select>
+            <select name="timeZoneName" style="width:auto">
+                @foreach (var zone in Model.TimeZones)
+                {
+                    <option value="@zone.Name">@zone.Name</option>
+                }
+            </select>
+            <input type="text" name="groupName" placeholder="skupina (volitelné)" style="max-width:12rem" />
+            <button class="btn btn-ghost" type="submit">Nastavit vstup</button>
+        </form>
+
+        <h3>Úplný zápis (AddUpdateAL)</h3>
+        <p class="hint">Zapíše úroveň i s čtečkami a jejich časovými zónami jedním voláním.</p>
+        <form method="post" asp-page-handler="Upsert" class="btn-row">
+            <input type="hidden" name="accessLevelId" value="@Model.Level?.Id" />
+            <input type="text" name="name" value="@name" required style="max-width:14rem" />
+            <input type="text" name="description" value="@Model.Level?.Description" placeholder="popis" style="max-width:16rem" />
+            <input type="text" name="readerIds" placeholder="id čteček, čárkou" style="max-width:14rem" />
+            <input type="text" name="readerTimeZoneIds" placeholder="id zón, čárkou" style="max-width:14rem" />
+            <button class="btn btn-ghost" type="submit">Zapsat</button>
+        </form>
+
+        <h3>Karty používající úroveň (@Model.AffectedCards.Count)</h3>
+        @if (Model.AffectedCards.Count == 0)
+        {
+            <p class="muted">Úroveň nepoužívá žádná karta — jde ji rovnou smazat.</p>
+        }
+        else
+        {
+            <table class="data">
+                <thead><tr><th>Karta</th><th>Držitel</th><th>Stav</th></tr></thead>
+                <tbody>
+                @foreach (var card in Model.AffectedCards.Take(50))
+                {
+                    <tr><td class="mono">@card.CardNumber</td><td class="muted">@card.CardHolderId</td><td>@card.Status</td></tr>
+                }
+                </tbody>
+            </table>
+        }
+
+        <h3>Přeřazení a smazání</h3>
+        <form method="post" asp-page-handler="Reassign" class="btn-row">
+            <input type="hidden" name="name" value="@name" />
+            <select name="newAccessLevelName" style="width:auto">
+                @foreach (var candidate in Model.ReassignCandidates)
+                {
+                    <option value="@candidate.Name">@candidate.Name</option>
+                }
+            </select>
+            <button class="btn btn-ghost" type="submit">Přeřadit karty</button>
+        </form>
+        <form method="post" asp-page-handler="DeleteWithReplacement" class="btn-row">
+            <input type="hidden" name="accessLevelId" value="@Model.Level?.Id" />
+            <select name="replacementId" style="width:auto">
+                @foreach (var candidate in Model.ReassignCandidates)
+                {
+                    <option value="@candidate.Id">@candidate.Name</option>
+                }
+            </select>
+            <div class="checkbox-row">
+                <input type="checkbox" id="multiple" name="multiple" value="true" />
+                <label for="multiple">karty mají více úrovní</label>
+            </div>
+            <button class="btn btn-ghost" type="submit">Smazat s náhradou</button>
+        </form>
+        <form method="post" asp-page-handler="Delete" class="btn-row">
+            <input type="hidden" name="name" value="@name" />
+            <button class="btn btn-danger" type="submit"
+                    onclick="return confirm('Opravdu smazat úroveň @name?')">Smazat úroveň</button>
+        </form>
+
+        @if (Model.AccessTree is { Length: > 0 })
+        {
+            <h3>Strom přístupů</h3>
+            <pre class="mono muted" style="white-space:pre-wrap">@Model.AccessTree</pre>
+        }
+    </div>
+}
