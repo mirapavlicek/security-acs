@@ -86,6 +86,38 @@ public sealed class FeaturePagesTests(AdminUiFactory factory) : IClassFixture<Ad
         }
     }
 
+    /// <summary>
+    /// V režimu, který danou část API neumí, se musí ukázat důvod. Chybová stránka
+    /// by správci neřekla, že stačí přepnout režim.
+    /// </summary>
+    [Fact]
+    public async Task V_nepodporovanem_rezimu_stranky_vysvetli_duvod_misto_chyby()
+    {
+        using var readOnly = new ReadOnlyUiFactory();
+        var client = readOnly.CreateDefaultClient(new RedirectHandler(7), new CookieContainerHandler());
+        var loginPage = await client.GetStringAsync("/ui/login");
+        await client.PostAsync("/ui/login", new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                ["Password"] = AdminUiFactory.ApiKey,
+                ["__RequestVerificationToken"] = ExtractToken(loginPage),
+            }));
+
+        foreach (var page in Pages.Skip(1))
+        {
+            var response = await client.GetAsync(page);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            // Stránka se vykreslí a vysvětlí, proč data nejsou — místo chybové stránky.
+            Assert.Contains("alert alert-error", await response.Content.ReadAsStringAsync());
+        }
+
+        // U částí, které umí jen COM API, musí být z hlášky poznat, že stačí přepnout režim.
+        var catalog = await client.GetStringAsync("/ui/features/catalog");
+        Assert.Contains("nepodporuje", catalog);
+        Assert.Contains("režim Com", catalog);
+    }
+
     [Fact]
     public async Task Rozcestnik_odkazuje_na_vsechny_oblasti()
     {

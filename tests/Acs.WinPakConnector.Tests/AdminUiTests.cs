@@ -16,9 +16,12 @@ namespace Acs.WinPakConnector.Tests;
 /// testuje i to, že se bez přihlášení nikam nedostane a že se změny opravdu použijí.
 /// Každý test má vlastní dočasný adresář, aby si testy nepřepisovaly nastavení.
 /// </summary>
-public sealed class AdminUiFactory : WebApplicationFactory<Program>, IDisposable
+public class AdminUiFactory : WebApplicationFactory<Program>, IDisposable
 {
     public const string ApiKey = "test-api-key-0123456789";
+
+    /// <summary>Režim providera, se kterým se konektor v testu spustí.</summary>
+    protected virtual string Mode => "Mock";
 
     private readonly string _contentRoot = Directory.CreateTempSubdirectory("winpak-ui-").FullName;
 
@@ -30,7 +33,7 @@ public sealed class AdminUiFactory : WebApplicationFactory<Program>, IDisposable
             new Dictionary<string, string?>
             {
                 ["Security:ApiKey"] = ApiKey,
-                ["WinPak:Mode"] = "Mock",
+                ["WinPak:Mode"] = Mode,
             }));
         builder.ConfigureWebHost(web => web.UseContentRoot(_contentRoot));
         return base.CreateHost(builder);
@@ -42,6 +45,12 @@ public sealed class AdminUiFactory : WebApplicationFactory<Program>, IDisposable
         if (Directory.Exists(_contentRoot))
             Directory.Delete(_contentRoot, recursive: true);
     }
+}
+
+/// <summary>Konektor v režimu, který rozšířenou část API neumí — pro ověření hlášek místo chyb.</summary>
+public sealed class ReadOnlyUiFactory : AdminUiFactory
+{
+    protected override string Mode => "Mssql";
 }
 
 public sealed class AdminUiTests(AdminUiFactory factory) : IClassFixture<AdminUiFactory>
