@@ -69,6 +69,7 @@ builder.Services.AddScoped<Acs.Infrastructure.Automation.HealthCheckService>();
 builder.Services.AddScoped<Acs.Infrastructure.Import.PlanImportService>();
 builder.Services.AddScoped<Acs.Infrastructure.Sync.EmployeeSourceFactory>();
 builder.Services.AddHttpClient(nameof(Acs.Infrastructure.Sync.ApiEmployeeSource));
+builder.Services.AddSingleton<Acs.Infrastructure.Sync.SyncJobRunner>();
 builder.Services.AddHostedService<Acs.Infrastructure.Sync.SyncScheduler>();
 
 // Schvalovací workflow, fronta správce karet a e-mailové notifikace.

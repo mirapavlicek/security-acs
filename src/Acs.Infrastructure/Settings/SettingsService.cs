@@ -43,6 +43,10 @@ public static class SettingKeys
     public const string EmployeeSourceMode = "Employees:SourceMode"; // None | Ad | Mssql | Api
     /// <summary>LDAP filtr pro výběr zaměstnanců při režimu Ad.</summary>
     public const string EmployeeLdapFilter = "Employees:LdapFilter";
+    /// <summary>Velikost stránky LDAP dotazu (AD zvládá max 1000).</summary>
+    public const string EmployeeLdapPageSize = "Employees:LdapPageSize";
+    /// <summary>Timeout LDAP dotazu v minutách (velké domény trvají déle).</summary>
+    public const string EmployeeLdapTimeoutMinutes = "Employees:LdapTimeoutMinutes";
 
     // Karty z MSSQL (zaměstnanci z AD, karty z SQL)
     public const string CardsMssqlConnectionString = "Cards:MssqlConnectionString"; // secret

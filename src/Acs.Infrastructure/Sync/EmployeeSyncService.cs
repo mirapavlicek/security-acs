@@ -2,27 +2,45 @@ using Acs.Domain.Entities;
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Acs.Infrastructure.Sync;
 
-/// <summary>Import zaměstnanců z nakonfigurovaného zdroje (MSSQL/API).</summary>
-public class EmployeeSyncService(AcsDbContext db, EmployeeSourceFactory sourceFactory, AuditService audit)
+/// <summary>
+/// Import zaměstnanců z nakonfigurovaného zdroje (AD / MSSQL / API).
+/// Ukládá po dávkách, aby velké domény (tisíce účtů) neběžely v jedné
+/// obří transakci a šel sledovat průběh.
+/// </summary>
+public class EmployeeSyncService(
+    AcsDbContext db, EmployeeSourceFactory sourceFactory, AuditService audit,
+    ILogger<EmployeeSyncService>? logger = null)
 {
+    /// <summary>Po kolika záznamech se průběžně ukládá.</summary>
+    private const int BatchSize = 500;
+
     public async Task<SyncResult> SyncAsync(string? userName, CancellationToken ct = default)
     {
         var source = await sourceFactory.CreateAsync(ct)
             ?? throw new InvalidOperationException("Zdroj zaměstnanců není nakonfigurován (Nastavení → Zdroj zaměstnanců).");
 
         var remote = await source.FetchAsync(ct);
+        logger?.LogInformation("Synchronizace zaměstnanců: ze zdroje načteno {Count} záznamů.", remote.Count);
+
         var existing = await db.Employees
             .Where(e => e.ExternalId != null)
             .ToDictionaryAsync(e => e.ExternalId!, ct);
 
-        int added = 0, updated = 0, deactivated = 0;
+        int added = 0, updated = 0, deactivated = 0, processed = 0;
         var now = DateTime.UtcNow;
 
         foreach (var r in remote)
         {
+            if (++processed % BatchSize == 0)
+            {
+                await db.SaveChangesAsync(ct);
+                logger?.LogInformation("Synchronizace zaměstnanců: zpracováno {Done}/{Total}.", processed, remote.Count);
+            }
+
             if (existing.TryGetValue(r.ExternalId, out var local))
             {
                 local.PersonalNumber = r.PersonalNumber;

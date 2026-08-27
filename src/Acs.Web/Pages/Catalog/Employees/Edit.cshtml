@@ -1,4 +1,5 @@
 @page "{id:int?}"
+@using Acs.Domain.Entities
 @model Acs.Web.Pages.Catalog.Employees.EditModel
 @{
     ViewData["Title"] = Model.Employee.Id == 0 ? "Nový zaměstnanec" : $"Zaměstnanec: {Model.Employee.FullName}";
@@ -27,7 +28,7 @@
         <input asp-for="Employee.AdAccount" />
         <label>WIN-PAK card holder id</label>
         <input asp-for="Employee.WinPakCardHolderId" />
-        <label>Číslo karty</label>
+        <label>Primární číslo karty (přehledové; úplný seznam níže)</label>
         <input asp-for="Employee.CardNumber" />
         <div class="checkbox-row">
             <input type="checkbox" asp-for="Employee.IsActive" />
@@ -41,3 +42,68 @@
         <a class="btn btn-ghost" asp-page="Index">Zpět</a>
     </form>
 </div>
+
+@if (Model.Employee.Id != 0)
+{
+    <div class="card" style="max-width:760px">
+        <h2 style="margin-top:0">Identifikátory (@Model.Identifiers.Count)</h2>
+        <p class="muted">Jeden člověk může mít víc karet i SPZ. Neplatné se deaktivují, nemažou — kvůli historii.</p>
+
+        @if (Model.ErrorMessage is not null)
+        {
+            <div class="alert alert-error">@Model.ErrorMessage</div>
+        }
+
+        <table class="data">
+            <thead><tr><th>Typ</th><th>Hodnota</th><th>Platnost</th><th>Poznámka</th><th>Zdroj</th><th>Stav</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var id in Model.Identifiers)
+            {
+                <tr>
+                    <td>@Model.TypeName(id.Type)</td>
+                    <td><strong>@id.Value</strong></td>
+                    <td class="muted">
+                        @(id.ValidFrom?.ToString("yyyy-MM-dd") ?? "") @(id.ValidTo is null ? "" : $"– {id.ValidTo:yyyy-MM-dd}")
+                    </td>
+                    <td class="muted">@id.Note</td>
+                    <td><span class="badge">@(id.Source == RecordSource.Imported ? "import" : "ruční")</span></td>
+                    <td>@(id.IsActive ? "aktivní" : "neaktivní")</td>
+                    <td style="white-space:nowrap">
+                        <form method="post" asp-page-handler="ToggleIdentifier" class="inline-form">
+                            <input type="hidden" name="identifierId" value="@id.Id" />
+                            <button class="btn btn-sm btn-ghost" type="submit">@(id.IsActive ? "Deaktivovat" : "Aktivovat")</button>
+                        </form>
+                        <form method="post" asp-page-handler="DeleteIdentifier" class="inline-form">
+                            <input type="hidden" name="identifierId" value="@id.Id" />
+                            <button class="btn btn-sm btn-danger" type="submit"
+                                    onclick="return confirm('Opravdu smazat @id.Value?')">Smazat</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (Model.Identifiers.Count == 0)
+        {
+            <p class="muted">Zatím žádné identifikátory.</p>
+        }
+
+        <form method="post" asp-page-handler="AddIdentifier" style="margin-top:0.8rem">
+            <label>Typ</label>
+            <select name="type" style="max-width:200px">
+                @foreach (var t in Model.Types)
+                {
+                    <option value="@t">@Model.TypeName(t)</option>
+                }
+            </select>
+            <label>Hodnota (číslo karty, SPZ…)</label>
+            <input type="text" name="value" required />
+            <label>Platnost od / do (nepovinné)</label>
+            <input type="date" name="validFrom" style="max-width:200px;display:inline-block" />
+            <input type="date" name="validTo" style="max-width:200px;display:inline-block" />
+            <label>Poznámka</label>
+            <input type="text" name="note" />
+            <button class="btn" type="submit">Přidat identifikátor</button>
+        </form>
+    </div>
+}
