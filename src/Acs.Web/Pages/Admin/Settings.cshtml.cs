@@ -24,6 +24,9 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         SettingKeys.EmployeeSourceMode, SettingKeys.EmployeeMssqlQuery, SettingKeys.EmployeeApiUrl,
         SettingKeys.EmployeeLdapFilter,
         SettingKeys.CardsMssqlQuery, SettingKeys.CardsSyncEnabled, SettingKeys.CardsSyncIntervalMinutes,
+        SettingKeys.AutomationEnabled, SettingKeys.AutomationIntervalMinutes, SettingKeys.AutoOffboardingEnabled,
+        SettingKeys.AutoDepartmentChangeEnabled, SettingKeys.AutoExpirationEnabled, SettingKeys.AutoRemindersEnabled,
+        SettingKeys.AutoReminderAfterDays, SettingKeys.AutoEscalationAfterDays, SettingKeys.AutoPushEnabled,
         SettingKeys.SmtpHost, SettingKeys.SmtpPort, SettingKeys.SmtpUser, SettingKeys.SmtpFrom,
         SettingKeys.SmtpUseTls,
     ];
@@ -111,6 +114,26 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         await settings.SetAsync(SettingKeys.EmployeeLdapFilter, employeeLdapFilter, UserName);
         return await SavedAsync("Zdroj zaměstnanců");
     }
+
+    public async Task<IActionResult> OnPostAutomationAsync(
+        string? automationEnabled, string? automationIntervalMinutes,
+        string? autoOffboardingEnabled, string? autoDepartmentChangeEnabled, string? autoExpirationEnabled,
+        string? autoRemindersEnabled, string? autoReminderAfterDays, string? autoEscalationAfterDays,
+        string? autoPushEnabled)
+    {
+        await settings.SetAsync(SettingKeys.AutomationEnabled, Flag(automationEnabled), UserName);
+        await settings.SetAsync(SettingKeys.AutomationIntervalMinutes, automationIntervalMinutes, UserName);
+        await settings.SetAsync(SettingKeys.AutoOffboardingEnabled, Flag(autoOffboardingEnabled), UserName);
+        await settings.SetAsync(SettingKeys.AutoDepartmentChangeEnabled, Flag(autoDepartmentChangeEnabled), UserName);
+        await settings.SetAsync(SettingKeys.AutoExpirationEnabled, Flag(autoExpirationEnabled), UserName);
+        await settings.SetAsync(SettingKeys.AutoRemindersEnabled, Flag(autoRemindersEnabled), UserName);
+        await settings.SetAsync(SettingKeys.AutoReminderAfterDays, autoReminderAfterDays, UserName);
+        await settings.SetAsync(SettingKeys.AutoEscalationAfterDays, autoEscalationAfterDays, UserName);
+        await settings.SetAsync(SettingKeys.AutoPushEnabled, Flag(autoPushEnabled), UserName);
+        return await SavedAsync("Automatizace");
+    }
+
+    private static string Flag(string? value) => value == "true" ? "true" : "false";
 
     public async Task<IActionResult> OnPostCardsAsync(
         string? cardsMssqlConnectionString, string? cardsMssqlQuery,

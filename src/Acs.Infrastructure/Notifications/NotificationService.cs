@@ -16,6 +16,9 @@ public interface INotificationService
 
     /// <summary>Položka byla finálně rozhodnuta / předána — upozorni žadatele.</summary>
     Task NotifyDecidedAsync(int itemId, CancellationToken ct = default);
+
+    /// <summary>Položka čeká příliš dlouho — eskalace na administrátory.</summary>
+    Task NotifyEscalationAsync(int itemId, int waitingDays, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -91,11 +94,40 @@ public class EmailNotificationService(
         }
     }
 
+    public async Task NotifyEscalationAsync(int itemId, int waitingDays, CancellationToken ct = default)
+    {
+        try
+        {
+            var item = await LoadAsync(itemId, ct);
+            if (item is null)
+                return;
+
+            var adminEmails = await db.Users
+                .Where(u => u.IsActive && u.Email != null && (u.Roles & AppRole.Admin) == AppRole.Admin)
+                .Select(u => u.Email!)
+                .ToListAsync(ct);
+            if (adminEmails.Count == 0)
+                return;
+
+            await SendAsync(adminEmails,
+                $"ACS: eskalace — žádost #{item.RequestId} čeká {waitingDays} dní",
+                $"Zaměstnanec: {item.Request!.TargetEmployee!.FullName}\n"
+                + $"Položka: {item.Reader?.Name ?? item.ReaderGroup?.Name}\n"
+                + $"Čeká na schválení: {waitingDays} dní (úroveň {item.CurrentLevelOrder})\n\n"
+                + $"Detail: http://acs.fnmh.network/Requests/Detail/{item.RequestId}", ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Eskalační notifikace (položka {ItemId}) se nepodařila odeslat.", itemId);
+        }
+    }
+
     private Task<AccessRequestItem?> LoadAsync(int itemId, CancellationToken ct)
         => db.AccessRequestItems
             .Include(i => i.Request!).ThenInclude(r => r.TargetEmployee)
             .Include(i => i.Request!).ThenInclude(r => r.RequesterUser)
             .Include(i => i.Reader)
+            .Include(i => i.ReaderGroup)
             .AsNoTracking()
             .FirstOrDefaultAsync(i => i.Id == itemId, ct);
 

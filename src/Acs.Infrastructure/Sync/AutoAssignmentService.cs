@@ -60,6 +60,7 @@ public class AutoAssignmentService(AcsDbContext db, AuditService audit)
                     Kind = RequestKind.Grant,
                     RequesterUserId = systemUser.Id,
                     TargetEmployeeId = employee.Id,
+                    AutoAssignedDepartment = rule.Department,
                     Justification = $"automatické zařazení dle oddělení „{rule.Department}“",
                     Items =
                     [

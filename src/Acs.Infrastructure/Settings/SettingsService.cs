@@ -53,6 +53,17 @@ public static class SettingKeys
     public const string EmployeeSyncEnabled = "Employees:SyncEnabled";
     public const string EmployeeSyncIntervalMinutes = "Employees:SyncIntervalMinutes";
 
+    // Automatizace
+    public const string AutomationEnabled = "Automation:Enabled";
+    public const string AutomationIntervalMinutes = "Automation:IntervalMinutes";
+    public const string AutoOffboardingEnabled = "Automation:OffboardingEnabled";
+    public const string AutoDepartmentChangeEnabled = "Automation:DepartmentChangeEnabled";
+    public const string AutoExpirationEnabled = "Automation:ExpirationEnabled";
+    public const string AutoRemindersEnabled = "Automation:RemindersEnabled";
+    public const string AutoReminderAfterDays = "Automation:ReminderAfterDays";
+    public const string AutoEscalationAfterDays = "Automation:EscalationAfterDays";
+    public const string AutoPushEnabled = "Automation:PushToWinPakEnabled";
+
     // SMTP notifikace
     public const string SmtpHost = "Smtp:Host";
     public const string SmtpPort = "Smtp:Port";
