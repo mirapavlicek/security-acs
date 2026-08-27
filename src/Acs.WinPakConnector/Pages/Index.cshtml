@@ -1,0 +1,107 @@
+@page "/ui"
+@model Acs.WinPakConnector.Pages.IndexModel
+@{
+    ViewData["Title"] = "Přehled";
+}
+<h1>Přehled konektoru</h1>
+
+@if (Model.Warnings.Count > 0)
+{
+    <div class="alert alert-warning">
+        <strong>Co je potřeba dořešit</strong>
+        <ul>
+            @foreach (var warning in Model.Warnings)
+            {
+                <li>@warning</li>
+            }
+        </ul>
+    </div>
+}
+
+<div class="cards-grid">
+    <div class="card">
+        <h2>Konektor</h2>
+        <table class="data">
+            <tr><th>Verze</th><td>@Model.Version</td></tr>
+            <tr>
+                <th>Režim</th>
+                <td>
+                    <span class="badge badge-primary">@Model.Settings.Mode</span>
+                    <p class="hint">@ProviderModes.Describe(Model.Settings.Mode)</p>
+                </td>
+            </tr>
+            <tr>
+                <th>Zápis do WIN-PAK</th>
+                <td>
+                    <span class="badge @(Model.SupportsWrite ? "badge-ok" : "badge-bad")">
+                        @(Model.SupportsWrite ? "ano" : "ne")
+                    </span>
+                </td>
+            </tr>
+            <tr>
+                <th>Ovládání dveří</th>
+                <td>
+                    <span class="badge @(Model.SupportsDoorControl ? "badge-ok" : "badge-bad")">
+                        @(Model.SupportsDoorControl ? "ano" : "ne")
+                    </span>
+                </td>
+            </tr>
+            <tr><th>API klíč</th><td class="mono">@ConnectorSettingsStore.Mask(Model.Settings.ApiKey)</td></tr>
+            <tr><th>Soubor nastavení</th><td class="mono">@Model.SettingsFile</td></tr>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>Spojení s WIN-PAK</h2>
+        @if (Model.StatusError is not null)
+        {
+            <div class="alert alert-error">@Model.StatusError</div>
+        }
+        else if (Model.Status is null)
+        {
+            <p class="muted">Stav se nepodařilo zjistit.</p>
+        }
+        else
+        {
+            <table class="data">
+                <tr>
+                    <th>Databázový server</th>
+                    <td>
+                        <span class="badge @(Model.Status.DatabaseServerConnected ? "badge-ok" : "badge-bad")">
+                            @(Model.Status.DatabaseServerConnected ? "připojeno" : "nepřipojeno")
+                        </span>
+                    </td>
+                </tr>
+                @foreach (var server in Model.Status.Servers)
+                {
+                    <tr>
+                        <th>@server.ServerName</th>
+                        <td>
+                            <span class="badge @(server.Connected ? "badge-ok" : "badge-bad")">
+                                @(server.Connected ? "připojeno" : "nepřipojeno")
+                            </span>
+                            <span class="muted">typ @server.ServerType</span>
+                        </td>
+                    </tr>
+                }
+            </table>
+            @if (Model.Status.Servers.Count == 0)
+            {
+                <p class="hint">Komunikační server neposkytl stav — buď je vypnutý, nebo režim nepracuje s hardwarem.</p>
+            }
+        }
+        <div class="btn-row">
+            <a class="btn btn-ghost" asp-page="/Diagnostics">Otevřít diagnostiku</a>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Co dál</h2>
+    <p class="muted">
+        Nastavení režimu, přihlašovacích údajů operátora WIN-PAK a API klíče najdete
+        v <a asp-page="/Settings">Nastavení</a>. Diagnostika umí ověřit, že konektor
+        opravdu čte čtečky a přístupové úrovně, a ukáže poslední události z panelů.
+        Popis celého REST rozhraní je v <a href="/openapi/v1.json" target="_blank" rel="noopener">OpenAPI</a>.
+    </p>
+</div>

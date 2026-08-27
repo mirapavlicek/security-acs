@@ -1,0 +1,42 @@
+@{
+    var isAuthenticated = User.Identity?.IsAuthenticated == true;
+}
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] – WinPak Connector</title>
+    <link rel="stylesheet" href="~/css/connector.css" asp-append-version="true" />
+</head>
+<body>
+<header class="topbar">
+    <a class="brand" asp-page="/Index">
+        <span class="brand-mark">WinPak Connector</span>
+        <span class="brand-sub">administrace konektoru ACS</span>
+    </a>
+
+    @if (isAuthenticated)
+    {
+        <nav class="mainnav">
+            <a asp-page="/Index">Přehled</a>
+            <a asp-page="/Settings">Nastavení</a>
+            <a asp-page="/Diagnostics">Diagnostika</a>
+            <a href="/openapi/v1.json" target="_blank" rel="noopener">OpenAPI</a>
+        </nav>
+        <form method="post" asp-page="/Index" asp-page-handler="Logout" class="topbar-right">
+            <button class="btn btn-ghost" type="submit">Odhlásit</button>
+        </form>
+    }
+</header>
+
+<main class="content">
+    @RenderBody()
+</main>
+
+<footer class="footer">
+    <span>WinPak Connector · REST fasáda nad WIN-PAK COM API</span>
+</footer>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

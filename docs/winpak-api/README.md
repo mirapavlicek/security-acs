@@ -25,6 +25,11 @@ REST je tedy použitý všude, kde to jde — celá komunikace ACS ↔ konektor.
 COM zůstává jen na posledním úseku uvnitř serveru, kde jinou možnost nemáme.
 Konektor je v `src/Acs.WinPakConnector`.
 
+Konektor se nastavuje ve vlastní webové administraci na
+`http://<winpak-server>:52001/ui` (režim, přihlášení operátora WIN-PAK, účet,
+ProgID objektů, API klíč) a je tam i diagnostika, která živě ověří, že se
+z WIN-PAKu opravdu čte. Podrobnosti v `src/Acs.WinPakConnector/README.md`.
+
 ## Database Server API (`NCIHelper.dll`)
 
 COM objekty: `NCIHelper.Application`, `NCIHelper.Card`, `NCIHelper.CardHolder`,

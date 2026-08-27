@@ -10,9 +10,33 @@ jsou COM objekty vystavené přes COM+/DCOM, tedy Windows-only. Konektor je
 jediné místo v systému, které mluví COM; všechno ostatní jede po REST.
 Podrobný rozbor API i mapování na endpointy je v `docs/winpak-api/README.md`.
 
+## Administrační GUI
+
+Konektor má vlastní webovou administraci na `http://<winpak-server>:52001/ui`.
+Nemusí se tedy ručně editovat `appsettings.json` a restartovat služba — změny se
+zapisují do `appsettings.Local.json` vedle programu a použijí se okamžitě
+(provider se přestaví sám).
+
+| Stránka | Obsah |
+| --- | --- |
+| Přehled | verze, režim, podpora zápisu a dveří, maskovaný API klíč, stav serverů WIN-PAK a seznam věcí, které je potřeba dořešit |
+| Nastavení | režim, API klíč (i generování nového), heslo administrace, přihlášení operátora WIN-PAK, účet a podúčet, komunikační server, ProgID objektů, SQL dotazy pro režim Mssql |
+| Diagnostika | živé volání WIN-PAKu — účty, čtečky, přístupové úrovně, držitelé, systémové údaje, časové zóny, panely — a poslední události z panelů |
+
+Přihlášení: heslem z pole „Heslo administrace“. Dokud není nastavené, přihlašuje
+se **API klíčem** — ten už dnes umožňuje i odemykat dveře, takže tím nevzniká
+slabší ochrana, ale samostatné heslo se doporučuje, aby se klíč nemusel zadávat
+do prohlížeče. Formulář nikdy nezobrazuje tajné hodnoty celé (jen maskovaně) a
+prázdné pole znamená „nechat beze změny“.
+
+Původní `appsettings.json` z instalace zůstává nedotčený a slouží jako výchozí
+vrstva; hodnoty z proměnných prostředí a z GUI ho přepisují. Soubor
+`appsettings.Local.json` obsahuje hesla — omezte k němu přístup na účet služby
+a administrátory (na Windows přes ACL složky s programem).
+
 ## Režimy (provider)
 
-Konfiguruje se v `appsettings.json` → `WinPak:Mode`:
+Nastavuje se v GUI (Nastavení → Režim) nebo v `appsettings.json` → `WinPak:Mode`:
 
 | Režim | Popis | Zápis | Dveře |
 | --- | --- | --- | --- |
@@ -33,6 +57,7 @@ OpenAPI popis: `GET /openapi/v1.json`.
 | Metoda | Cesta | Popis |
 | --- | --- | --- |
 | GET | `/health` | healthcheck (bez klíče) |
+| GET | `/ui` | administrační GUI (přihlášení heslem, ne API klíčem v hlavičce) |
 | GET | `/api/v1/info` | verze, režim, podpora zápisu a ovládání dveří |
 | GET | `/api/v1/status` | stav spojení s databázovým a komunikačním serverem WIN-PAK |
 | GET | `/api/v1/accounts` | účty a podúčty |
@@ -105,12 +130,14 @@ curl -H "X-Api-Key: <klic>" http://localhost:52001/api/v1/readers
 2. Zkopírujte obsah `publish/winpak-connector` např. do
    `C:\Program Files\AcsWinPakConnector`.
 
-3. Upravte `appsettings.json`:
+3. Upravte `appsettings.json` na minimum potřebné k prvnímu přihlášení:
    - `Security:ApiKey` — vygenerujte silný klíč (např. `openssl rand -hex 32`),
      tentýž klíč se nastaví v ACS aplikaci,
    - `Kestrel:Endpoints:Http:Url` — ponechte `http://0.0.0.0:52001`
-     (nebo omezte na konkrétní interní IP),
-   - `WinPak:Mode` — `Com` a doplňte `WinPak:Com` (viz níže).
+     (nebo omezte na konkrétní interní IP).
+
+   Zbytek (režim, přihlášení operátora WIN-PAK, účet, ProgID) se pohodlněji
+   nastaví v administračním GUI na `/ui`.
 
 4. Registrace Windows služby (PowerShell jako administrátor):
 
@@ -129,10 +156,13 @@ curl -H "X-Api-Key: <klic>" http://localhost:52001/api/v1/readers
      -Protocol TCP -LocalPort 52001 -RemoteAddress 10.84.7.146,10.84.7.147 -Action Allow
    ```
 
-6. Ověření: `curl http://<winpak-server>:52001/health` → `{"status":"ok"}`
-   a `/api/v1/status` → připojené servery WIN-PAK.
+6. Ověření: `curl http://<winpak-server>:52001/health` → `{"status":"ok"}`,
+   pak otevřete `http://<winpak-server>:52001/ui`, přihlaste se API klíčem,
+   nastavte režim `Com` a v Diagnostice ověřte, že konektor čte účty a čtečky.
 
 ## Nastavení režimu `Com`
+
+V GUI stačí vyplnit sekci „WIN-PAK přes COM“. Odpovídající podoba v souboru:
 
 ```json
 "WinPak": {
@@ -172,7 +202,10 @@ potvrzené přístupy) a konektor umí dveře i odemykat. Kompromitovaný konekt
 nebo odposlech linky proto může ovlivnit fyzický přístup. Doporučení:
 
 - **Síťové omezení** — port konektoru zpřístupněte firewallem výhradně
-  aplikačním serverům (viz pravidlo výše); nikdy ne veřejně.
+  aplikačním serverům a stanicím správců (viz pravidlo výše); nikdy ne veřejně.
+  Na tomtéž portu běží i administrační GUI.
+- **Heslo administrace** — nastavte ho v GUI, ať se API klíč nemusí zadávat
+  do prohlížeče. Přihlášení má záměrné zpoždění po chybném pokusu.
 - **API klíč** — silný, náhodný (`openssl rand -hex 32`), pravidelně rotovaný;
   týž klíč se zadává v ACS (Nastavení → WIN-PAK).
 - **TLS/mTLS** — na produkci provozujte konektor za reverzní proxy s TLS

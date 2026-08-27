@@ -1,43 +1,63 @@
-using System.Runtime.Versioning;
 using Acs.WinPakConnector.Auth;
+using Acs.WinPakConnector.Configuration;
 using Acs.WinPakConnector.Endpoints;
 using Acs.WinPakConnector.Models;
 using Acs.WinPakConnector.Providers;
 using Acs.WinPakConnector.Providers.Com;
+using System.Text.Encodings.Web;
+using System.Text.Unicode;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.Extensions.WebEncoders;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Nastavení měněné z administračního GUI. Leží vedle programu a přepisuje
+// hodnoty z instalačního appsettings.json; reloadOnChange = projeví se bez restartu.
+builder.Configuration.AddJsonFile(ConnectorSettingsStore.FileName, optional: true, reloadOnChange: true);
 
 // Běh jako Windows služba na WIN-PAK serveru (na Linuxu/dev se chová jako běžný proces).
 builder.Services.AddWindowsService(o => o.ServiceName = "AcsWinPakConnector");
 
 builder.Services.AddOpenApi();
+builder.Services.AddRazorPages(options => options.Conventions.AuthorizeFolder("/"));
+
+// Bez toho by se česká diakritika ve stránkách zapisovala jako &#xE9; a podobně.
+builder.Services.Configure<WebEncoderOptions>(options =>
+    options.TextEncoderSettings = new TextEncoderSettings(UnicodeRanges.All));
 
 builder.Services.Configure<MssqlProviderOptions>(
     builder.Configuration.GetSection(MssqlProviderOptions.SectionName));
 builder.Services.Configure<WinPakComOptions>(
     builder.Configuration.GetSection(WinPakComOptions.SectionName));
 
-var providerMode = builder.Configuration["WinPak:Mode"] ?? "Mock";
-switch (providerMode.ToLowerInvariant())
-{
-    case "mock":
-        builder.Services.AddSingleton<IWinPakProvider, MockWinPakProvider>();
-        break;
-    case "mssql":
-        builder.Services.AddSingleton<IWinPakProvider, MssqlWinPakProvider>();
-        break;
-    case "com":
-        RegisterComProvider(builder);
-        break;
-    default:
-        throw new InvalidOperationException(
-            $"Neznámý WinPak:Mode '{providerMode}'. Povolené hodnoty: Mock, Mssql, Com.");
-}
+builder.Services.AddSingleton<ConnectorSettingsStore>();
+builder.Services.AddSingleton<AdminAuthentication>();
+builder.Services.AddSingleton<WinPakProviderCache>();
+
+// Provider se řeší při každém požadavku, aby změna nastavení v GUI platila hned.
+builder.Services.AddTransient(sp => sp.GetRequiredService<WinPakProviderCache>().Current);
+
+builder.Services.AddAuthentication(AdminAuthentication.Scheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = AdminAuthentication.LoginPath;
+        options.AccessDeniedPath = AdminAuthentication.LoginPath;
+        options.ExpireTimeSpan = TimeSpan.FromHours(8);
+        options.SlidingExpiration = true;
+        options.Cookie.Name = "acs-winpak-connector";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Strict;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+    });
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
 app.MapOpenApi();
 app.UseMiddleware<ApiKeyMiddleware>();
+app.UseStaticFiles();
+app.UseAuthentication();
+app.UseAuthorization();
 
 // Jednotné mapování výjimek providerů na HTTP stavy.
 app.UseExceptionHandler(exceptionApp => exceptionApp.Run(async context =>
@@ -57,6 +77,10 @@ app.UseExceptionHandler(exceptionApp => exceptionApp.Run(async context =>
 }));
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+
+// Administrační GUI konektoru (běží na WIN-PAK serveru vedle REST API).
+app.MapRazorPages();
+app.MapGet("/", () => Results.Redirect("/ui"));
 
 var api = app.MapGroup("/api/v1");
 
@@ -192,21 +216,6 @@ api.MapGet("/events", async (int? limit, IWinPakProvider provider, CancellationT
 api.MapCatalog();
 
 app.Run();
-
-// COM je Windows-only; na jiné platformě konektor nemá jak WIN-PAK oslovit.
-[SupportedOSPlatform("windows")]
-static void RegisterComProvider(WebApplicationBuilder builder)
-{
-    if (!OperatingSystem.IsWindows())
-    {
-        throw new PlatformNotSupportedException(
-            "Režim Com vyžaduje Windows — WIN-PAK API je vystavené přes COM+/DCOM. " +
-            "Na jiné platformě použijte režim Mock.");
-    }
-
-    builder.Services.AddSingleton<IComFactory, ComFactory>();
-    builder.Services.AddSingleton<IWinPakProvider, ComWinPakProvider>();
-}
 
 /// <summary>Zpřístupnění pro integrační testy (WebApplicationFactory).</summary>
 public partial class Program;

@@ -1,0 +1,75 @@
+@page "/ui/diagnostics"
+@model Acs.WinPakConnector.Pages.DiagnosticsModel
+@{
+    ViewData["Title"] = "Diagnostika";
+}
+<h1>Diagnostika</h1>
+<p class="muted">
+    Každý řádek je skutečné volání WIN-PAKu v režimu <span class="badge badge-primary">@Model.Mode</span>.
+    Stránku stačí obnovit, testy se spustí znovu.
+</p>
+
+<div class="card">
+    <h2>Kontroly</h2>
+    <table class="data">
+        <thead><tr><th style="width:1%">Stav</th><th>Kontrola</th><th>Výsledek</th></tr></thead>
+        <tbody>
+        @foreach (var probe in Model.Probes)
+        {
+            <tr>
+                <td><span class="badge @(probe.Succeeded ? "badge-ok" : "badge-bad")">@(probe.Succeeded ? "ok" : "chyba")</span></td>
+                <td>@probe.Name</td>
+                <td class="muted">@probe.Result</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Probes.Count == 0)
+    {
+        <p class="muted">Žádné kontroly neproběhly.</p>
+    }
+</div>
+
+<div class="card">
+    <h2>Poslední události z panelů</h2>
+    @if (Model.EventsError is not null)
+    {
+        <p class="muted">@Model.EventsError</p>
+    }
+    else if (Model.Events.Count == 0)
+    {
+        <p class="muted">Zatím nepřišla žádná událost. Konektor je odebírá od chvíle, kdy se zaregistroval u komunikačního serveru.</p>
+    }
+    else
+    {
+        <table class="data">
+            <thead>
+            <tr><th>Čas</th><th>Typ</th><th>Kód</th><th>Zařízení</th><th>Karta</th><th>Držitel</th><th>Stav</th></tr>
+            </thead>
+            <tbody>
+            @foreach (var winPakEvent in Model.Events.Reverse())
+            {
+                <tr>
+                    <td>@(winPakEvent.At?.ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</td>
+                    <td><span class="badge @(winPakEvent.IsAlarm ? "badge-bad" : "")">@(winPakEvent.IsAlarm ? "alarm" : "událost")</span></td>
+                    <td>@winPakEvent.EventId</td>
+                    <td>@(winPakEvent.ReaderPoint ?? winPakEvent.Hid)</td>
+                    <td>@winPakEvent.CardNumber</td>
+                    <td>@winPakEvent.FullName</td>
+                    <td class="muted">@winPakEvent.Status</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+<div class="card">
+    <h2>Když něco nefunguje</h2>
+    <ul class="muted">
+        <li>Chyba už u vytvoření providera znamená špatný režim nebo chybějící COM+ objekty na stroji.</li>
+        <li>Selhání přihlášení řeší <a asp-page="/Settings">Nastavení</a> — uživatel, heslo a doména operátora WIN-PAK.</li>
+        <li>Prázdné číselníky obvykle znamenají špatně zadaný účet: zkontrolujte ho podle výsledku kontroly „Účty“.</li>
+        <li>Bez komunikačního serveru nejde ovládat dveře ani odebírat události; zapíná se v nastavení režimu Com.</li>
+    </ul>
+</div>

@@ -1,0 +1,47 @@
+@page "/ui/login"
+@model Acs.WinPakConnector.Pages.LoginModel
+@{
+    ViewData["Title"] = "Přihlášení";
+}
+<div class="card login">
+    <h1>Administrace konektoru</h1>
+
+    @if (Model.IsLocked)
+    {
+        <div class="alert alert-error">
+            Konektor nemá nastavený API klíč ani heslo administrace, takže se do GUI nelze přihlásit.
+            Doplňte <span class="mono">Security:ApiKey</span> do <span class="mono">appsettings.json</span>
+            (nebo proměnnou prostředí <span class="mono">Security__ApiKey</span>) a službu restartujte.
+        </div>
+    }
+    else
+    {
+        @if (Model.ErrorMessage is not null)
+        {
+            <div class="alert alert-error">@Model.ErrorMessage</div>
+        }
+
+        <form method="post">
+            <label for="password">
+                @(Model.UsesSeparatePassword ? "Heslo administrace" : "API klíč konektoru")
+            </label>
+            <input type="password" id="password" asp-for="Password" autocomplete="current-password" autofocus />
+            <p class="hint">
+                @if (Model.UsesSeparatePassword)
+                {
+                    <text>Heslo je uložené v nastavení konektoru (<span class="mono">Security:AdminPassword</span>).</text>
+                }
+                else
+                {
+                    <text>
+                        Zatím není nastavené samostatné heslo administrace, přihlaste se proto API klíčem.
+                        V Nastavení si heslo můžete zvlášť nastavit.
+                    </text>
+                }
+            </p>
+            <div class="btn-row">
+                <button class="btn" type="submit">Přihlásit</button>
+            </div>
+        </form>
+    }
+</div>
