@@ -160,6 +160,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); o
   background: var(--primary); color: var(--primary-contrast);
   padding: 0.45rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.95rem;
   text-decoration: none; margin-top: 0.8rem;
+  white-space: nowrap; /* text tlačítka se nikdy nesmí lámat po písmenech */
 }
 .btn:hover { filter: brightness(1.1); }
 .btn-ghost { background: transparent; color: var(--text); border-color: var(--border); margin-top: 0; }
