@@ -21,6 +21,8 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         SettingKeys.WinPakBaseUrl, SettingKeys.WinPakSyncEnabled, SettingKeys.WinPakSyncIntervalMinutes,
         SettingKeys.WinPakAccessSyncEnabled, SettingKeys.WinPakAccessSyncIntervalMinutes,
         SettingKeys.EmployeeSourceMode, SettingKeys.EmployeeMssqlQuery, SettingKeys.EmployeeApiUrl,
+        SettingKeys.EmployeeLdapFilter,
+        SettingKeys.CardsMssqlQuery, SettingKeys.CardsSyncEnabled, SettingKeys.CardsSyncIntervalMinutes,
         SettingKeys.SmtpHost, SettingKeys.SmtpPort, SettingKeys.SmtpUser, SettingKeys.SmtpFrom,
         SettingKeys.SmtpUseTls,
     ];
@@ -96,14 +98,27 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
 
     public async Task<IActionResult> OnPostEmployeesAsync(
         string? employeeSourceMode, string? employeeMssqlConnectionString,
-        string? employeeMssqlQuery, string? employeeApiUrl, string? employeeApiKey)
+        string? employeeMssqlQuery, string? employeeApiUrl, string? employeeApiKey,
+        string? employeeLdapFilter)
     {
         await settings.SetAsync(SettingKeys.EmployeeSourceMode, employeeSourceMode, UserName);
         await settings.SetIfProvidedAsync(SettingKeys.EmployeeMssqlConnectionString, employeeMssqlConnectionString, UserName);
         await settings.SetAsync(SettingKeys.EmployeeMssqlQuery, employeeMssqlQuery, UserName);
         await settings.SetAsync(SettingKeys.EmployeeApiUrl, employeeApiUrl, UserName);
         await settings.SetIfProvidedAsync(SettingKeys.EmployeeApiKey, employeeApiKey, UserName);
+        await settings.SetAsync(SettingKeys.EmployeeLdapFilter, employeeLdapFilter, UserName);
         return await SavedAsync("Zdroj zaměstnanců");
+    }
+
+    public async Task<IActionResult> OnPostCardsAsync(
+        string? cardsMssqlConnectionString, string? cardsMssqlQuery,
+        string? cardsSyncEnabled, string? cardsSyncIntervalMinutes)
+    {
+        await settings.SetIfProvidedAsync(SettingKeys.CardsMssqlConnectionString, cardsMssqlConnectionString, UserName);
+        await settings.SetAsync(SettingKeys.CardsMssqlQuery, cardsMssqlQuery, UserName);
+        await settings.SetAsync(SettingKeys.CardsSyncEnabled, cardsSyncEnabled == "true" ? "true" : "false", UserName);
+        await settings.SetAsync(SettingKeys.CardsSyncIntervalMinutes, cardsSyncIntervalMinutes, UserName);
+        return await SavedAsync("Karty");
     }
 
     public async Task<IActionResult> OnPostSmtpAsync(

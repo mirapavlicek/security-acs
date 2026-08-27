@@ -12,6 +12,7 @@ public class NewModel(AcsDbContext db, RequestWorkflowService workflow) : PageMo
 {
     public List<Employee> Employees { get; private set; } = [];
     public List<Reader> Readers { get; private set; } = [];
+    public List<ReaderGroup> Groups { get; private set; } = [];
     public int? MyEmployeeId { get; private set; }
     public bool CanActForOthers { get; private set; }
 
@@ -37,13 +38,15 @@ public class NewModel(AcsDbContext db, RequestWorkflowService workflow) : PageMo
             .Include(r => r.Room).ThenInclude(room => room!.Floor).ThenInclude(f => f!.Building)
             .Include(r => r.Dependencies).ThenInclude(d => d.RequiresReader)
             .OrderBy(r => r.Name).ToListAsync();
+
+        Groups = await db.ReaderGroups.Where(g => g.IsActive).OrderBy(g => g.Name).ToListAsync();
     }
 
-    public async Task<IActionResult> OnPostAsync(int? targetEmployeeId, int[] readerIds, string? justification)
+    public async Task<IActionResult> OnPostAsync(int? targetEmployeeId, int[] readerIds, int[] groupIds, string? justification)
     {
-        if (targetEmployeeId is null || readerIds.Length == 0)
+        if (targetEmployeeId is null || (readerIds.Length == 0 && groupIds.Length == 0))
         {
-            ErrorMessage = "Vyberte zaměstnance a alespoň jednu čtečku.";
+            ErrorMessage = "Vyberte zaměstnance a alespoň jednu čtečku nebo skupinu.";
             return RedirectToPage();
         }
 
@@ -52,7 +55,7 @@ public class NewModel(AcsDbContext db, RequestWorkflowService workflow) : PageMo
         {
             var request = await workflow.CreateRequestAsync(
                 CurrentUserId, targetEmployeeId.Value, readerIds, justification,
-                requesterCanActForOthers: canActForOthers);
+                requesterCanActForOthers: canActForOthers, groupIds: groupIds);
             return RedirectToPage("Detail", new { id = request.Id });
         }
         catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException)

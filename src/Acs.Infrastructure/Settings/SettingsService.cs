@@ -37,7 +37,15 @@ public static class SettingKeys
     public const string WinPakAccessSyncIntervalMinutes = "WinPak:AccessSyncIntervalMinutes";
 
     // Zdroj zaměstnanců
-    public const string EmployeeSourceMode = "Employees:SourceMode"; // None | Mssql | Api
+    public const string EmployeeSourceMode = "Employees:SourceMode"; // None | Ad | Mssql | Api
+    /// <summary>LDAP filtr pro výběr zaměstnanců při režimu Ad.</summary>
+    public const string EmployeeLdapFilter = "Employees:LdapFilter";
+
+    // Karty z MSSQL (zaměstnanci z AD, karty z SQL)
+    public const string CardsMssqlConnectionString = "Cards:MssqlConnectionString"; // secret
+    public const string CardsMssqlQuery = "Cards:MssqlQuery";
+    public const string CardsSyncEnabled = "Cards:SyncEnabled";
+    public const string CardsSyncIntervalMinutes = "Cards:SyncIntervalMinutes";
     public const string EmployeeMssqlConnectionString = "Employees:MssqlConnectionString"; // secret
     public const string EmployeeMssqlQuery = "Employees:MssqlQuery";
     public const string EmployeeApiUrl = "Employees:ApiUrl";
@@ -56,6 +64,7 @@ public static class SettingKeys
     public static readonly HashSet<string> SecretKeys =
     [
         LdapBindPassword, WinPakApiKey, EmployeeMssqlConnectionString, EmployeeApiKey, SmtpPassword,
+        CardsMssqlConnectionString,
     ];
 }
 

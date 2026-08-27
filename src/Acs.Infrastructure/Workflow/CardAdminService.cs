@@ -10,19 +10,46 @@ namespace Acs.Infrastructure.Workflow;
 /// <summary>
 /// Fronta správce karet: schválené položky se předávají do WIN-PAK buď
 /// voláním API (přes konektor), nebo je správce zadá ručně a v ACS potvrdí.
+/// Skupinová položka se předává jako všechny čtečky skupiny (rekurzivně).
 /// </summary>
 public class CardAdminService(AcsDbContext db, WinPakClient winPak, AuditService audit,
-    INotificationService? notifier = null)
+    INotificationService? notifier = null, ReaderGroupService? groups = null)
 {
+    private ReaderGroupService Groups => groups ?? new ReaderGroupService(db);
+
     /// <summary>Schválené položky čekající na zadání do WIN-PAK.</summary>
     public Task<List<AccessRequestItem>> GetQueueAsync(CancellationToken ct = default)
         => db.AccessRequestItems
             .Include(i => i.Request!).ThenInclude(r => r.TargetEmployee)
             .Include(i => i.Request!).ThenInclude(r => r.RequesterUser)
             .Include(i => i.Reader)
+            .Include(i => i.ReaderGroup)
             .Where(i => i.Status == RequestStatus.Approved)
             .OrderBy(i => i.Request!.CreatedAt)
             .ToListAsync(ct);
+
+    /// <summary>Access levely, které položka pokrývá (čtečka, nebo celá skupina rekurzivně).</summary>
+    private async Task<List<string>> ResolveAccessLevelsAsync(AccessRequestItem item, CancellationToken ct)
+    {
+        if (item.ReaderId is not null)
+        {
+            return item.Reader!.AccessLevelExternalId is { } al
+                ? [al]
+                : throw new InvalidOperationException(
+                    $"Čtečka {item.Reader.Name} nemá namapovaný WIN-PAK access level (číselník čteček).");
+        }
+
+        var readerIds = await Groups.ExpandReaderIdsAsync(item.ReaderGroupId!.Value, ct);
+        var levels = await db.Readers
+            .Where(r => readerIds.Contains(r.Id) && r.AccessLevelExternalId != null)
+            .Select(r => r.AccessLevelExternalId!)
+            .Distinct()
+            .ToListAsync(ct);
+        if (levels.Count == 0)
+            throw new InvalidOperationException(
+                $"Skupina {item.ReaderGroup?.Name} neobsahuje žádnou čtečku s namapovaným WIN-PAK access levelem.");
+        return levels;
+    }
 
     /// <summary>Předá položku do WIN-PAK přes API konektoru.</summary>
     public async Task PushAsync(int itemId, string? userName, CancellationToken ct = default)
@@ -32,21 +59,21 @@ public class CardAdminService(AcsDbContext db, WinPakClient winPak, AuditService
         var cardHolderId = item.Request!.TargetEmployee!.WinPakCardHolderId
             ?? throw new InvalidOperationException(
                 $"Zaměstnanec {item.Request.TargetEmployee.FullName} nemá vyplněné WIN-PAK card holder id (číselník zaměstnanců).");
-        var accessLevelId = item.Reader!.AccessLevelExternalId
-            ?? throw new InvalidOperationException(
-                $"Čtečka {item.Reader.Name} nemá namapovaný WIN-PAK access level (číselník čteček).");
+        var accessLevels = await ResolveAccessLevelsAsync(item, ct);
 
         if (item.Request.Kind == RequestKind.Grant)
         {
-            await winPak.AssignAccessLevelAsync(cardHolderId, accessLevelId, ct);
+            foreach (var al in accessLevels)
+                await winPak.AssignAccessLevelAsync(cardHolderId, al, ct);
             item.Status = RequestStatus.PushedToWinPak;
-            item.PushResult = $"API: přiřazen access level {accessLevelId}";
+            item.PushResult = $"API: přiřazeny access levely {string.Join(", ", accessLevels)}";
         }
         else
         {
-            await winPak.RevokeAccessLevelAsync(cardHolderId, accessLevelId, ct);
+            foreach (var al in accessLevels)
+                await winPak.RevokeAccessLevelAsync(cardHolderId, al, ct);
             item.Status = RequestStatus.Revoked;
-            item.PushResult = $"API: odebrán access level {accessLevelId}";
+            item.PushResult = $"API: odebrány access levely {string.Join(", ", accessLevels)}";
             await RevokeOriginalGrantsAsync(item, ct);
         }
 
@@ -87,6 +114,7 @@ public class CardAdminService(AcsDbContext db, WinPakClient winPak, AuditService
         var item = await db.AccessRequestItems
             .Include(i => i.Request!).ThenInclude(r => r.TargetEmployee)
             .Include(i => i.Reader)
+            .Include(i => i.ReaderGroup)
             .FirstOrDefaultAsync(i => i.Id == itemId, ct)
             ?? throw new KeyNotFoundException("Položka nenalezena.");
 
@@ -100,7 +128,9 @@ public class CardAdminService(AcsDbContext db, WinPakClient winPak, AuditService
     {
         var grants = await db.AccessRequestItems
             .Where(i => i.Id != revokeItem.Id
-                        && i.ReaderId == revokeItem.ReaderId
+                        && (revokeItem.ReaderId != null
+                            ? i.ReaderId == revokeItem.ReaderId
+                            : i.ReaderGroupId == revokeItem.ReaderGroupId)
                         && i.Request!.TargetEmployeeId == revokeItem.Request!.TargetEmployeeId
                         && i.Request.Kind == RequestKind.Grant
                         && (i.Status == RequestStatus.PushedToWinPak

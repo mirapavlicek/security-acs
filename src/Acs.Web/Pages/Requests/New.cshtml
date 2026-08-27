@@ -23,6 +23,20 @@
             }
         </select>
 
+        @if (Model.Groups.Count > 0)
+        {
+            <label>Skupiny čteček (schvaluje se maticí skupiny a nadřazených skupin)</label>
+            <div style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:0.5rem">
+                @foreach (var group in Model.Groups)
+                {
+                    <div class="checkbox-row" style="margin:0.25rem 0">
+                        <input type="checkbox" name="groupIds" value="@group.Id" id="group-@group.Id" />
+                        <label for="group-@group.Id">@group.Name <span class="muted">@group.Description</span></label>
+                    </div>
+                }
+            </div>
+        }
+
         <label>Čtečky (vyžadované čtečky z řetězce se doplní automaticky)</label>
         <div style="max-height:300px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:0.5rem">
             @foreach (var reader in Model.Readers)

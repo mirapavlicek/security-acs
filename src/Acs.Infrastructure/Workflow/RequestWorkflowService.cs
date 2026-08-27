@@ -22,8 +22,12 @@ namespace Acs.Infrastructure.Workflow;
 ///     rozhodnutí administrátora (žádný přístup neobejde lidské schválení).</item>
 /// </list>
 /// </summary>
-public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotificationService? notifier = null)
+public class RequestWorkflowService(
+    AcsDbContext db, AuditService audit,
+    INotificationService? notifier = null, ReaderGroupService? groups = null)
 {
+    private ReaderGroupService Groups => groups ?? new ReaderGroupService(db);
+
     // ---------- Podání žádosti ----------
 
     /// <summary>Vrátí id čteček rozšířené o všechny vyžadované čtečky (tranzitivně).</summary>
@@ -58,10 +62,12 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotifi
     public async Task<AccessRequest> CreateRequestAsync(
         int requesterUserId, int targetEmployeeId, IReadOnlyCollection<int> readerIds,
         string? justification, RequestKind kind = RequestKind.Grant,
-        bool requesterCanActForOthers = false, CancellationToken ct = default)
+        bool requesterCanActForOthers = false, IReadOnlyCollection<int>? groupIds = null,
+        CancellationToken ct = default)
     {
-        if (readerIds.Count == 0)
-            throw new InvalidOperationException("Žádost musí obsahovat alespoň jednu čtečku.");
+        groupIds ??= [];
+        if (readerIds.Count == 0 && groupIds.Count == 0)
+            throw new InvalidOperationException("Žádost musí obsahovat alespoň jednu čtečku nebo skupinu.");
 
         // Autorizace: kdo smí žádat za koho.
         if (!requesterCanActForOthers)
@@ -84,18 +90,30 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotifi
             .Where(r => allIds.Contains(r.Id))
             .ToListAsync(ct);
 
-        // Duplicitní položky: čtečky, na které už cílový zaměstnanec má běžící/aktivní žádost.
+        // Duplicitní položky: čtečky/skupiny, na které už cílový zaměstnanec má běžící/aktivní žádost.
         var duplicateReaderIds = await db.AccessRequestItems
             .Where(i => i.Request!.TargetEmployeeId == targetEmployeeId
                         && i.Request.Kind == RequestKind.Grant
-                        && allIds.Contains(i.ReaderId)
+                        && i.ReaderId != null && allIds.Contains(i.ReaderId.Value)
                         && (i.Status == RequestStatus.Pending
                             || i.Status == RequestStatus.Approved
                             || i.Status == RequestStatus.PushedToWinPak
                             || i.Status == RequestStatus.ManuallyConfirmed))
-            .Select(i => i.ReaderId)
+            .Select(i => i.ReaderId!.Value)
             .ToListAsync(ct);
         var skip = kind == RequestKind.Grant ? duplicateReaderIds.ToHashSet() : [];
+
+        var duplicateGroupIds = await db.AccessRequestItems
+            .Where(i => i.Request!.TargetEmployeeId == targetEmployeeId
+                        && i.Request.Kind == RequestKind.Grant
+                        && i.ReaderGroupId != null && groupIds.Contains(i.ReaderGroupId.Value)
+                        && (i.Status == RequestStatus.Pending
+                            || i.Status == RequestStatus.Approved
+                            || i.Status == RequestStatus.PushedToWinPak
+                            || i.Status == RequestStatus.ManuallyConfirmed))
+            .Select(i => i.ReaderGroupId!.Value)
+            .ToListAsync(ct);
+        var skipGroups = kind == RequestKind.Grant ? duplicateGroupIds.ToHashSet() : [];
 
         var explicitIds = readerIds.ToHashSet();
         var request = new AccessRequest
@@ -124,9 +142,43 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotifi
             });
         }
 
+        // Skupinové položky: řetěz matic = matice skupiny + matic nadřazených skupin.
+        var levelCache = new Dictionary<int, int>(); // matrixId -> první úroveň
+        foreach (var groupId in groupIds.Where(g => !skipGroups.Contains(g)))
+        {
+            var chain = await Groups.GetMatrixChainAsync(groupId, ct);
+            var firstMatrixId = chain.Count > 0 ? chain[0] : (int?)null;
+            int firstLevel = 0;
+            if (firstMatrixId is not null)
+            {
+                if (!levelCache.TryGetValue(firstMatrixId.Value, out firstLevel))
+                {
+                    firstLevel = await db.ApprovalLevels
+                        .Where(l => l.MatrixId == firstMatrixId.Value)
+                        .MinAsync(l => (int?)l.Order, ct) ?? 0;
+                    levelCache[firstMatrixId.Value] = firstLevel;
+                }
+
+                if (firstLevel == 0)
+                    firstMatrixId = null; // matice bez úrovní → jako bez matice (schvaluje admin)
+            }
+
+            request.Items.Add(new AccessRequestItem
+            {
+                ReaderGroupId = groupId,
+                MatrixId = firstMatrixId,
+                Status = RequestStatus.Pending,
+                CurrentStageOrder = 1,
+                CurrentLevelOrder = firstLevel,
+                Stages = firstMatrixId is null
+                    ? []
+                    : chain.Select((m, idx) => new AccessRequestItemStage { Order = idx + 1, MatrixId = m }).ToList(),
+            });
+        }
+
         if (request.Items.Count == 0)
             throw new InvalidOperationException(
-                "Žádost je prázdná — na všechny vybrané čtečky už běží nebo platí jiná žádost.");
+                "Žádost je prázdná — na všechny vybrané čtečky/skupiny už běží nebo platí jiná žádost.");
 
         db.AccessRequests.Add(request);
         await db.SaveChangesAsync(ct);
@@ -174,6 +226,7 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotifi
             .Include(i => i.Request!).ThenInclude(r => r.TargetEmployee)
             .Include(i => i.Request!).ThenInclude(r => r.RequesterUser)
             .Include(i => i.Reader)
+            .Include(i => i.ReaderGroup)
             .Include(i => i.Decisions)
             .Where(i => i.Status == RequestStatus.Pending)
             .ToListAsync(ct);
@@ -200,9 +253,10 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotifi
             if (eligible.Count == 0)
                 return false;
 
-            // Už na této úrovni rozhodl (sám nebo v zástupu za tytéž identity)?
+            // Už na této úrovni (aktuální matice) rozhodl — sám nebo v zástupu?
             var decided = item.Decisions
-                .Where(d => d.LevelOrder == item.CurrentLevelOrder)
+                .Where(d => d.LevelOrder == item.CurrentLevelOrder
+                            && (d.MatrixId ?? item.MatrixId) == item.MatrixId)
                 .Select(d => d.OnBehalfOfUserId ?? d.ApproverUserId)
                 .ToHashSet();
             return eligible.Any(id => !decided.Contains(id));
@@ -228,7 +282,7 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotifi
         {
             if (!isAdmin)
                 throw new UnauthorizedAccessException(
-                    "Čtečku bez schvalovací matice smí schválit pouze administrátor.");
+                    "Položku bez schvalovací matice smí schválit pouze administrátor.");
 
             item.Decisions.Add(new ApprovalDecision
             {
@@ -271,7 +325,8 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotifi
 
         var effectiveIdentity = onBehalfOf ?? userId;
         var alreadyDecided = item.Decisions
-            .Where(d => d.LevelOrder == item.CurrentLevelOrder)
+            .Where(d => d.LevelOrder == item.CurrentLevelOrder
+                        && (d.MatrixId ?? item.MatrixId) == item.MatrixId)
             .Any(d => (d.OnBehalfOfUserId ?? d.ApproverUserId) == effectiveIdentity);
         if (alreadyDecided)
             throw new InvalidOperationException("Na této úrovni už bylo za tohoto schvalovatele rozhodnuto.");
@@ -279,6 +334,7 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotifi
         item.Decisions.Add(new ApprovalDecision
         {
             LevelOrder = item.CurrentLevelOrder,
+            MatrixId = item.MatrixId,
             ApproverUserId = userId,
             OnBehalfOfUserId = onBehalfOf,
             Approved = approve,
@@ -298,14 +354,35 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotifi
                 .Select(l => (int?)l.Order)
                 .FirstOrDefaultAsync(ct);
 
-            if (nextOrder is null)
+            if (nextOrder is not null)
             {
-                item.Status = RequestStatus.Approved;
-                item.DecidedAt = DateTime.UtcNow;
+                item.CurrentLevelOrder = nextOrder.Value;
             }
             else
             {
-                item.CurrentLevelOrder = nextOrder.Value;
+                // Aktuální matice dokončena — existuje další fáze řetězu
+                // (vnořené schvalování, např. skupina → bezpečnost)?
+                var nextStage = await db.AccessRequestItemStages
+                    .Where(s => s.ItemId == item.Id && s.Order > item.CurrentStageOrder)
+                    .OrderBy(s => s.Order)
+                    .FirstOrDefaultAsync(ct);
+                var nextFirstLevel = nextStage is null
+                    ? null
+                    : await db.ApprovalLevels
+                        .Where(l => l.MatrixId == nextStage.MatrixId)
+                        .MinAsync(l => (int?)l.Order, ct);
+
+                if (nextStage is not null && nextFirstLevel is not null)
+                {
+                    item.CurrentStageOrder = nextStage.Order;
+                    item.MatrixId = nextStage.MatrixId;
+                    item.CurrentLevelOrder = nextFirstLevel.Value;
+                }
+                else
+                {
+                    item.Status = RequestStatus.Approved;
+                    item.DecidedAt = DateTime.UtcNow;
+                }
             }
         }
 
@@ -327,7 +404,8 @@ public class RequestWorkflowService(AcsDbContext db, AuditService audit, INotifi
     private static bool IsLevelSatisfied(ApprovalLevel level, AccessRequestItem item)
     {
         var approvals = item.Decisions
-            .Where(d => d.LevelOrder == level.Order && d.Approved)
+            .Where(d => d.LevelOrder == level.Order && d.Approved
+                        && (d.MatrixId ?? level.MatrixId) == level.MatrixId)
             .Select(d => d.OnBehalfOfUserId ?? d.ApproverUserId)
             .Distinct()
             .Count();

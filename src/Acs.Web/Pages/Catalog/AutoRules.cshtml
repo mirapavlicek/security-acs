@@ -1,0 +1,71 @@
+@page
+@model Acs.Web.Pages.Catalog.AutoRulesModel
+@{
+    ViewData["Title"] = "Automatické zařazení";
+}
+<h1>Automatické zařazení podle oddělení</h1>
+<p class="muted">
+    Zaměstnanec s odpovídajícím oddělením (z AD) dostane automaticky
+    <strong>předschválený</strong> přístup ke skupině čteček — položka jde rovnou do fronty
+    správce karet. Např. nástup na chirurgii → základní přístup skupiny Chirurgie.
+    Vyhodnocuje se po každé synchronizaci zaměstnanců (nebo ručně tlačítkem).
+</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+
+<div class="card">
+    <form method="post" asp-page-handler="Run" class="inline-form">
+        <button class="btn btn-sm" type="submit">Vyhodnotit pravidla teď</button>
+    </form>
+</div>
+
+<div class="card">
+    <table class="data">
+        <thead><tr><th>Oddělení</th><th>Skupina čteček</th><th>Aktivní</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var rule in Model.Rules)
+        {
+            <tr>
+                <td>@rule.Department</td>
+                <td>@rule.ReaderGroup?.Name</td>
+                <td>@(rule.IsActive ? "ano" : "ne")</td>
+                <td style="width:1%">
+                    <form method="post" asp-page-handler="Toggle" class="inline-form">
+                        <input type="hidden" name="ruleId" value="@rule.Id" />
+                        <button class="btn btn-sm btn-ghost" type="submit">@(rule.IsActive ? "Deaktivovat" : "Aktivovat")</button>
+                    </form>
+                    <form method="post" asp-page-handler="Delete" class="inline-form">
+                        <input type="hidden" name="ruleId" value="@rule.Id" />
+                        <button class="btn btn-sm btn-danger" type="submit"
+                                onclick="return confirm('Smazat pravidlo pro @rule.Department?')">Smazat</button>
+                    </form>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Rules.Count == 0)
+    {
+        <p class="muted">Žádná pravidla.</p>
+    }
+</div>
+
+<div class="card" style="max-width:520px">
+    <h2 style="margin-top:0">Nové pravidlo</h2>
+    <form method="post" asp-page-handler="Create">
+        <label>Oddělení (přesná shoda s polem „oddělení" zaměstnance)</label>
+        <input type="text" name="department" placeholder="např. Chirurgie" required />
+        <label>Skupina čteček</label>
+        <select name="readerGroupId" required>
+            <option value="">— vyberte —</option>
+            @foreach (var group in Model.Groups)
+            {
+                <option value="@group.Id">@group.Name</option>
+            }
+        </select>
+        <button class="btn" type="submit">Vytvořit pravidlo</button>
+    </form>
+</div>

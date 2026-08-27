@@ -32,8 +32,11 @@ public record AccessSyncResult(int ExternallyGranted, int ExternallyRevoked, int
 /// čtečka ↔ access level přes Reader.AccessLevelExternalId (jeden access level
 /// může pokrývat více čteček).
 /// </summary>
-public class AccessSyncService(AcsDbContext db, WinPakClient winPak, AuditService audit)
+public class AccessSyncService(AcsDbContext db, WinPakClient winPak, AuditService audit,
+    Workflow.ReaderGroupService? groups = null)
 {
+    private Workflow.ReaderGroupService groupService => groups ?? new Workflow.ReaderGroupService(db);
+
     public const string SystemUserName = "winpak-sync";
 
     public async Task<AccessSyncResult> SyncAsync(string? userName, CancellationToken ct = default)
@@ -97,26 +100,54 @@ public class AccessSyncService(AcsDbContext db, WinPakClient winPak, AuditServic
                             && i.Request.Kind == RequestKind.Grant)
                 .ToListAsync(ct);
 
+            // Aktivní čtečky v ACS: jednotlivé položky + expanze aktivních skupinových položek.
+            var activeGroupIds = items
+                .Where(i => i.ReaderGroupId != null
+                            && i.Status is RequestStatus.PushedToWinPak or RequestStatus.ManuallyConfirmed)
+                .Select(i => i.ReaderGroupId!.Value)
+                .ToList();
             var activeReaderIds = items
-                .Where(i => i.Status is RequestStatus.PushedToWinPak or RequestStatus.ManuallyConfirmed)
-                .Select(i => i.ReaderId)
+                .Where(i => i.ReaderId != null
+                            && i.Status is RequestStatus.PushedToWinPak or RequestStatus.ManuallyConfirmed)
+                .Select(i => i.ReaderId!.Value)
                 .ToHashSet();
+            if (activeGroupIds.Count > 0)
+                activeReaderIds.UnionWith(await groupService.ExpandReaderIdsAsync(activeGroupIds, ct));
 
-            // 1) Automatické potvrzení položek z fronty, které už ve WIN-PAK jsou.
-            foreach (var item in items.Where(i => i.Status == RequestStatus.Approved
-                                                  && winPakReaderIds.Contains(i.ReaderId)))
+            // 1) Automatické potvrzení položek z fronty, které už ve WIN-PAK jsou
+            //    (skupinová položka jen pokud jsou ve WIN-PAK všechny její čtečky).
+            foreach (var item in items.Where(i => i.Status == RequestStatus.Approved))
             {
+                bool covered;
+                HashSet<int> coveredReaders;
+                if (item.ReaderId is not null)
+                {
+                    covered = winPakReaderIds.Contains(item.ReaderId.Value);
+                    coveredReaders = covered ? [item.ReaderId.Value] : [];
+                }
+                else
+                {
+                    var groupReaders = await groupService.ExpandReaderIdsAsync(item.ReaderGroupId!.Value, ct);
+                    covered = groupReaders.Count > 0 && groupReaders.IsSubsetOf(winPakReaderIds);
+                    coveredReaders = covered ? groupReaders : [];
+                }
+
+                if (!covered)
+                    continue;
+
                 item.Status = RequestStatus.ManuallyConfirmed;
                 item.PushedAt = DateTime.UtcNow;
                 item.PushResult = "zjištěno synchronizací — zadáno přímo ve WIN-PAK";
-                activeReaderIds.Add(item.ReaderId);
+                activeReaderIds.UnionWith(coveredReaders);
                 confirmed++;
             }
 
-            // 2) Externí odebrání: aktivní v ACS, ale už ne ve WIN-PAK.
+            // 2) Externí odebrání: aktivní jednotlivá čtečka v ACS, ale už ne ve WIN-PAK.
+            //    (Skupinové položky se neodebírají automaticky — částečné odebrání řeší správce.)
             foreach (var item in items.Where(i =>
-                         (i.Status is RequestStatus.PushedToWinPak or RequestStatus.ManuallyConfirmed)
-                         && !winPakReaderIds.Contains(i.ReaderId)))
+                         i.ReaderId != null
+                         && (i.Status is RequestStatus.PushedToWinPak or RequestStatus.ManuallyConfirmed)
+                         && !winPakReaderIds.Contains(i.ReaderId.Value)))
             {
                 item.Status = RequestStatus.Revoked;
                 item.PushResult = "odebráno přímo ve WIN-PAK (zjištěno synchronizací)";

@@ -1,0 +1,98 @@
+@page "{id:int}"
+@model Acs.Web.Pages.Catalog.Groups.EditModel
+@{
+    ViewData["Title"] = $"Skupina: {Model.Group.Name}";
+}
+<h1>@ViewData["Title"]</h1>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="settings-grid">
+<div class="card">
+    <h2 style="margin-top:0">Vlastnosti</h2>
+    <form method="post" asp-page-handler="Save">
+        <label>Název</label>
+        <input type="text" name="name" value="@Model.Group.Name" required />
+        <label>Popis</label>
+        <input type="text" name="description" value="@Model.Group.Description" />
+        <label>Schvalovací matice skupiny</label>
+        <select name="approvalMatrixId">
+            <option value="">— bez matice (schvaluje admin) —</option>
+            @foreach (var matrix in Model.Matrices)
+            {
+                <option value="@matrix.Id" selected="@(matrix.Id == Model.Group.ApprovalMatrixId)">@matrix.Name</option>
+            }
+        </select>
+        <div class="checkbox-row">
+            <input type="checkbox" id="isActive" name="isActive" value="true" checked="@Model.Group.IsActive" />
+            <label for="isActive">Aktivní</label>
+        </div>
+        <button class="btn" type="submit">Uložit</button>
+        <a class="btn btn-ghost" asp-page="Index">Zpět</a>
+    </form>
+
+    @if (Model.ParentGroups.Count > 0)
+    {
+        <p class="muted" style="margin-top:0.8rem">
+            Nadřazené skupiny (jejich matice se schvalují v dalších fázích):
+            @string.Join(" → ", Model.ParentGroups.Select(g => g.Name))
+        </p>
+    }
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">Členové (@Model.Group.Members.Count)</h2>
+    <table class="data">
+        @foreach (var member in Model.Group.Members)
+        {
+            <tr>
+                <td>
+                    @if (member.Reader is not null)
+                    {
+                        @member.Reader.Name
+                    }
+                    else
+                    {
+                        <span class="badge badge-primary">skupina</span> @member.ChildGroup?.Name
+                    }
+                </td>
+                <td style="width:1%">
+                    <form method="post" asp-page-handler="RemoveMember" class="inline-form">
+                        <input type="hidden" name="memberId" value="@member.Id" />
+                        <button class="btn btn-sm btn-ghost" type="submit">Odebrat</button>
+                    </form>
+                </td>
+            </tr>
+        }
+    </table>
+
+    <form method="post" asp-page-handler="AddReader" class="inline-form" style="display:block;margin-top:0.6rem">
+        <select name="readerId" style="max-width:300px;display:inline-block">
+            <option value="">— přidat čtečku —</option>
+            @foreach (var reader in Model.AvailableReaders)
+            {
+                <option value="@reader.Id">@reader.Name</option>
+            }
+        </select>
+        <button class="btn btn-sm" type="submit">Přidat čtečku</button>
+    </form>
+
+    <form method="post" asp-page-handler="AddChildGroup" class="inline-form" style="display:block;margin-top:0.4rem">
+        <select name="childGroupId" style="max-width:300px;display:inline-block">
+            <option value="">— přidat vnořenou skupinu —</option>
+            @foreach (var group in Model.AvailableGroups)
+            {
+                <option value="@group.Id">@group.Name</option>
+            }
+        </select>
+        <button class="btn btn-sm" type="submit">Přidat skupinu</button>
+    </form>
+</div>
+</div>

@@ -29,9 +29,11 @@
             @if (HasRole("CatalogManager"))
             {
                 <a asp-page="/Catalog/Readers/Index">Čtečky</a>
+                <a asp-page="/Catalog/Groups/Index">Skupiny</a>
                 <a asp-page="/Catalog/Employees/Index">Zaměstnanci</a>
                 <a asp-page="/Catalog/Places">Budovy</a>
                 <a asp-page="/Catalog/Matrices/Index">Matice</a>
+                <a asp-page="/Catalog/AutoRules">Auto-zařazení</a>
                 <a asp-page="/Reports">Reporty</a>
             }
             @if (HasRole("CardAdmin"))

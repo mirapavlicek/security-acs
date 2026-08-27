@@ -92,13 +92,16 @@
 <div class="card">
     <h2 style="margin-top:0">Zdroj zaměstnanců</h2>
     <form method="post" asp-page-handler="Employees">
-        <label>Režim</label>
+        <label>Režim (Ad = načítání z Active Directory; používá LDAP nastavení a servisní účet)</label>
         <select name="EmployeeSourceMode">
-            @foreach (var m in new[] { "None", "Mssql", "Api" })
+            @foreach (var m in new[] { "None", "Ad", "Mssql", "Api" })
             {
                 <option value="@m" selected="@(Model.Values[SettingKeys.EmployeeSourceMode] == m)">@m</option>
             }
         </select>
+        <label>LDAP filtr zaměstnanců (režim Ad; výchozí = aktivní uživatelé)</label>
+        <input type="text" name="EmployeeLdapFilter" value="@Model.Values[SettingKeys.EmployeeLdapFilter]"
+               placeholder="(&amp;(objectCategory=person)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))" />
         <label>MSSQL connection string (prázdné = ponechat)</label>
         <input type="password" name="EmployeeMssqlConnectionString" autocomplete="new-password" />
         <label>MSSQL dotaz (sloupce: ExternalId, PersonalNumber, FirstName, LastName, Email, Department, AdAccount, CardNumber)</label>
@@ -107,6 +110,25 @@
         <input type="text" name="EmployeeApiUrl" value="@Model.Values[SettingKeys.EmployeeApiUrl]" />
         <label>API klíč (prázdné = ponechat)</label>
         <input type="password" name="EmployeeApiKey" autocomplete="new-password" />
+        <button class="btn" type="submit">Uložit</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">Karty (MSSQL)</h2>
+    <p class="muted">Zaměstnanci se načítají z AD, čísla karet a WIN-PAK card holder id z SQL. Dotaz musí vracet sloupce: AdAccount nebo PersonalNumber (párování), CardNumber, volitelně WinPakCardHolderId.</p>
+    <form method="post" asp-page-handler="Cards">
+        <label>MSSQL connection string (prázdné = ponechat)</label>
+        <input type="password" name="CardsMssqlConnectionString" autocomplete="new-password" />
+        <label>SQL dotaz</label>
+        <textarea name="CardsMssqlQuery" rows="3">@Model.Values[SettingKeys.CardsMssqlQuery]</textarea>
+        <div class="checkbox-row">
+            <input type="checkbox" id="CardsSyncEnabled" name="CardsSyncEnabled" value="true"
+                   checked="@(Model.Values[SettingKeys.CardsSyncEnabled] == "true")" />
+            <label for="CardsSyncEnabled">Automatická synchronizace karet</label>
+        </div>
+        <label>Interval (minuty)</label>
+        <input type="number" name="CardsSyncIntervalMinutes" value="@Model.Values[SettingKeys.CardsSyncIntervalMinutes]" placeholder="60" />
         <button class="btn" type="submit">Uložit</button>
     </form>
 </div>

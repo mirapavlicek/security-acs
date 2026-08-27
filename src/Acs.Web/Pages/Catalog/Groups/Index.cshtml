@@ -1,0 +1,42 @@
+@page
+@model Acs.Web.Pages.Catalog.Groups.IndexModel
+@{
+    ViewData["Title"] = "Skupiny čteček";
+}
+<h1>Skupiny čteček</h1>
+<p class="muted">Skupina může obsahovat čtečky i vnořené skupiny. Žádost o skupinu prochází maticí skupiny a poté maticemi všech nadřazených skupin (vnořené schvalování).</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+
+<div class="card">
+    <table class="data">
+        <thead><tr><th>Název</th><th>Matice</th><th>Čteček (rekurzivně)</th><th>Aktivní</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var group in Model.Groups)
+        {
+            <tr>
+                <td>@group.Name <span class="muted">@group.Description</span></td>
+                <td>@(group.ApprovalMatrix?.Name ?? "— (schvaluje admin)")</td>
+                <td>@Model.ReaderCounts.GetValueOrDefault(group.Id)</td>
+                <td>@(group.IsActive ? "ano" : "ne")</td>
+                <td><a class="btn btn-sm btn-ghost" asp-page="Edit" asp-route-id="@group.Id">Upravit</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Groups.Count == 0)
+    {
+        <p class="muted">Zatím žádné skupiny.</p>
+    }
+</div>
+
+<div class="card" style="max-width:480px">
+    <h2 style="margin-top:0">Nová skupina</h2>
+    <form method="post" asp-page-handler="Create">
+        <input type="text" name="name" placeholder="Název skupiny (např. Chirurgie)" required />
+        <button class="btn" type="submit">Vytvořit</button>
+    </form>
+</div>
