@@ -1,0 +1,44 @@
+@page
+@model Acs.Web.Pages.Admin.ImportPlanModel
+@{
+    ViewData["Title"] = "Import z DPS plánů";
+}
+<h1>Import struktury z DPS plánů</h1>
+<p class="muted">
+    Jednorázové naplnění číselníků z výkresů (JSON vytvořený skriptem
+    <code>import/moc/extract.py</code>). Import je <strong>idempotentní</strong> — existující
+    záznamy podle čísla místnosti / názvu čtečky se aktualizují, nové se založí,
+    nic se nemaže. Čtečky se přiřazují k místnosti podle nejbližšího popisku ve výkresu;
+    sporné případy lze doladit ručně v číselníku.
+</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success" style="white-space:pre-line">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error" style="white-space:pre-line">@Model.ErrorMessage</div>
+}
+
+<div class="card" style="max-width:760px">
+    <form method="post" enctype="multipart/form-data">
+        <label>Název budovy</label>
+        <input type="text" name="buildingName" value="MOC" required />
+
+        <label>Soubor rooms.json z extraktoru</label>
+        <input type="file" name="file" accept="application/json,.json" required />
+
+        <div class="checkbox-row">
+            <input type="checkbox" id="dryRun" name="dryRun" value="true" checked />
+            <label for="dryRun">Jen náhled (nic se neuloží)</label>
+        </div>
+        <div class="checkbox-row">
+            <input type="checkbox" id="preferNonCorridor" name="preferNonCorridor" value="true" checked />
+            <label for="preferNonCorridor">Čtečku přiřadit přednostně k nechodbové místnosti (čtečka bývá u dveří do místnosti)</label>
+        </div>
+
+        <button class="btn" type="submit">Spustit import</button>
+        <a class="btn btn-ghost" asp-page="/Catalog/Places">Budovy</a>
+    </form>
+</div>

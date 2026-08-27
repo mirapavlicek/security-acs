@@ -175,6 +175,13 @@
     </div>
 }
 
+@if (User.IsInRole("Admin"))
+{
+    <p class="muted">
+        Hromadné naplnění z projektových výkresů: <a asp-page="/Admin/ImportPlan">Import z DPS plánů</a>.
+    </p>
+}
+
 <div class="card" style="max-width:480px">
     <h2 style="margin-top:0">Nová budova</h2>
     <form method="post" asp-page-handler="AddBuilding">

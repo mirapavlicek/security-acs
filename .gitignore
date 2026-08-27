@@ -490,3 +490,6 @@ deploy/acs.env
 !deploy/bin/**
 *.db-shm
 *.db-wal
+
+# Zdrojové PDF výkresů (velké, nejsou potřeba v repozitáři — stačí vyextrahovaný rooms.json)
+import/moc/pdf/
