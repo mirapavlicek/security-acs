@@ -66,6 +66,7 @@ builder.Services.AddScoped<Acs.Infrastructure.Sync.CardSyncService>();
 builder.Services.AddScoped<Acs.Infrastructure.Sync.AutoAssignmentService>();
 builder.Services.AddScoped<Acs.Infrastructure.Automation.AutomationService>();
 builder.Services.AddScoped<Acs.Infrastructure.Automation.HealthCheckService>();
+builder.Services.AddScoped<Acs.Infrastructure.Import.PlanImportService>();
 builder.Services.AddScoped<Acs.Infrastructure.Sync.EmployeeSourceFactory>();
 builder.Services.AddHttpClient(nameof(Acs.Infrastructure.Sync.ApiEmployeeSource));
 builder.Services.AddHostedService<Acs.Infrastructure.Sync.SyncScheduler>();
@@ -155,6 +156,36 @@ using (var scope = app.Services.CreateScope())
     var bootstrapAdminPassword = builder.Configuration["Admin:BootstrapPassword"]
         ?? Environment.GetEnvironmentVariable("ACS_BOOTSTRAP_ADMIN_PASSWORD");
     await DatabaseInitializer.InitializeAsync(db, initLogger, bootstrapAdminPassword);
+}
+
+// ---------- Jednorázový import z DPS plánů (CLI) ----------
+// Použití: Acs.Web --import-plan <rooms.json> [--building MOC] [--dry-run]
+//          [--prefer-corridor]   (výchozí je přiřazovat čtečky k nechodbovým místnostem)
+if (args.Contains("--import-plan"))
+{
+    var idx = Array.IndexOf(args, "--import-plan");
+    var path = idx + 1 < args.Length ? args[idx + 1] : null;
+    if (path is null || !File.Exists(path))
+    {
+        Console.Error.WriteLine($"Soubor s daty nenalezen: {path ?? "(nezadán)"}");
+        return 2;
+    }
+
+    var buildingIdx = Array.IndexOf(args, "--building");
+    var buildingName = buildingIdx >= 0 && buildingIdx + 1 < args.Length ? args[buildingIdx + 1] : "MOC";
+
+    using var importScope = app.Services.CreateScope();
+    var importer = importScope.ServiceProvider
+        .GetRequiredService<Acs.Infrastructure.Import.PlanImportService>();
+    await using var planStream = File.OpenRead(path);
+    var plan = Acs.Infrastructure.Import.PlanImportService.Parse(planStream);
+    var importResult = await importer.ImportAsync(
+        plan, buildingName,
+        dryRun: args.Contains("--dry-run"),
+        preferNonCorridor: !args.Contains("--prefer-corridor"),
+        userName: "cli");
+    Console.WriteLine(importResult);
+    return 0;
 }
 
 app.UseForwardedHeaders();
@@ -250,6 +281,7 @@ app.MapGet("/floors/{id:int}/schema", async (int id, AcsDbContext db) =>
 app.MapRazorPages();
 
 app.Run();
+return 0;
 
 /// <summary>Zpřístupnění pro integrační testy (WebApplicationFactory).</summary>
 public partial class Program;
