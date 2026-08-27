@@ -74,21 +74,27 @@ public class PlanImportService(AcsDbContext db, AuditService audit)
         List<PlanFloor> plan, string buildingName, bool dryRun, bool preferNonCorridor,
         string? userName, CancellationToken ct = default)
     {
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-        try
+        // Na MariaDB je zapnutá retry strategie, která vlastní transakce povoluje
+        // jen uvnitř ExecuteAsync — celý import proto běží jako jedna opakovatelná jednotka.
+        var strategy = db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
         {
-            var result = await RunAsync(plan, buildingName, dryRun, preferNonCorridor, userName, ct);
-            if (dryRun)
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            try
+            {
+                var result = await RunAsync(plan, buildingName, dryRun, preferNonCorridor, userName, ct);
+                if (dryRun)
+                    await tx.RollbackAsync(ct);
+                else
+                    await tx.CommitAsync(ct);
+                return result;
+            }
+            catch
+            {
                 await tx.RollbackAsync(ct);
-            else
-                await tx.CommitAsync(ct);
-            return result;
-        }
-        catch
-        {
-            await tx.RollbackAsync(ct);
-            throw;
-        }
+                throw;
+            }
+        });
     }
 
     private async Task<PlanImportResult> RunAsync(
