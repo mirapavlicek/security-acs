@@ -1,7 +1,12 @@
-﻿@{
+﻿@inject Acs.Infrastructure.Notifications.AttentionService Attention
+@{
     var theme = Context.Request.Cookies["acs-theme"] ?? "light";
     var isAuthenticated = User.Identity?.IsAuthenticated == true;
     bool HasRole(string role) => User.IsInRole("Admin") || User.IsInRole(role);
+
+    var attention = isAuthenticated
+        ? await Attention.GetAsync(User, Context.RequestAborted)
+        : new Acs.Infrastructure.Notifications.AttentionCounts(0, 0, 0);
 }
 <!DOCTYPE html>
 <html lang="cs" data-theme="@theme">
@@ -22,7 +27,13 @@
     {
         <nav class="mainnav">
             <a asp-page="/Index">Přehled</a>
-            <a asp-page="/Requests/Index">Žádosti</a>
+            <a asp-page="/Requests/Index">
+                Žádosti
+                @if (attention.PendingApprovals > 0)
+                {
+                    <span class="nav-badge" title="@attention.PendingApprovals položek čeká na vaše schválení">@attention.PendingApprovals</span>
+                }
+            </a>
             <a asp-page="/MyAccess">Moje přístupy</a>
             <a asp-page="/Plans">Plány</a>
             <a asp-page="/Deputies">Zástupy</a>
@@ -38,7 +49,13 @@
             }
             @if (HasRole("CardAdmin"))
             {
-                <a asp-page="/CardQueue">Fronta karet</a>
+                <a asp-page="/CardQueue">
+                    Fronta karet
+                    @if (attention.CardQueue > 0)
+                    {
+                        <span class="nav-badge" title="@attention.CardQueue položek čeká na zadání do WIN-PAK">@attention.CardQueue</span>
+                    }
+                </a>
             }
             @if (User.IsInRole("Admin"))
             {
