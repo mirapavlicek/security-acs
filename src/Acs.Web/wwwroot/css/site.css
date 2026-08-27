@@ -102,7 +102,33 @@ body {
 .nav-soon { color: var(--muted); padding: 0.35rem 0.6rem; cursor: not-allowed; opacity: 0.6; }
 
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 0.8rem; }
-.user-badge { color: var(--muted); font-size: 0.9rem; }
+
+/* Jméno vpravo nahoře je zároveň nabídka osobního nastavení. */
+.usermenu { position: relative; }
+.user-badge {
+  color: var(--muted); font-size: 0.9rem; cursor: pointer; white-space: nowrap;
+  list-style: none; padding: 0.3rem 0.6rem; border: 1px solid var(--border); border-radius: 6px;
+}
+.user-badge::-webkit-details-marker { display: none; }
+.user-badge::after { content: " ▾"; }
+.user-badge:hover { color: var(--primary); border-color: var(--primary); }
+.usermenu[open] > .user-badge { color: var(--primary); border-color: var(--primary); }
+.usermenu-panel {
+  position: absolute; right: 0; top: calc(100% + 0.4rem); z-index: 30;
+  min-width: 200px; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 0.35rem; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.usermenu-header {
+  color: var(--muted); font-size: 0.78rem; padding: 0.3rem 0.6rem 0.45rem;
+  border-bottom: 1px solid var(--border); margin-bottom: 0.35rem; overflow-wrap: anywhere;
+}
+.usermenu-panel a {
+  color: var(--text); text-decoration: none; padding: 0.45rem 0.6rem; border-radius: 6px; font-size: 0.9rem;
+}
+.usermenu-panel a:hover { background: var(--bg); color: var(--primary); }
+.usermenu-panel form { margin-top: 0.35rem; border-top: 1px solid var(--border); padding-top: 0.35rem; }
+.usermenu-panel form .btn { width: 100%; margin-top: 0; }
 .theme-form select {
   background: var(--surface); color: var(--text);
   border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem 0.4rem;

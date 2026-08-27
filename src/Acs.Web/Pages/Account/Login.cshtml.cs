@@ -50,6 +50,8 @@ public class LoginModel(UserAuthenticationService auth, AuditService audit) : Pa
         };
         if (user.DisplayName is not null)
             claims.Add(new Claim("display_name", user.DisplayName));
+        if (user.IsLocal)
+            claims.Add(new Claim("is_local", "1"));   // heslo lze měnit jen u lokálních účtů, AD spravuje doména
         if (user.MustChangePassword)
             claims.Add(new Claim("must_change_password", "1"));
 
