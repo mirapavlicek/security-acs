@@ -10,28 +10,54 @@
 {
     <div class="alert alert-success">@Model.Message</div>
 }
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
 
-<div class="card">
-    <table class="data">
-        <thead><tr><th>Název</th><th>Matice</th><th>Čteček (rekurzivně)</th><th>Aktivní</th><th></th></tr></thead>
-        <tbody>
-        @foreach (var group in Model.Groups)
-        {
+<form method="post" id="bulk-form">
+    <div class="card bulkbar">
+        <strong>Hromadné přiřazení matice</strong>
+        <select name="matrixId" id="bulk-matrix">
+            <option value="">— bez vlastní matice —</option>
+            @foreach (var matrix in Model.Matrices)
+            {
+                <option value="@matrix.Id">@matrix.Name</option>
+            }
+        </select>
+        <button class="btn btn-sm" type="submit" asp-page-handler="Assign" id="bulk-assign" disabled>
+            Přiřadit označeným (<span id="bulk-count">0</span>)
+        </button>
+    </div>
+
+    <div class="card">
+        <table class="data">
+            <thead>
             <tr>
-                <td>@group.Name <span class="muted">@group.Description</span></td>
-                <td>@(group.ApprovalMatrix?.Name ?? "— (schvaluje admin)")</td>
-                <td>@Model.ReaderCounts.GetValueOrDefault(group.Id)</td>
-                <td>@(group.IsActive ? "ano" : "ne")</td>
-                <td><a class="btn btn-sm btn-ghost" asp-page="Edit" asp-route-id="@group.Id">Upravit</a></td>
+                <th style="width:1%"><input type="checkbox" id="check-all" title="Označit vše" /></th>
+                <th>Název</th><th>Matice</th><th>Čteček (rekurzivně)</th><th>Aktivní</th><th></th>
             </tr>
+            </thead>
+            <tbody>
+            @foreach (var group in Model.Groups)
+            {
+                <tr>
+                    <td><input type="checkbox" name="groupIds" value="@group.Id" class="row-check" /></td>
+                    <td>@group.Name <span class="muted">@group.Description</span></td>
+                    <td>@(group.ApprovalMatrix?.Name ?? "— (schvaluje admin)")</td>
+                    <td>@Model.ReaderCounts.GetValueOrDefault(group.Id)</td>
+                    <td>@(group.IsActive ? "ano" : "ne")</td>
+                    <td><a class="btn btn-sm btn-ghost" asp-page="Edit" asp-route-id="@group.Id">Upravit</a></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (Model.Groups.Count == 0)
+        {
+            <p class="muted">Zatím žádné skupiny.</p>
         }
-        </tbody>
-    </table>
-    @if (Model.Groups.Count == 0)
-    {
-        <p class="muted">Zatím žádné skupiny.</p>
-    }
-</div>
+    </div>
+</form>
 
 <div class="card" style="max-width:480px">
     <h2 style="margin-top:0">Nová skupina</h2>
@@ -40,3 +66,7 @@
         <button class="btn" type="submit">Vytvořit</button>
     </form>
 </div>
+
+@section Scripts {
+    <script src="~/js/bulk-select.js" asp-append-version="true"></script>
+}

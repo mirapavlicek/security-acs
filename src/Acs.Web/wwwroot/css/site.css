@@ -102,7 +102,33 @@ body {
 .nav-soon { color: var(--muted); padding: 0.35rem 0.6rem; cursor: not-allowed; opacity: 0.6; }
 
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 0.8rem; }
-.user-badge { color: var(--muted); font-size: 0.9rem; }
+
+/* Jméno vpravo nahoře je zároveň nabídka osobního nastavení. */
+.usermenu { position: relative; }
+.user-badge {
+  color: var(--muted); font-size: 0.9rem; cursor: pointer; white-space: nowrap;
+  list-style: none; padding: 0.3rem 0.6rem; border: 1px solid var(--border); border-radius: 6px;
+}
+.user-badge::-webkit-details-marker { display: none; }
+.user-badge::after { content: " ▾"; }
+.user-badge:hover { color: var(--primary); border-color: var(--primary); }
+.usermenu[open] > .user-badge { color: var(--primary); border-color: var(--primary); }
+.usermenu-panel {
+  position: absolute; right: 0; top: calc(100% + 0.4rem); z-index: 30;
+  min-width: 200px; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 0.35rem; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.usermenu-header {
+  color: var(--muted); font-size: 0.78rem; padding: 0.3rem 0.6rem 0.45rem;
+  border-bottom: 1px solid var(--border); margin-bottom: 0.35rem; overflow-wrap: anywhere;
+}
+.usermenu-panel a {
+  color: var(--text); text-decoration: none; padding: 0.45rem 0.6rem; border-radius: 6px; font-size: 0.9rem;
+}
+.usermenu-panel a:hover { background: var(--bg); color: var(--primary); }
+.usermenu-panel form { margin-top: 0.35rem; border-top: 1px solid var(--border); padding-top: 0.35rem; }
+.usermenu-panel form .btn { width: 100%; margin-top: 0; }
 .theme-form select {
   background: var(--surface); color: var(--text);
   border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem 0.4rem;
@@ -169,12 +195,40 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); o
 
 .inline-form { display: inline; }
 
+/* Řádek filtrů nad tabulkou a lišta hromadné akce (drží se nahoře i při rolování). */
+.filterbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.filterbar input, .filterbar select { display: inline-block; width: auto; margin: 0; }
+.bulkbar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem;
+  padding: 0.7rem 1rem;
+}
+.bulkbar select { display: inline-block; width: auto; max-width: 260px; margin: 0; }
+.bulkbar .btn { margin-top: 0; }
+
+/* Rozbalovací strom budov — obsah se dotahuje až po kliknutí. */
+details.tree-node > summary {
+  cursor: pointer; padding: 0.5rem 0.2rem; list-style: none;
+  border-bottom: 1px solid var(--border);
+}
+details.tree-node > summary::-webkit-details-marker { display: none; }
+details.tree-node > summary::before { content: "▸ "; color: var(--muted); }
+details.tree-node[open] > summary::before { content: "▾ "; }
+details.tree-node > summary:hover { background: color-mix(in srgb, var(--primary) 6%, var(--surface)); }
+details.tree-floor { margin-left: 1rem; }
+details.tree-node > .tree-body { padding: 0.4rem 0 0.6rem 1rem; }
+
 table.data { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 8px; overflow: hidden; }
 table.data th, table.data td { text-align: left; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--border); font-size: 0.92rem; overflow-wrap: anywhere; }
 table.data th { background: var(--bg); color: var(--muted); font-weight: 600; }
 table.data tr:hover td { background: color-mix(in srgb, var(--primary) 6%, var(--surface)); }
 
+/* Odkazy v textu — výchozí modrá prohlížeče je na tmavém motivu nečitelná. */
+a { color: var(--primary); }
+a:hover { text-decoration: underline; }
+
 .alert { padding: 0.7rem 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid; }
+.alert a { color: inherit; text-decoration: underline; }
 .alert-error { color: var(--danger); border-color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }
 .alert-success { color: var(--success); border-color: var(--success); background: color-mix(in srgb, var(--success) 8%, var(--surface)); }
 

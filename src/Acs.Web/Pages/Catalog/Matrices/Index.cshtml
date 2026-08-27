@@ -4,17 +4,30 @@
     ViewData["Title"] = "Schvalovací matice";
 }
 <h1>Schvalovací matice</h1>
-<p class="muted">Matice definuje, kdo a v jakém pořadí schvaluje žádost. Čtečkám se přiřazuje v editaci čtečky; jedna matice může sloužit více čtečkám.</p>
+<p class="muted">
+    Matice definuje, kdo a v jakém pořadí schvaluje žádost. Jedna matice může sloužit více čtečkám i skupinám —
+    hromadně se přiřazuje zaškrtnutím řádků v seznamu <a asp-page="/Catalog/Readers/Index">čteček</a>
+    nebo <a asp-page="/Catalog/Groups/Index">skupin</a>.
+</p>
 
 @if (Model.Message is not null)
 {
     <div class="alert alert-success">@Model.Message</div>
 }
 
+@if (Model.ReadersWithoutMatrix > 0)
+{
+    <div class="alert alert-error">
+        Bez matice je @Model.ReadersWithoutMatrix čteček — žádosti o ně smí schválit jen administrátor.
+        <a asp-page="/Catalog/Readers/Index"
+           asp-route-matrix="@Acs.Web.Pages.Catalog.Readers.IndexModel.NoMatrixFilter">Přiřadit jim matici hromadně</a>.
+    </div>
+}
+
 <div class="card">
     <table class="data">
         <thead>
-        <tr><th>Název</th><th>Úrovní</th><th>Používá čteček</th><th>Aktivní</th><th></th></tr>
+        <tr><th>Název</th><th>Úrovní</th><th>Používá čteček</th><th>Používá skupin</th><th>Aktivní</th><th></th></tr>
         </thead>
         <tbody>
         @foreach (var matrix in Model.Matrices)
@@ -22,7 +35,11 @@
             <tr>
                 <td>@matrix.Name <span class="muted">@matrix.Description</span></td>
                 <td>@matrix.Levels.Count</td>
-                <td>@Model.UsageCounts.GetValueOrDefault(matrix.Id)</td>
+                <td>
+                    @Model.UsageCounts.GetValueOrDefault(matrix.Id)
+                    <a asp-page="/Catalog/Readers/Index" asp-route-matrix="@matrix.Id">zobrazit</a>
+                </td>
+                <td>@Model.GroupUsageCounts.GetValueOrDefault(matrix.Id)</td>
                 <td>@(matrix.IsActive ? "ano" : "ne")</td>
                 <td><a class="btn btn-sm btn-ghost" asp-page="Edit" asp-route-id="@matrix.Id">Upravit</a></td>
             </tr>

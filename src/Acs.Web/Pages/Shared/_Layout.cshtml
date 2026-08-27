@@ -36,7 +36,6 @@
             </a>
             <a asp-page="/MyAccess">Moje přístupy</a>
             <a asp-page="/Plans">Plány</a>
-            <a asp-page="/Deputies">Zástupy</a>
             @if (HasRole("CatalogManager"))
             {
                 <a asp-page="/Catalog/Readers/Index">Čtečky</a>
@@ -83,10 +82,22 @@
 
         @if (isAuthenticated)
         {
-            <span class="user-badge" title="@User.Identity!.Name">@(User.FindFirst("display_name")?.Value ?? User.Identity!.Name)</span>
-            <form method="post" asp-page="/Account/Login" asp-page-handler="Logout" class="inline-form">
-                <button type="submit" class="btn btn-ghost">Odhlásit</button>
-            </form>
+            <details class="usermenu">
+                <summary class="user-badge" title="@User.Identity!.Name">
+                    @(User.FindFirst("display_name")?.Value ?? User.Identity!.Name)
+                </summary>
+                <div class="usermenu-panel">
+                    <span class="usermenu-header">@User.Identity!.Name</span>
+                    <a asp-page="/Deputies">Zástupy</a>
+                    @if (User.HasClaim("is_local", "1"))
+                    {
+                        <a asp-page="/Account/ChangePassword">Změna hesla</a>
+                    }
+                    <form method="post" asp-page="/Account/Login" asp-page-handler="Logout">
+                        <button type="submit" class="btn btn-ghost">Odhlásit</button>
+                    </form>
+                </div>
+            </details>
         }
     </div>
 </header>
@@ -98,6 +109,15 @@
 <footer class="footer">
     <span>ACS · acs.fnmh.network</span>
 </footer>
+<script>
+// Menu uživatele se zavře kliknutím jinam nebo klávesou Esc.
+(() => {
+    const menu = document.querySelector('details.usermenu');
+    if (!menu) return;
+    document.addEventListener('click', e => { if (!menu.contains(e.target)) menu.open = false; });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') menu.open = false; });
+})();
+</script>
 @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

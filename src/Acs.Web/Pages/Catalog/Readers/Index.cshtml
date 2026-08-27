@@ -16,39 +16,136 @@
 }
 
 <div class="card">
-    <form method="get" class="inline-form">
-        <input type="text" name="search" value="@Model.Search" placeholder="Hledat podle názvu, panelu…" style="max-width:300px;display:inline-block" />
-        <button class="btn btn-sm" type="submit">Hledat</button>
+    <form method="get" class="filterbar">
+        <input type="text" name="search" value="@Model.Search" placeholder="Hledat podle názvu, panelu…" style="max-width:240px" />
+        <select name="buildingId" onchange="this.form.submit()">
+            <option value="">— budova —</option>
+            @foreach (var building in Model.Buildings)
+            {
+                <option value="@building.Id" selected="@(building.Id == Model.BuildingId)">@building.Name</option>
+            }
+        </select>
+        <select name="floorId">
+            <option value="">— patro —</option>
+            @foreach (var floor in Model.Floors)
+            {
+                <option value="@floor.Id" selected="@(floor.Id == Model.FloorId)">@floor.Building?.Name / @floor.Name</option>
+            }
+        </select>
+        <select name="groupId">
+            <option value="">— skupina —</option>
+            @foreach (var group in Model.Groups)
+            {
+                <option value="@group.Id" selected="@(group.Id == Model.GroupId)">@group.Name</option>
+            }
+        </select>
+        <select name="matrix">
+            <option value="">— matice: všechny —</option>
+            <option value="@Acs.Web.Pages.Catalog.Readers.IndexModel.NoMatrixFilter"
+                    selected="@(Model.Matrix == Acs.Web.Pages.Catalog.Readers.IndexModel.NoMatrixFilter)">
+                bez matice
+            </option>
+            @foreach (var matrix in Model.Matrices)
+            {
+                <option value="@matrix.Id" selected="@(Model.Matrix == matrix.Id.ToString())">@matrix.Name</option>
+            }
+        </select>
+        <button class="btn btn-sm" type="submit">Filtrovat</button>
+        @if (Model.HasFilter)
+        {
+            <a class="btn btn-sm btn-ghost" asp-page="Index">Zrušit filtr</a>
+        }
     </form>
-    <form method="post" asp-page-handler="Sync" class="inline-form" style="float:right">
-        <button class="btn btn-sm" type="submit">Synchronizovat z WIN-PAK</button>
-    </form>
-    <a class="btn btn-sm btn-ghost" style="float:right;margin-right:0.5rem" asp-page="Edit">+ Nová čtečka</a>
+    <div style="margin-top:0.6rem">
+        <a class="btn btn-sm btn-ghost" asp-page="Edit">+ Nová čtečka</a>
+        <form method="post" asp-page-handler="Sync" class="inline-form">
+            @Html.Hidden("search", Model.Search)
+            @Html.Hidden("buildingId", Model.BuildingId)
+            @Html.Hidden("floorId", Model.FloorId)
+            @Html.Hidden("groupId", Model.GroupId)
+            @Html.Hidden("matrix", Model.Matrix)
+            <button class="btn btn-sm btn-ghost" type="submit">Synchronizovat z WIN-PAK</button>
+        </form>
+    </div>
 </div>
 
-<div class="card">
-    <table class="data">
-        <thead>
-        <tr><th>Název</th><th>Panel</th><th>Umístění</th><th>Zdroj</th><th>Vyžaduje</th><th>Aktivní</th><th>Synchronizováno</th><th></th></tr>
-        </thead>
-        <tbody>
-        @foreach (var reader in Model.Readers)
-        {
+<form method="post" id="bulk-form">
+    @Html.Hidden("search", Model.Search)
+    @Html.Hidden("buildingId", Model.BuildingId)
+    @Html.Hidden("floorId", Model.FloorId)
+    @Html.Hidden("groupId", Model.GroupId)
+    @Html.Hidden("matrix", Model.Matrix)
+
+    <div class="card bulkbar">
+        <strong>Hromadné přiřazení matice</strong>
+        <select name="matrixId" id="bulk-matrix">
+            <option value="">— bez schvalování —</option>
+            @foreach (var matrix in Model.Matrices)
+            {
+                <option value="@matrix.Id">@matrix.Name</option>
+            }
+        </select>
+        <button class="btn btn-sm" type="submit" asp-page-handler="Assign" id="bulk-assign" disabled>
+            Přiřadit označeným (<span id="bulk-count">0</span>)
+        </button>
+        <button class="btn btn-sm btn-ghost" type="submit" asp-page-handler="AssignFiltered"
+                onclick="return confirm('Nastavit vybranou matici u všech @Model.Readers.Count čteček podle aktuálního filtru?')">
+            Přiřadit všem podle filtru (@Model.Readers.Count)
+        </button>
+        <span class="muted">
+            @if (Model.HasFilter)
+            {
+                <text>Filtr zúžil výpis na @Model.Readers.Count čteček.</text>
+            }
+            else
+            {
+                <text>Bez filtru — druhé tlačítko změní všechny čtečky v katalogu.</text>
+            }
+        </span>
+    </div>
+
+    <div class="card">
+        <table class="data">
+            <thead>
             <tr>
-                <td>@reader.Name</td>
-                <td class="muted">@reader.PanelName</td>
-                <td>@reader.LocationPath()</td>
-                <td><span class="badge">@(reader.Source == RecordSource.Imported ? "WIN-PAK" : "ruční")</span></td>
-                <td class="muted">@string.Join(", ", reader.Dependencies.Select(d => d.RequiresReader?.Name))</td>
-                <td>@(reader.IsActive ? "ano" : "ne")</td>
-                <td class="muted">@(reader.LastSyncedAt?.ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
-                <td><a class="btn btn-sm btn-ghost" asp-page="Edit" asp-route-id="@reader.Id">Upravit</a></td>
+                <th style="width:1%"><input type="checkbox" id="check-all" title="Označit vše" /></th>
+                <th>Název</th><th>Panel</th><th>Umístění</th><th>Matice</th>
+                <th>Zdroj</th><th>Vyžaduje</th><th>Aktivní</th><th></th>
             </tr>
+            </thead>
+            <tbody>
+            @foreach (var reader in Model.Readers)
+            {
+                <tr>
+                    <td><input type="checkbox" name="readerIds" value="@reader.Id" class="row-check" /></td>
+                    <td>@reader.Name</td>
+                    <td class="muted">@reader.PanelName</td>
+                    <td>@reader.LocationPath()</td>
+                    <td>
+                        @if (reader.ApprovalMatrix is null)
+                        {
+                            <span class="muted">— (schvaluje admin)</span>
+                        }
+                        else
+                        {
+                            <span class="badge @(reader.ApprovalMatrix.IsActive ? "badge-primary" : "")">@reader.ApprovalMatrix.Name</span>
+                        }
+                    </td>
+                    <td><span class="badge">@(reader.Source == RecordSource.Imported ? "WIN-PAK" : "ruční")</span></td>
+                    <td class="muted">@string.Join(", ", reader.Dependencies.Select(d => d.RequiresReader?.Name))</td>
+                    <td>@(reader.IsActive ? "ano" : "ne")</td>
+                    <td><a class="btn btn-sm btn-ghost" asp-page="Edit" asp-route-id="@reader.Id">Upravit</a></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (Model.Readers.Count == 0)
+        {
+            <p class="muted">Žádné čtečky neodpovídají filtru. Zkuste filtr zrušit, nebo spusťte synchronizaci z WIN-PAK.</p>
         }
-        </tbody>
-    </table>
-    @if (Model.Readers.Count == 0)
-    {
-        <p class="muted">Žádné čtečky. Spusťte synchronizaci z WIN-PAK, nebo přidejte čtečku ručně.</p>
-    }
-</div>
+    </div>
+</form>
+
+@section Scripts {
+    <script src="~/js/bulk-select.js" asp-append-version="true"></script>
+}

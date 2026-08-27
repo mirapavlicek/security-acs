@@ -126,6 +126,51 @@ public class WebAppTests(AcsWebFactory factory) : IClassFixture<AcsWebFactory>
         Assert.Contains("Neplatné přihlašovací údaje", body);
     }
 
+    [Fact]
+    public async Task Zastupy_Jsou_V_Menu_Uzivatele_A_Ne_V_Hlavni_Navigaci()
+    {
+        const string knownPassword = "Znam3Heslo!Menu";
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Acs.Infrastructure.Data.AcsDbContext>();
+            var admin = await db.Users.FirstAsync(u => u.UserName == "admin");
+            admin.PasswordHash = Acs.Infrastructure.Auth.PasswordHasher.Hash(knownPassword);
+            admin.MustChangePassword = false;
+            await db.SaveChangesAsync();
+        }
+
+        var client = CreateClientWithCookies(allowRedirects: true);
+        var loginPage = await client.GetStringAsync("/Account/Login");
+        await client.PostAsync("/Account/Login", new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                ["UserName"] = "admin",
+                ["Password"] = knownPassword,
+                ["__RequestVerificationToken"] = ExtractAntiforgeryToken(loginPage),
+            }));
+
+        var body = await client.GetStringAsync("/");
+
+        var mainNav = ExtractBlock(body, "class=\"mainnav\"", "</nav>");
+        Assert.DoesNotContain("Zástupy", mainNav);
+
+        var userMenu = ExtractBlock(body, "class=\"usermenu-panel\"", "</details>");
+        Assert.Contains("/Deputies", userMenu);
+        Assert.Contains("Zástupy", userMenu);
+        Assert.Contains("Odhlásit", userMenu);
+        // Lokální účet smí měnit heslo; u AD účtů se položka nenabízí.
+        Assert.Contains("/Account/ChangePassword", userMenu);
+    }
+
+    private static string ExtractBlock(string html, string start, string end)
+    {
+        var from = html.IndexOf(start, StringComparison.Ordinal);
+        Assert.True(from >= 0, $"Blok '{start}' nenalezen.");
+        var to = html.IndexOf(end, from, StringComparison.Ordinal);
+        Assert.True(to > from, $"Konec bloku '{end}' nenalezen.");
+        return html[from..to];
+    }
+
     private static string ExtractAntiforgeryToken(string html)
     {
         var match = Regex.Match(html,

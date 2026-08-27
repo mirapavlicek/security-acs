@@ -6,8 +6,7 @@
 <h1>Budovy — části, patra, chodby a místnosti</h1>
 <p class="muted">
     Hierarchie: budova (MOC) → část (G) → patro (-1, P) → chodba (A100) → místnost (M1000).
-    Chodby se mohou řetězit (chodba → nadřazená chodba); žádost o čtečku místnosti pak
-    automaticky přidá čtečky celého řetězu chodeb.
+    Obsah se načítá až po rozbalení, aby se velké budovy otevíraly rychle.
 </p>
 
 @if (Model.Message is not null)
@@ -19,167 +18,38 @@
     <div class="alert alert-error">@Model.ErrorMessage</div>
 }
 
-@foreach (var building in Model.Buildings)
-{
-    <div class="card">
-        <h2 style="margin-top:0">@building.Name
-            <form method="post" asp-page-handler="DeleteBuilding" class="inline-form" style="float:right">
-                <input type="hidden" name="buildingId" value="@building.Id" />
-                <button class="btn btn-sm btn-danger" type="submit"
-                        onclick="return confirm('Smazat budovu @building.Name včetně částí, pater, chodeb a místností?')">Smazat budovu</button>
-            </form>
-        </h2>
-
-        <h4 style="margin:0.4rem 0 0.2rem">Části budovy</h4>
-        @if (building.Sections.Count > 0)
-        {
-            <table class="data" style="margin-bottom:0.4rem">
-                @foreach (var sec in building.Sections.OrderBy(s => s.SortOrder))
-                {
-                    <tr>
-                        <td>@sec.Name <span class="muted">(pater: @sec.Floors.Count)</span></td>
-                        <td style="width:1%">
-                            <form method="post" asp-page-handler="DeleteSection" class="inline-form">
-                                <input type="hidden" name="sectionId" value="@sec.Id" />
-                                <button class="btn btn-sm btn-ghost" type="submit">Smazat</button>
-                            </form>
-                        </td>
-                    </tr>
-                }
-            </table>
-        }
-        <form method="post" asp-page-handler="AddSection" class="inline-form">
-            <input type="hidden" name="buildingId" value="@building.Id" />
-            <input type="text" name="name" placeholder="Nová část (např. G)…" required style="max-width:180px;display:inline-block" />
-            <button class="btn btn-sm" type="submit">Přidat část</button>
-        </form>
-
-        @foreach (var floor in building.Floors.OrderBy(f => f.SortOrder))
-        {
-            <h3 style="margin:1rem 0 0.3rem">
-                Patro @floor.Name
-                @if (floor.Section is not null)
-                {
-                    <span class="badge">část @floor.Section.Name</span>
-                }
-                <form method="post" asp-page-handler="DeleteFloor" class="inline-form">
-                    <input type="hidden" name="floorId" value="@floor.Id" />
-                    <button class="btn btn-sm btn-ghost" type="submit"
-                            onclick="return confirm('Smazat patro @floor.Name?')">Smazat patro</button>
-                </form>
-                <a class="btn btn-sm btn-ghost" asp-page="FloorPlan" asp-route-id="@floor.Id">Editor plánu</a>
-            </h3>
-
-            <h4 style="margin:0.4rem 0 0.2rem">Chodby</h4>
-            @if (floor.Corridors.Count > 0)
-            {
-                <table class="data" style="margin-bottom:0.4rem">
-                    @foreach (var corridor in floor.Corridors.OrderBy(c => c.Name))
-                    {
-                        <tr>
-                            <td>@corridor.Name</td>
-                            <td class="muted">
-                                @(corridor.ParentCorridor is null ? "bez nadřazené" : $"→ {corridor.ParentCorridor.Name}")
-                                · čteček: @corridor.Readers.Count · místností: @corridor.Rooms.Count
-                            </td>
-                            <td style="width:1%">
-                                <form method="post" asp-page-handler="SetCorridorParent" class="inline-form">
-                                    <input type="hidden" name="corridorId" value="@corridor.Id" />
-                                    <select name="parentCorridorId" style="max-width:170px;display:inline-block">
-                                        <option value="">— nadřazená chodba —</option>
-                                        @foreach (var candidate in Model.AllCorridors.Where(c => c.Id != corridor.Id))
-                                        {
-                                            <option value="@candidate.Id" selected="@(candidate.Id == corridor.ParentCorridorId)">
-                                                @candidate.Name (@candidate.Floor?.Building?.Name/@candidate.Floor?.Name)
-                                            </option>
-                                        }
-                                    </select>
-                                    <button class="btn btn-sm" type="submit">Uložit</button>
-                                </form>
-                                <form method="post" asp-page-handler="DeleteCorridor" class="inline-form">
-                                    <input type="hidden" name="corridorId" value="@corridor.Id" />
-                                    <button class="btn btn-sm btn-ghost" type="submit">Smazat</button>
-                                </form>
-                            </td>
-                        </tr>
-                    }
-                </table>
-            }
-            <form method="post" asp-page-handler="AddCorridor" class="inline-form">
-                <input type="hidden" name="floorId" value="@floor.Id" />
-                <input type="text" name="name" placeholder="Nová chodba (např. A100)…" required style="max-width:180px;display:inline-block" />
-                <button class="btn btn-sm" type="submit">Přidat chodbu</button>
-            </form>
-
-            <h4 style="margin:0.6rem 0 0.2rem">Místnosti</h4>
-            <table class="data" style="margin-bottom:0.4rem">
-                @foreach (var room in floor.Rooms.OrderBy(r => r.Name))
-                {
-                    <tr>
-                        <td>@room.Name <span class="muted">@room.Description</span></td>
-                        <td class="muted">čteček: @room.Readers.Count</td>
-                        <td>
-                            <form method="post" asp-page-handler="SetRoomCorridor" class="inline-form">
-                                <input type="hidden" name="roomId" value="@room.Id" />
-                                <select name="corridorId" style="max-width:170px;display:inline-block">
-                                    <option value="">— chodba —</option>
-                                    @foreach (var corridor in floor.Corridors.OrderBy(c => c.Name))
-                                    {
-                                        <option value="@corridor.Id" selected="@(corridor.Id == room.CorridorId)">@corridor.Name</option>
-                                    }
-                                </select>
-                                <button class="btn btn-sm" type="submit">Uložit</button>
-                            </form>
-                        </td>
-                        <td style="width:1%">
-                            <form method="post" asp-page-handler="DeleteRoom" class="inline-form">
-                                <input type="hidden" name="roomId" value="@room.Id" />
-                                <button class="btn btn-sm btn-ghost" type="submit"
-                                        onclick="return confirm('Smazat místnost @room.Name?')">Smazat</button>
-                            </form>
-                        </td>
-                    </tr>
-                }
-            </table>
-            <form method="post" asp-page-handler="AddRoom" class="inline-form">
-                <input type="hidden" name="floorId" value="@floor.Id" />
-                <input type="text" name="name" placeholder="Nová místnost (např. M1000)…" required style="max-width:180px;display:inline-block" />
-                <select name="corridorId" style="max-width:150px;display:inline-block">
-                    <option value="">— chodba —</option>
-                    @foreach (var corridor in floor.Corridors.OrderBy(c => c.Name))
-                    {
-                        <option value="@corridor.Id">@corridor.Name</option>
-                    }
-                </select>
-                <button class="btn btn-sm" type="submit">Přidat místnost</button>
-            </form>
-            <form method="post" asp-page-handler="UploadSchema" enctype="multipart/form-data" class="inline-form" style="margin-left:1rem">
-                <input type="hidden" name="floorId" value="@floor.Id" />
-                <input type="file" name="file" accept="image/png,image/jpeg,image/svg+xml" style="display:inline-block;max-width:230px" />
-                <button class="btn btn-sm btn-ghost" type="submit">Nahrát schéma</button>
-            </form>
-        }
-
-        <form method="post" asp-page-handler="AddFloor" class="inline-form" style="display:block;margin-top:0.8rem">
-            <input type="hidden" name="buildingId" value="@building.Id" />
-            <input type="text" name="name" placeholder="Nové patro (např. -1, P)…" required style="max-width:160px;display:inline-block" />
-            <select name="sectionId" style="max-width:150px;display:inline-block">
-                <option value="">— část —</option>
-                @foreach (var sec in building.Sections.OrderBy(s => s.SortOrder))
-                {
-                    <option value="@sec.Id">@sec.Name</option>
-                }
-            </select>
-            <button class="btn btn-sm" type="submit">Přidat patro</button>
-        </form>
-    </div>
-}
-
 @if (User.IsInRole("Admin"))
 {
     <p class="muted">
         Hromadné naplnění z projektových výkresů: <a asp-page="/Admin/ImportPlan">Import z DPS plánů</a>.
     </p>
+}
+
+@foreach (var summary in Model.Buildings)
+{
+    <details class="card tree-node" data-load="?handler=Building&id=@summary.Building.Id"
+             id="building-@summary.Building.Id">
+        <summary>
+            <strong>@summary.Building.Name</strong>
+            <span class="muted">
+                — částí @summary.Sections, pater @summary.Floors,
+                chodeb @summary.Corridors, místností @summary.Rooms, čteček @summary.Readers
+            </span>
+            <form method="post" asp-page-handler="DeleteBuilding" class="inline-form" style="float:right">
+                <input type="hidden" name="buildingId" value="@summary.Building.Id" />
+                <button class="btn btn-sm btn-danger" type="submit"
+                        onclick="return confirm('Smazat budovu @summary.Building.Name včetně částí, pater, chodeb a místností?')">
+                    Smazat budovu
+                </button>
+            </form>
+        </summary>
+        <div class="tree-body"><p class="muted">Načítám…</p></div>
+    </details>
+}
+
+@if (Model.Buildings.Count == 0)
+{
+    <div class="card"><p class="muted">Zatím žádné budovy.</p></div>
 }
 
 <div class="card" style="max-width:480px">
@@ -189,3 +59,69 @@
         <button class="btn" type="submit">Přidat budovu</button>
     </form>
 </div>
+
+@section Scripts {
+<script>
+(() => {
+    // Obsah uzlu se stáhne až při prvním rozbalení (lazy load).
+    async function load(node) {
+        if (node.dataset.loaded === '1') return;
+        node.dataset.loaded = '1';
+        const body = node.querySelector(':scope > .tree-body');
+        try {
+            const response = await fetch(node.dataset.load, { headers: { 'X-Requested-With': 'fetch' } });
+            if (!response.ok) throw new Error(response.status);
+            body.innerHTML = await response.text();
+            bind(body);
+        } catch (e) {
+            node.dataset.loaded = '';
+            body.innerHTML = '<p class="alert alert-error">Načtení se nezdařilo, zkuste to znovu.</p>';
+        }
+    }
+
+    function bind(root) {
+        for (const node of root.querySelectorAll('details.tree-node[data-load]')) {
+            if (node.dataset.bound === '1') continue;
+            node.dataset.bound = '1';
+            node.addEventListener('toggle', () => { if (node.open) load(node); });
+        }
+        for (const box of root.querySelectorAll('input[data-filter]')) {
+            if (box.dataset.bound === '1') continue;
+            box.dataset.bound = '1';
+            box.addEventListener('input', () => {
+                const table = document.getElementById(box.dataset.filter);
+                if (!table) return;
+                const needle = box.value.trim().toLowerCase();
+                for (const row of table.rows) {
+                    row.hidden = needle !== '' && !row.cells[0].textContent.toLowerCase().includes(needle);
+                }
+            });
+        }
+    }
+
+    bind(document);
+
+    // Po uložení formuláře se znovu otevře uzel, se kterým se pracovalo.
+    const params = new URLSearchParams(location.search);
+    const open = params.get('open');
+    const parent = params.get('parent');
+
+    function reveal(id) {
+        const target = document.getElementById(id);
+        if (!target) return false;
+        target.open = true;
+        target.scrollIntoView({ block: 'center' });
+        return true;
+    }
+
+    if (open && !reveal(open) && parent) {
+        // Cílový uzel je uvnitř nadřazeného, který se teprve dotahuje.
+        const observer = new MutationObserver(() => {
+            if (reveal(open)) observer.disconnect();
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        reveal(parent);
+    }
+})();
+</script>
+}
