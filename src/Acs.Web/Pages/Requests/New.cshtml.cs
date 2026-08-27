@@ -14,6 +14,7 @@ public class NewModel(AcsDbContext db, RequestWorkflowService workflow) : PageMo
     public List<Reader> Readers { get; private set; } = [];
     public List<ReaderGroup> Groups { get; private set; } = [];
     public int? MyEmployeeId { get; private set; }
+    public string? MyEmployeeName { get; private set; }
     public bool CanActForOthers { get; private set; }
 
     [TempData] public string? ErrorMessage { get; set; }
@@ -24,15 +25,15 @@ public class NewModel(AcsDbContext db, RequestWorkflowService workflow) : PageMo
     {
         CanActForOthers = User.IsInRole("Admin") || User.IsInRole("CardAdmin") || User.IsInRole("CatalogManager");
 
-        var user = await db.Users.FindAsync(CurrentUserId);
+        var user = await db.Users.Include(u => u.Employee).FirstOrDefaultAsync(u => u.Id == CurrentUserId);
         MyEmployeeId = user?.EmployeeId;
+        MyEmployeeName = user?.Employee?.FullName;
 
-        // Běžný uživatel vidí v nabídce jen sebe; oprávnění i všechny ostatní.
+        // Výběr zaměstnance se zobrazuje jen oprávněným; běžný uživatel žádá sám za sebe.
         Employees = CanActForOthers
             ? await db.Employees.Where(e => e.IsActive)
                 .OrderBy(e => e.LastName).ThenBy(e => e.FirstName).ToListAsync()
-            : await db.Employees.Where(e => e.IsActive && e.Id == MyEmployeeId)
-                .ToListAsync();
+            : [];
 
         Readers = await db.Readers.Where(r => r.IsActive)
             .Include(r => r.Room).ThenInclude(room => room!.Floor).ThenInclude(f => f!.Building)
