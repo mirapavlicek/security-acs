@@ -484,5 +484,9 @@ $RECYCLE.BIN/
 # Lokální konfigurace nasazení (obsahuje hesla)
 deploy/acs.env
 *.db
+
+# Výjimka: deploy/bin je součást repozitáře (šablonový vzor [Bb]in/ ho ignoroval)
+!deploy/bin/
+!deploy/bin/**
 *.db-shm
 *.db-wal
