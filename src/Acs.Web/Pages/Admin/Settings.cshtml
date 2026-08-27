@@ -36,7 +36,12 @@
                    checked="@(Model.Values[SettingKeys.LdapEnabled] == "true")" />
             <label for="LdapEnabled">Povolit přihlašování přes AD</label>
         </div>
-        <label>LDAP server (DC)</label>
+        <div class="checkbox-row">
+            <input type="checkbox" id="LdapUseDcLocator" name="LdapUseDcLocator" value="true"
+                   checked="@(Model.Values[SettingKeys.LdapUseDcLocator] != "false")" />
+            <label for="LdapUseDcLocator">DC lokátor — najít aktivní řadič přes DNS SRV (_ldap._tcp.dc._msdcs.doména), s automatickým failoverem</label>
+        </div>
+        <label>LDAP server (fallback / ruční volba, když lokátor nic nenajde)</label>
         <input type="text" name="LdapServer" value="@Model.Values[SettingKeys.LdapServer]" placeholder="dc01.fnmh.local" />
         <label>Port</label>
         <input type="number" name="LdapPort" value="@Model.Values[SettingKeys.LdapPort]" placeholder="636" />

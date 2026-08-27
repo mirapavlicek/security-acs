@@ -80,12 +80,13 @@ public class ApiEmployeeSource(HttpClient httpClient, SettingsService settings) 
 }
 
 /// <summary>Vybere aktivní zdroj podle nastavení (None → null).</summary>
-public class EmployeeSourceFactory(SettingsService settings, IHttpClientFactory httpClientFactory)
+public class EmployeeSourceFactory(
+    SettingsService settings, IHttpClientFactory httpClientFactory, Auth.DcLocator dcLocator)
 {
     public virtual async Task<IEmployeeSource?> CreateAsync(CancellationToken ct = default)
         => (await settings.GetAsync(SettingKeys.EmployeeSourceMode, ct))?.ToLowerInvariant() switch
         {
-            "ad" => new LdapEmployeeSource(settings),
+            "ad" => new LdapEmployeeSource(settings, dcLocator),
             "mssql" => new MssqlEmployeeSource(settings),
             "api" => new ApiEmployeeSource(httpClientFactory.CreateClient(nameof(ApiEmployeeSource)), settings),
             _ => null,

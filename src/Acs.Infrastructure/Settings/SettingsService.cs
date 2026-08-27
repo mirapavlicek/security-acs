@@ -26,6 +26,9 @@ public static class SettingKeys
     /// <summary>Mapování AD skupin na role, řádky ve tvaru „NázevSkupiny=Role1,Role2“.</summary>
     public const string LdapGroupRoleMap = "Ldap:GroupRoleMap";
 
+    /// <summary>DC lokátor: hledat aktivní řadič přes DNS SRV (_ldap._tcp.dc._msdcs).</summary>
+    public const string LdapUseDcLocator = "Ldap:UseDcLocator";
+
     // WinPak Connector
     public const string WinPakBaseUrl = "WinPak:BaseUrl";
     public const string WinPakApiKey = "WinPak:ApiKey";              // secret

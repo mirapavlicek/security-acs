@@ -52,6 +52,7 @@ builder.Services.AddDataProtection()
 
 // ---------- Služby ----------
 builder.Services.AddScoped<SettingsService>();
+builder.Services.AddScoped<DcLocator>();
 builder.Services.AddScoped<LdapAuthenticator>();
 builder.Services.AddScoped<UserAuthenticationService>();
 builder.Services.AddScoped<AuditService>();
