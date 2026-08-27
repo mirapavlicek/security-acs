@@ -4,19 +4,25 @@ Malá webová API aplikace, která z proprietárního WIN-PAK API udělá **norm
 REST API**. Instaluje se **přímo na WIN-PAK server** (Windows služba) a hlavní
 ACS aplikace na RHEL s ní komunikuje přes HTTP + API klíč.
 
+Proč vůbec existuje: WIN-PAK 4.9 žádné REST rozhraní nemá. Obě jeho API
+(Database Server API v `NCIHelper.dll` a Communication Server API v `ACCW.dll`)
+jsou COM objekty vystavené přes COM+/DCOM, tedy Windows-only. Konektor je
+jediné místo v systému, které mluví COM; všechno ostatní jede po REST.
+Podrobný rozbor API i mapování na endpointy je v `docs/winpak-api/README.md`.
+
 ## Režimy (provider)
 
 Konfiguruje se v `appsettings.json` → `WinPak:Mode`:
 
-| Režim | Popis | Zápis do WIN-PAK |
-| --- | --- | --- |
-| `Mock` | ukázková data v paměti — pro vývoj hlavní aplikace | ano (jen v paměti) |
-| `Mssql` | read-only čtení přímo z WIN-PAK MSSQL databáze; SQL dotazy jsou konfigurovatelné (schéma WIN-PAK je pod NDA a liší se mezi verzemi) | ne (501) |
-| `Sdk` | oficiální WIN-PAK SDK (`SRVWPPAPI`) — připraveno, čeká na NDA/licenci od Honeywellu | ano |
+| Režim | Popis | Zápis | Dveře |
+| --- | --- | --- | --- |
+| `Mock` | ukázková data v paměti — pro vývoj hlavní aplikace | ano (jen v paměti) | ano (jen v paměti) |
+| `Mssql` | read-only čtení přímo z WIN-PAK MSSQL databáze; SQL dotazy jsou konfigurovatelné (schéma WIN-PAK je pod NDA a liší se mezi verzemi) | ne (501) | ne (501) |
+| `Com` | oficiální WIN-PAK API přes COM+ (`NCIHelper.Application`, `ACCW.MTSCBServer`) | ano | ano, pokud je zapnutý komunikační server |
 
-Hlavní aplikace pozná dostupnost zápisu z `GET /api/v1/info` → `supportsWrite`.
-Dokud zápis není dostupný, správce karet zadává přístupy ve WIN-PAK ručně
-a v ACS je jen potvrdí.
+Hlavní aplikace pozná dostupnost z `GET /api/v1/info` (`supportsWrite`,
+`supportsDoorControl`). Dokud zápis není dostupný, správce karet zadává přístupy
+ve WIN-PAK ručně a v ACS je jen potvrdí.
 
 ## REST API
 
@@ -27,16 +33,35 @@ OpenAPI popis: `GET /openapi/v1.json`.
 | Metoda | Cesta | Popis |
 | --- | --- | --- |
 | GET | `/health` | healthcheck (bez klíče) |
-| GET | `/api/v1/info` | verze, režim, podpora zápisu |
-| GET | `/api/v1/readers` | seznam čteček |
+| GET | `/api/v1/info` | verze, režim, podpora zápisu a ovládání dveří |
+| GET | `/api/v1/status` | stav spojení s databázovým a komunikačním serverem WIN-PAK |
+| GET | `/api/v1/accounts` | účty a podúčty |
+| GET | `/api/v1/readers` | seznam čteček (id = `HWDeviceID`, tedy i id dveří) |
 | GET | `/api/v1/access-levels` | seznam přístupových úrovní |
 | GET | `/api/v1/cardholders?search=` | vyhledání držitelů karet |
-| GET | `/api/v1/cardholders/{id}` | detail držitele |
-| POST | `/api/v1/cardholders/{id}/access-levels` | přiřazení access level (`{"accessLevelId": "..."}`) |
-| DELETE | `/api/v1/cardholders/{id}/access-levels/{alId}` | odebrání access level |
+| GET | `/api/v1/cardholders/{id}` | detail držitele včetně karet |
+| POST | `/api/v1/cardholders` | založení držitele |
+| PUT | `/api/v1/cardholders/{id}` | úprava držitele |
+| POST | `/api/v1/cardholders/{id}/access-levels` | přiřazení úrovně (`{"accessLevelId": "..."}`) |
+| DELETE | `/api/v1/cardholders/{id}/access-levels/{alId}` | odebrání úrovně |
+| GET | `/api/v1/cards/{cardNumber}` | karta podle čísla |
+| PUT | `/api/v1/cards/{cardNumber}` | založení nebo úprava karty |
+| DELETE | `/api/v1/cards/{cardNumber}` | zrušení karty |
+| GET | `/api/v1/devices` | zařízení připojená ke komunikačnímu serveru |
+| GET | `/api/v1/doors/{hid}` | stav dveří |
+| POST | `/api/v1/doors/{hid}/pulse` | krátké otevření (`{"seconds": 5}`, volitelné) |
+| POST | `/api/v1/doors/{hid}/lock` | zamknutí |
+| POST | `/api/v1/doors/{hid}/unlock` | odemknutí |
+| POST | `/api/v1/doors/{hid}/mode` | režim dveří (`{"mode": 5}` = jen karta) |
+| GET | `/api/v1/events?limit=` | poslední události z panelů (jen režim `Com`) |
 
-Chování chyb: `401` špatný klíč, `404` neexistující záznam, `501` provider
-nepodporuje zápis, `503` klíč není nakonfigurován.
+Přístupové úrovně patří ve WIN-PAKu **kartě**, ne držiteli. Endpointy nad
+držitelem jsou proto zkratka: konektor načte jeho karty, přepočítá jim seznam
+úrovní a uloží je zpět.
+
+Chování chyb: `401` špatný klíč, `404` neexistující záznam, `422` WIN-PAK zápis
+odmítl (hláška nese jeho stavový kód), `501` provider operaci nepodporuje,
+`502` konektor se nedostal k WIN-PAKu, `503` klíč není nakonfigurován.
 
 ## Lokální spuštění (vývoj)
 
@@ -65,8 +90,7 @@ curl -H "X-Api-Key: <klic>" http://localhost:52001/api/v1/readers
      tentýž klíč se nastaví v ACS aplikaci,
    - `Kestrel:Endpoints:Http:Url` — ponechte `http://0.0.0.0:52001`
      (nebo omezte na konkrétní interní IP),
-   - `WinPak:Mode` — `Mssql` (a doplňte connection string + SQL dotazy),
-     později `Sdk`.
+   - `WinPak:Mode` — `Com` a doplňte `WinPak:Com` (viz níže).
 
 4. Registrace Windows služby (PowerShell jako administrátor):
 
@@ -85,13 +109,47 @@ curl -H "X-Api-Key: <klic>" http://localhost:52001/api/v1/readers
      -Protocol TCP -LocalPort 52001 -RemoteAddress 10.84.7.146,10.84.7.147 -Action Allow
    ```
 
-6. Ověření: `curl http://<winpak-server>:52001/health` → `{"status":"ok"}`.
+6. Ověření: `curl http://<winpak-server>:52001/health` → `{"status":"ok"}`
+   a `/api/v1/status` → připojené servery WIN-PAK.
+
+## Nastavení režimu `Com`
+
+```json
+"WinPak": {
+  "Mode": "Com",
+  "Com": {
+    "UserName": "acs-service",
+    "Password": "…",
+    "Domain": "FNMH",
+    "AccountName": "FNMH",
+    "SubAccountName": "",
+    "EnableCommunicationServer": true
+  }
+}
+```
+
+Předpoklady na straně WIN-PAKu:
+
+- WIN-PAK edice SE/PE s licencí `SRVWPPAPI`, nainstalovaný s volbou **Web**
+  (tím se nasadí `DatabaseAPIServer`).
+- V `dcomcnfg` existují COM+ aplikace **WIN-PAK CS DBServer Helper** a
+  **WIN-PAK CS ComServer Helper**. Pokud konektor běží na jiném stroji než
+  WIN-PAK, je nutné z obou exportovat *Application proxy* a nainstalovat ji
+  na stroj s konektorem. Doporučené je nasazení přímo na WIN-PAK server.
+- Účet služby má práva volat COM+ aplikace a `UserName`/`Password` je platný
+  operátor WIN-PAK.
+
+Pokud instalace registruje COM objekty pod jinými ProgID, přepište je v
+`ApplicationProgId`, `CardHolderProgId` a `CommServerProgId`.
+
+`EnableCommunicationServer: false` vypne ovládání dveří i odběr událostí —
+databázová část funguje samostatně.
 
 ## Bezpečnost konektoru
 
 ACS považuje data z konektoru za autoritativní (zpětná synchronizace zakládá
-potvrzené přístupy). Kompromitovaný konektor nebo odposlech linky proto může
-ovlivnit stav přístupů v ACS. Doporučení:
+potvrzené přístupy) a konektor umí dveře i odemykat. Kompromitovaný konektor
+nebo odposlech linky proto může ovlivnit fyzický přístup. Doporučení:
 
 - **Síťové omezení** — port konektoru zpřístupněte firewallem výhradně
   aplikačním serverům (viz pravidlo výše); nikdy ne veřejně.
@@ -101,14 +159,15 @@ ovlivnit stav přístupů v ACS. Doporučení:
   (nebo nakonfigurujte Kestrel s certifikátem) a ideálně vyžadujte klientský
   certifikát aplikačních serverů (mTLS). Nešifrovaný HTTP používejte jen
   v izolované důvěryhodné síti.
-- **Nejmenší oprávnění** — SQL login pro režim `Mssql` má mít pouze `SELECT`.
+- **Nejmenší oprávnění** — SQL login pro režim `Mssql` má mít pouze `SELECT`;
+  operátor WIN-PAK pro režim `Com` jen práva potřebná ke správě karet.
+- **Vypněte, co nepoužíváte** — bez ovládání dveří nechte
+  `EnableCommunicationServer: false`.
 
-## Napojení na skutečný WIN-PAK
+## Ověření mapování na COM
 
-- **Režim `Mssql`:** doplňte do `WinPak:Mssql` connection string k WIN-PAK
-  databázi (stačí SQL login s právem `SELECT`) a SQL dotazy vracející sloupce
-  popsané v `MssqlProviderOptions`. Názvy tabulek ověřte proti vaší verzi
-  WIN-PAK (4.9.x).
-- **Režim `Sdk`:** po podpisu NDA a získání `SRVWPPAPI` od Honeywellu se
-  implementace doplní do `Providers/SdkWinPakProvider.cs` (COM interop).
-  REST rozhraní konektoru se nezmění.
+Skutečný WIN-PAK v CI k dispozici není, proto testy volají COM přes atrapu
+(`FakeComDispatch`) a kontrolují, že konektor používá přesně ty metody, pořadí
+parametrů a stavové kódy, jaké popisuje příručka — včetně `AddUpdateCard`
+se čtrnácti parametry a překladu chybových stavů. Parser `<NLZ>` zpráv je
+testovaný na ukázkách přímo z příručky.

@@ -118,7 +118,144 @@ public sealed class ConnectorApiTests : IClassFixture<ConnectorFactory>
         Assert.NotNull(info);
         Assert.Equal("Mock", info.ProviderMode);
         Assert.True(info.SupportsWrite);
+        Assert.True(info.SupportsDoorControl);
     }
+
+    [Fact]
+    public async Task Status_ReportsConnectedServers()
+    {
+        var status = await CreateClient().GetFromJsonAsync<ConnectorStatusDto>("/api/v1/status");
+
+        Assert.NotNull(status);
+        Assert.True(status.DatabaseServerConnected);
+        Assert.NotEmpty(status.Servers);
+        Assert.Null(status.Error);
+    }
+
+    [Fact]
+    public async Task Accounts_ReturnAccountWithSubAccounts()
+    {
+        var accounts = await CreateClient().GetFromJsonAsync<List<AccountDto>>("/api/v1/accounts");
+
+        var account = Assert.Single(accounts!);
+        Assert.NotEmpty(account.SubAccounts);
+    }
+
+    [Fact]
+    public async Task Card_IsReadableByNumber_AndCarriesAccessLevels()
+    {
+        var card = await CreateClient().GetFromJsonAsync<CardDto>("/api/v1/cards/100234");
+
+        Assert.NotNull(card);
+        Assert.Equal("CH-1001", card.CardHolderId);
+        Assert.Equal(CardStatus.Active, card.Status);
+        Assert.Contains("AL-01", card.AccessLevelIds);
+    }
+
+    [Fact]
+    public async Task UnknownCard_Returns404()
+    {
+        var response = await CreateClient().GetAsync("/api/v1/cards/000000");
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Card_CanBeUpsertedAndDeleted()
+    {
+        var client = CreateClient();
+
+        var upsert = await client.PutAsJsonAsync("/api/v1/cards/200999",
+            new UpsertCardRequest("CH-1001", CardStatus.Active, 1, new DateTime(2026, 1, 1), null, null, ["AL-03"]));
+        Assert.Equal(HttpStatusCode.NoContent, upsert.StatusCode);
+
+        var card = await client.GetFromJsonAsync<CardDto>("/api/v1/cards/200999");
+        Assert.NotNull(card);
+        Assert.Equal(["AL-03"], card.AccessLevelIds);
+
+        var delete = await client.DeleteAsync("/api/v1/cards/200999");
+        Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/v1/cards/200999")).StatusCode);
+    }
+
+    [Fact]
+    public async Task CardHolder_CanBeCreatedAndEdited()
+    {
+        var client = CreateClient();
+
+        var created = await client.PostAsJsonAsync("/api/v1/cardholders",
+            new UpsertCardHolderRequest("Eva", "Malá", "Recepce"));
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+
+        var id = (await created.Content.ReadFromJsonAsync<CreatedCardHolder>())!.Id;
+        var edit = await client.PutAsJsonAsync($"/api/v1/cardholders/{id}",
+            new UpsertCardHolderRequest("Eva", "Nováková", "Recepce"));
+        Assert.Equal(HttpStatusCode.NoContent, edit.StatusCode);
+
+        var holder = await client.GetFromJsonAsync<CardHolderDto>($"/api/v1/cardholders/{id}");
+        Assert.Equal("Nováková", holder!.LastName);
+    }
+
+    [Fact]
+    public async Task CardHolder_WithoutLastName_Returns400()
+    {
+        var response = await CreateClient().PostAsJsonAsync("/api/v1/cardholders",
+            new UpsertCardHolderRequest("Eva", "", null));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AccessLevel_IsWrittenOntoTheHoldersCards()
+    {
+        var client = CreateClient();
+
+        await client.PostAsJsonAsync("/api/v1/cardholders/CH-1002/access-levels",
+            new AssignAccessLevelRequest("AL-03"));
+
+        var holder = await client.GetFromJsonAsync<CardHolderDto>("/api/v1/cardholders/CH-1002");
+        // Nositelem oprávnění je karta — na držiteli je jen sjednocení.
+        Assert.All(holder!.Cards, card => Assert.Contains("AL-03", card.AccessLevelIds));
+        Assert.Contains("AL-03", holder.AccessLevelIds);
+    }
+
+    [Fact]
+    public async Task DoorStatus_IsAvailable()
+    {
+        var status = await CreateClient().GetFromJsonAsync<DoorStatusDto>("/api/v1/doors/23");
+
+        Assert.NotNull(status);
+        Assert.Equal("23", status.Hid);
+    }
+
+    [Theory]
+    [InlineData("lock")]
+    [InlineData("unlock")]
+    [InlineData("pulse")]
+    public async Task DoorCommands_Return204(string command)
+    {
+        var response = await CreateClient().PostAsync($"/api/v1/doors/23/{command}", null);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DoorMode_RejectsUnknownValue()
+    {
+        var response = await CreateClient().PostAsJsonAsync("/api/v1/doors/23/mode",
+            new DoorModeRequest((DoorMode)99));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Events_AreNotAvailableInMockMode()
+    {
+        var response = await CreateClient().GetAsync("/api/v1/events");
+
+        Assert.Equal(HttpStatusCode.NotImplemented, response.StatusCode);
+    }
+
+    private sealed record CreatedCardHolder(string Id);
 }
 
 public sealed class ConnectorFactory : WebApplicationFactory<Program>

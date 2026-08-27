@@ -41,27 +41,27 @@ Honeywell WIN-PAK (řízení přístupu). Aplikace:
 
 ## 2. Klíčové zjištění: WIN-PAK API
 
-Rešerše je v [`docs/winpak-api/README.md`](winpak-api/README.md) včetně
-stažených datasheetů. Podstatné pro návrh:
+Rozbor obou oficiálních příruček (Database Server API a Communication Server API,
+build 1090.7.6) je v [`docs/winpak-api/README.md`](winpak-api/README.md).
+Podstatné pro návrh:
 
 - Nejnovější verze je **WIN-PAK 4.9.5 SP1**; běží jen na Windows nad MSSQL.
-- Oficiální **WIN-PAK API (`SRVWPPAPI`)** je klient–server **SDK (C++/COM)**,
-  ne REST. Plná dokumentace a SDK jsou **pod NDA s Honeywellem** a API je
-  součástí až edic SE/PE.
-- API umí přesně to, co potřebujeme: číst čtečky/panely, číst a zapisovat
-  držitele karet, karty a **access levels** (tj. přidělení přístupu).
+- **WIN-PAK nemá žádné REST rozhraní.** Obě API jsou COM objekty vystavené přes
+  COM+/DCOM: Database Server API v `NCIHelper.dll` (karty, držitelé, přístupové
+  úrovně, čtečky, časové zóny) a Communication Server API v `ACCW.dll` (stav a
+  ovládání dveří, události z panelů). API je součástí edic SE/PE s licencí
+  `SRVWPPAPI`.
+- Oprávnění nese ve WIN-PAKu **karta**, ne držitel — přístup se přiděluje
+  zápisem seznamu úrovní na karty držitele (`AddUpdateCard`).
 
-**Důsledek pro architekturu:** naše aplikace na RHEL nemůže WIN-PAK volat
-přímo. Navrhuji samostatnou malou komponentu **WinPak Connector** — Windows
-službu (.NET) nasazenou vedle WIN-PAK serveru, která:
+**Důsledek pro architekturu:** aplikace na RHEL nemůže WIN-PAK volat přímo.
+Komponenta **WinPak Connector** — Windows služba (.NET) nasazená na WIN-PAK
+serveru — je jediné místo, které mluví COM, a pro zbytek systému z něj dělá
+REST (HTTPS + API klíč / mTLS). Má tři režimy: `Com` (ostrý provoz),
+`Mssql` (read-only záloha, zápis zůstává na ručním potvrzení správcem karet)
+a `Mock` (vývoj).
 
-1. obalí WIN-PAK SDK (po podpisu NDA a získání `SRVWPPAPI`),
-2. vystaví **interní REST API** (HTTPS + API klíč / mTLS) pro naši aplikaci,
-3. jako **záložní varianta** (než bude SDK k dispozici) umí číst seznam
-   čteček a access levels **přímo z WIN-PAK MSSQL databáze** (read-only);
-   zápis by v této variantě zůstal na ručním potvrzení správcem karet.
-
-> Otevřená otázka č. 1–4 níže: verze/edice WIN-PAK, stav NDA a licence API,
+> Otevřená otázka č. 1–4 níže: verze/edice WIN-PAK, licence `SRVWPPAPI`,
 > síťová dostupnost WIN-PAK serveru, přípustnost read-only přístupu do MSSQL.
 
 ---
@@ -166,11 +166,12 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
 4. **Audit log** + prohlížečka v GUI. ✅ Implementováno.
 
 ### B. Číselníky a integrace
-5. **WinPak Connector** (Windows služba) — REST fasáda nad WIN-PAK SDK;
-   fallback read-only nad MSSQL; endpointy: seznam čteček (se všemi
-   informacemi), access levels, zápis přístupu držiteli karty.
+5. **WinPak Connector** (Windows služba) — REST fasáda nad COM API WIN-PAKu;
+   fallback read-only nad MSSQL; pokrývá účty, čtečky, přístupové úrovně,
+   držitele, karty, ovládání dveří a odběr událostí z panelů.
    ✅ **Implementováno** v [`src/Acs.WinPakConnector`](../src/Acs.WinPakConnector/README.md)
-   (režimy Mock / Mssql / Sdk-placeholder, API klíč, integrační testy).
+   (režimy Mock / Mssql / Com, API klíč, integrační testy a testy mapování
+   na dokumentovaná COM volání).
 6. **Synchronizace čteček** — plánovaný import z Connectoru, párování na
    existující záznamy, ruční editace a přidávání, označení „ručně vytvořeno /
    importováno“. ✅ Implementováno (ruční tlačítko + automatický plánovač
@@ -327,12 +328,12 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
   Acs.Client/         Blazor WebAssembly frontend
   Acs.Domain/         doménový model, workflow engine
   Acs.Infrastructure/ EF Core (Pomelo/MariaDB), LDAP, adaptéry zaměstnanců
-  Acs.WinPakConnector/ Windows služba – REST fasáda nad WIN-PAK SDK/MSSQL
+  Acs.WinPakConnector/ Windows služba – REST fasáda nad WIN-PAK COM API/MSSQL
 /deploy
   ansible/ nebo skripty (systemd unity, instalace, HAProxy poznámky)
   acs-updater/        auto-update služba
 /docs
   PLAN.md             tento dokument
-  winpak-api/         rešerše a datasheety WIN-PAK API
+  winpak-api/         rozbor WIN-PAK API a mapování na REST konektoru
 /tests
 ```
