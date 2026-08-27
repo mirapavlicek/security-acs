@@ -51,7 +51,7 @@ public class EmailNotificationService(
             await SendAsync(approverEmails,
                 $"ACS: žádost #{item.RequestId} čeká na vaše schválení",
                 $"Zaměstnanec: {item.Request!.TargetEmployee!.FullName}\n"
-                + $"Čtečka: {item.Reader!.Name}\n"
+                + $"Položka: {ItemName(item)}\n"
                 + $"Úroveň: {item.CurrentLevelOrder}\n"
                 + $"Zdůvodnění: {item.Request.Justification}\n\n"
                 + $"Rozhodněte v aplikaci: http://acs.fnmh.network/Requests/Detail/{item.RequestId}", ct);
@@ -67,32 +67,74 @@ public class EmailNotificationService(
         try
         {
             var item = await LoadAsync(itemId, ct);
-            var email = item?.Request?.RequesterUser?.Email;
-            if (item is null || email is null)
+            if (item is null)
                 return;
 
             var statusText = item.Status switch
             {
                 RequestStatus.Approved => "schváleno — čeká na zadání správcem karet",
                 RequestStatus.Rejected => "zamítnuto",
-                RequestStatus.PushedToWinPak => "zapsáno do WIN-PAK",
-                RequestStatus.ManuallyConfirmed => "zadáno do WIN-PAK (ručně)",
+                RequestStatus.PushedToWinPak => "zapsáno do WIN-PAK — přístup je aktivní",
+                RequestStatus.ManuallyConfirmed => "zadáno do WIN-PAK (ručně) — přístup je aktivní",
                 RequestStatus.Revoked => "přístup odebrán",
+                RequestStatus.Cancelled => "žádost zrušena",
                 _ => item.Status.ToString(),
             };
 
-            await SendAsync([email],
-                $"ACS: žádost #{item.RequestId} — {statusText}",
-                $"Zaměstnanec: {item.Request!.TargetEmployee!.FullName}\n"
-                + $"Čtečka: {item.Reader!.Name}\n"
-                + $"Stav: {statusText}\n\n"
-                + $"Detail: http://acs.fnmh.network/Requests/Detail/{item.RequestId}", ct);
+            var subject = $"ACS: žádost #{item.RequestId} — {statusText}";
+            var body = $"Zaměstnanec: {item.Request!.TargetEmployee!.FullName}\n"
+                     + $"Položka: {ItemName(item)}\n"
+                     + $"Stav: {statusText}\n\n"
+                     + $"Detail: http://acs.fnmh.network/Requests/Detail/{item.RequestId}";
+
+            // Informuje se žadatel i samotný zaměstnanec (často jde o dvě různé osoby).
+            var recipients = new List<string?>
+            {
+                item.Request.RequesterUser?.Email,
+                item.Request.TargetEmployee.Email,
+            };
+            var to = recipients
+                .Where(e => !string.IsNullOrWhiteSpace(e))
+                .Select(e => e!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            await SendAsync(to, subject, body, ct);
+
+            // Jakmile je položka schválená, upozorni správce karet, že jim něco přibylo.
+            if (item.Status == RequestStatus.Approved)
+                await NotifyCardAdminsAsync(item, ct);
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Notifikace žadateli (položka {ItemId}) se nepodařila odeslat.", itemId);
+            logger.LogWarning(ex, "Notifikace o rozhodnutí (položka {ItemId}) se nepodařila odeslat.", itemId);
         }
     }
+
+    /// <summary>Upozornění správcům karet, že do fronty přibyla schválená položka.</summary>
+    private async Task NotifyCardAdminsAsync(AccessRequestItem item, CancellationToken ct)
+    {
+        var emails = await db.Users
+            .Where(u => u.IsActive && u.Email != null
+                        && ((u.Roles & AppRole.CardAdmin) == AppRole.CardAdmin
+                            || (u.Roles & AppRole.Admin) == AppRole.Admin))
+            .Select(u => u.Email!)
+            .Distinct()
+            .ToListAsync(ct);
+        if (emails.Count == 0)
+            return;
+
+        var action = item.Request!.Kind == RequestKind.Revoke ? "odebrání" : "udělení";
+        await SendAsync(emails,
+            $"ACS: ve frontě čeká {action} přístupu (#{item.RequestId})",
+            $"Zaměstnanec: {item.Request.TargetEmployee!.FullName}\n"
+            + $"Položka: {ItemName(item)}\n"
+            + $"Typ: {action} přístupu\n\n"
+            + "Fronta správce karet: http://acs.fnmh.network/CardQueue", ct);
+    }
+
+    private static string ItemName(AccessRequestItem item)
+        => item.Reader?.Name ?? (item.ReaderGroup is null ? "—" : $"skupina {item.ReaderGroup.Name}");
 
     public async Task NotifyEscalationAsync(int itemId, int waitingDays, CancellationToken ct = default)
     {
@@ -112,7 +154,7 @@ public class EmailNotificationService(
             await SendAsync(adminEmails,
                 $"ACS: eskalace — žádost #{item.RequestId} čeká {waitingDays} dní",
                 $"Zaměstnanec: {item.Request!.TargetEmployee!.FullName}\n"
-                + $"Položka: {item.Reader?.Name ?? item.ReaderGroup?.Name}\n"
+                + $"Položka: {ItemName(item)}\n"
                 + $"Čeká na schválení: {waitingDays} dní (úroveň {item.CurrentLevelOrder})\n\n"
                 + $"Detail: http://acs.fnmh.network/Requests/Detail/{item.RequestId}", ct);
         }

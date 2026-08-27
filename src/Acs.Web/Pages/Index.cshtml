@@ -17,15 +17,47 @@
         <a class="btn" asp-page="/Requests/New">Podat žádost</a>
     </div>
     <div class="card">
-        <h2 style="margin-top:0">Ke schválení</h2>
-        <p class="muted">Žádosti čekající na vaše rozhodnutí (včetně zástupů).</p>
+        <h2 style="margin-top:0">
+            Ke schválení
+            @if (Model.Attention.PendingApprovals > 0)
+            {
+                <span class="nav-badge card-badge">@Model.Attention.PendingApprovals</span>
+            }
+        </h2>
+        <p class="muted">
+            @if (Model.Attention.PendingApprovals > 0)
+            {
+                <span class="attention-dot"></span>
+                <strong>@Model.Attention.PendingApprovals</strong> @:položek čeká na vaše rozhodnutí (včetně zástupů).
+            }
+            else
+            {
+                @:Žádosti čekající na vaše rozhodnutí (včetně zástupů). Teď nic nečeká.
+            }
+        </p>
         <a class="btn" asp-page="/Requests/Index">Otevřít žádosti</a>
     </div>
     @if (User.IsInRole("Admin") || User.IsInRole("CardAdmin"))
     {
         <div class="card">
-            <h2 style="margin-top:0">Fronta správce karet</h2>
-            <p class="muted">Schválené žádosti k zadání do WIN-PAK (API / ruční potvrzení).</p>
+            <h2 style="margin-top:0">
+                Fronta správce karet
+                @if (Model.Attention.CardQueue > 0)
+                {
+                    <span class="nav-badge card-badge">@Model.Attention.CardQueue</span>
+                }
+            </h2>
+            <p class="muted">
+                @if (Model.Attention.CardQueue > 0)
+                {
+                    <span class="attention-dot"></span>
+                    <strong>@Model.Attention.CardQueue</strong> @:schválených položek čeká na zadání do WIN-PAK.
+                }
+                else
+                {
+                    @:Schválené žádosti k zadání do WIN-PAK (API / ruční potvrzení). Fronta je prázdná.
+                }
+            </p>
             <a class="btn" asp-page="/CardQueue">Otevřít frontu</a>
         </div>
     }

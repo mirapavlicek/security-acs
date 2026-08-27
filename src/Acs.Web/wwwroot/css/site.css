@@ -181,6 +181,20 @@ table.data tr:hover td { background: color-mix(in srgb, var(--primary) 6%, var(-
 .badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.75rem; border: 1px solid var(--border); color: var(--muted); }
 .badge-primary { border-color: var(--primary); color: var(--primary); }
 
+/* Červený indikátor „něco na vás čeká“ — v navigaci i na dlaždicích. */
+.nav-badge {
+  display: inline-block; min-width: 1.25rem; padding: 0 0.3rem;
+  margin-left: 0.25rem;
+  background: var(--danger); color: #fff;
+  border-radius: 999px; font-size: 0.72rem; font-weight: 700;
+  line-height: 1.25rem; text-align: center; vertical-align: text-top;
+}
+.card-badge { font-size: 0.85rem; line-height: 1.5rem; min-width: 1.5rem; margin-left: 0.4rem; }
+.attention-dot {
+  display: inline-block; width: 0.6rem; height: 0.6rem;
+  background: var(--danger); border-radius: 50%; margin-right: 0.35rem;
+}
+
 .login-box { max-width: 380px; margin: 8vh auto 0; }
 .login-box .brand-mark { font-size: 2rem; }
 
