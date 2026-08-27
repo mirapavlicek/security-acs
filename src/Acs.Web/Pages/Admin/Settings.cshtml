@@ -120,6 +120,52 @@
 </div>
 
 <div class="card">
+    <h2 style="margin-top:0">Automatizace</h2>
+    <p class="muted">Co má systém dělat sám, bez zásahu obsluhy. Přehled stavu je na stránce <a asp-page="Automation">Automatizace</a>.</p>
+    <form method="post" asp-page-handler="Automation">
+        <div class="checkbox-row">
+            <input type="checkbox" id="AutomationEnabled" name="AutomationEnabled" value="true"
+                   checked="@(Model.Values[SettingKeys.AutomationEnabled] != "false")" />
+            <label for="AutomationEnabled">Zapnout automatizaci</label>
+        </div>
+        <label>Interval vyhodnocení (minuty)</label>
+        <input type="number" name="AutomationIntervalMinutes" value="@Model.Values[SettingKeys.AutomationIntervalMinutes]" placeholder="30" />
+
+        <div class="checkbox-row">
+            <input type="checkbox" id="AutoOffboardingEnabled" name="AutoOffboardingEnabled" value="true"
+                   checked="@(Model.Values[SettingKeys.AutoOffboardingEnabled] != "false")" />
+            <label for="AutoOffboardingEnabled">Offboarding — odebrat přístupy zaměstnanci, který zmizel z AD</label>
+        </div>
+        <div class="checkbox-row">
+            <input type="checkbox" id="AutoDepartmentChangeEnabled" name="AutoDepartmentChangeEnabled" value="true"
+                   checked="@(Model.Values[SettingKeys.AutoDepartmentChangeEnabled] != "false")" />
+            <label for="AutoDepartmentChangeEnabled">Změna oddělení — odebrat přístup přidělený podle starého oddělení</label>
+        </div>
+        <div class="checkbox-row">
+            <input type="checkbox" id="AutoExpirationEnabled" name="AutoExpirationEnabled" value="true"
+                   checked="@(Model.Values[SettingKeys.AutoExpirationEnabled] != "false")" />
+            <label for="AutoExpirationEnabled">Expirace — odebrat přístup po uplynutí platnosti</label>
+        </div>
+        <div class="checkbox-row">
+            <input type="checkbox" id="AutoRemindersEnabled" name="AutoRemindersEnabled" value="true"
+                   checked="@(Model.Values[SettingKeys.AutoRemindersEnabled] != "false")" />
+            <label for="AutoRemindersEnabled">Připomínky a eskalace dlouho čekajících schválení</label>
+        </div>
+        <label>Připomínka po (dnech)</label>
+        <input type="number" name="AutoReminderAfterDays" value="@Model.Values[SettingKeys.AutoReminderAfterDays]" placeholder="3" />
+        <label>Eskalace na administrátory po (dnech)</label>
+        <input type="number" name="AutoEscalationAfterDays" value="@Model.Values[SettingKeys.AutoEscalationAfterDays]" placeholder="7" />
+
+        <div class="checkbox-row">
+            <input type="checkbox" id="AutoPushEnabled" name="AutoPushEnabled" value="true"
+                   checked="@(Model.Values[SettingKeys.AutoPushEnabled] == "true")" />
+            <label for="AutoPushEnabled">Automaticky předávat schválené přístupy do WIN-PAK (bez kliknutí správce karet)</label>
+        </div>
+        <button class="btn" type="submit">Uložit</button>
+    </form>
+</div>
+
+<div class="card">
     <h2 style="margin-top:0">Karty (MSSQL)</h2>
     <p class="muted">Zaměstnanci se načítají z AD, čísla karet a WIN-PAK card holder id z SQL. Dotaz musí vracet sloupce: AdAccount nebo PersonalNumber (párování), CardNumber, volitelně WinPakCardHolderId.</p>
     <form method="post" asp-page-handler="Cards">

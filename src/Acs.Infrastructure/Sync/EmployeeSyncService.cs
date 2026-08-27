@@ -67,6 +67,33 @@ public class EmployeeSyncService(AcsDbContext db, EmployeeSourceFactory sourceFa
         }
 
         await db.SaveChangesAsync(ct);
+
+        // Automatické spárování AD účtů s importovanými zaměstnanci — bez toho
+        // by uživatel neviděl „Moje přístupy“ a nešlo by za něj žádat.
+        var unpaired = await db.Users.Where(u => !u.IsLocal && u.EmployeeId == null).ToListAsync(ct);
+        if (unpaired.Count > 0)
+        {
+            var byAdAccount = await db.Employees
+                .Where(e => e.AdAccount != null)
+                .ToDictionaryAsync(e => e.AdAccount!, e => e.Id, StringComparer.OrdinalIgnoreCase, ct);
+            var paired = 0;
+            foreach (var user in unpaired)
+            {
+                if (byAdAccount.TryGetValue(user.UserName, out var employeeId))
+                {
+                    user.EmployeeId = employeeId;
+                    paired++;
+                }
+            }
+
+            if (paired > 0)
+            {
+                await db.SaveChangesAsync(ct);
+                await audit.LogAsync(userName, "users-paired-to-employees", "AppUser", null,
+                    $"spárováno {paired} účtů", ct);
+            }
+        }
+
         var result = new SyncResult(added, updated, deactivated);
         await audit.LogAsync(userName, "employees-synced", "Employee", null, result.ToString(), ct);
         return result;

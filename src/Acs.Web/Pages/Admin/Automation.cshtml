@@ -1,0 +1,94 @@
+@page
+@using Acs.Infrastructure.Automation
+@model Acs.Web.Pages.Admin.AutomationModel
+@{
+    ViewData["Title"] = "Automatizace";
+
+    string Badge(HealthSeverity s) => s switch
+    {
+        HealthSeverity.Problem => "badge btn-danger",
+        HealthSeverity.Warning => "badge",
+        _ => "badge badge-primary",
+    };
+    string Label(HealthSeverity s) => s switch
+    {
+        HealthSeverity.Problem => "problém",
+        HealthSeverity.Warning => "pozor",
+        _ => "info",
+    };
+}
+<h1>Automatizace a stav systému</h1>
+<p class="muted">Přehled toho, co systém dělá sám, kdy to naposledy proběhlo a co ho případně brzdí.</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+
+<div class="settings-grid">
+<div class="card">
+    <h2 style="margin-top:0">Naplánované úlohy</h2>
+    <table class="data">
+        <thead><tr><th>Úloha</th><th>Stav</th><th>Interval</th><th>Naposledy</th></tr></thead>
+        <tbody>
+        @foreach (var job in Model.Jobs)
+        {
+            <tr>
+                <td>@job.Name</td>
+                <td>@(job.Enabled ? Html.Raw("<span class=\"badge badge-primary\">zapnuto</span>") : Html.Raw("<span class=\"badge\">vypnuto</span>"))</td>
+                <td class="muted">@(job.IntervalMinutes) min</td>
+                <td class="muted">@(job.LastRun?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+
+    <form method="post" asp-page-handler="RunAutomation" class="inline-form">
+        <button class="btn" type="submit">Spustit automatizaci teď</button>
+    </form>
+    <form method="post" asp-page-handler="RunAll" class="inline-form">
+        <button class="btn btn-ghost" type="submit">Spustit vše (synchronizace + automatizace)</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">Co systém dělá sám</h2>
+    <ul class="muted" style="margin:0;padding-left:1.1rem;line-height:1.7">
+        <li>načítá čtečky z WIN-PAK a zaměstnance z AD, karty ze SQL,</li>
+        <li>páruje AD účty se zaměstnanci,</li>
+        <li>přiděluje základní přístup podle oddělení (auto-zařazení),</li>
+        <li>odebírá přístupy při odchodu zaměstnance a při změně oddělení,</li>
+        <li>odebírá přístupy po uplynutí platnosti,</li>
+        <li>doplňuje řetězce chodeb a závislosti čteček do žádostí,</li>
+        <li>připomíná a eskaluje dlouho čekající schválení,</li>
+        <li>přebírá změny provedené přímo ve WIN-PAK zpět do ACS,</li>
+        <li>volitelně sám předává schválené přístupy do WIN-PAK,</li>
+        <li>aktualizuje aplikaci na obou serverech z Gitu.</li>
+    </ul>
+</div>
+</div>
+
+<h2>Diagnostika (@Model.Health.Count)</h2>
+<div class="card">
+    @if (Model.Health.Count == 0)
+    {
+        <p class="muted">Vše v pořádku — nic nebrzdí automatické zpracování.</p>
+    }
+    else
+    {
+        <table class="data">
+            <thead><tr><th>Závažnost</th><th>Zjištění</th><th>Detail</th><th>Kde řešit</th></tr></thead>
+            <tbody>
+            @foreach (var item in Model.Health.OrderByDescending(h => h.Severity))
+            {
+                <tr>
+                    <td><span class="@Badge(item.Severity)">@Label(item.Severity)</span></td>
+                    <td>@item.Title</td>
+                    <td class="muted">@item.Detail</td>
+                    <td class="muted">@item.Hint</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>

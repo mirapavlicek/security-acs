@@ -63,6 +63,8 @@ builder.Services.AddScoped<Acs.Infrastructure.Sync.EmployeeSyncService>();
 builder.Services.AddScoped<Acs.Infrastructure.Sync.AccessSyncService>();
 builder.Services.AddScoped<Acs.Infrastructure.Sync.CardSyncService>();
 builder.Services.AddScoped<Acs.Infrastructure.Sync.AutoAssignmentService>();
+builder.Services.AddScoped<Acs.Infrastructure.Automation.AutomationService>();
+builder.Services.AddScoped<Acs.Infrastructure.Automation.HealthCheckService>();
 builder.Services.AddScoped<Acs.Infrastructure.Sync.EmployeeSourceFactory>();
 builder.Services.AddHttpClient(nameof(Acs.Infrastructure.Sync.ApiEmployeeSource));
 builder.Services.AddHostedService<Acs.Infrastructure.Sync.SyncScheduler>();

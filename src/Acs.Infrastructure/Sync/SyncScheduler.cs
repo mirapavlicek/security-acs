@@ -19,6 +19,7 @@ public class SyncScheduler(IServiceScopeFactory scopeFactory, ILogger<SyncSchedu
     private const string EmployeesLastRunKey = "Sync:EmployeesLastRunUtc";
     private const string AccessLastRunKey = "Sync:AccessLastRunUtc";
     private const string CardsLastRunKey = "Sync:CardsLastRunUtc";
+    private const string AutomationLastRunKey = "Sync:AutomationLastRunUtc";
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -50,8 +51,10 @@ public class SyncScheduler(IServiceScopeFactory scopeFactory, ILogger<SyncSchedu
             SettingKeys.WinPakAccessSyncIntervalMinutes, AccessLastRunKey, ct);
         var cardsDue = await IsDueAsync(settings, SettingKeys.CardsSyncEnabled,
             SettingKeys.CardsSyncIntervalMinutes, CardsLastRunKey, ct);
+        var automationDue = await IsDueAsync(settings, SettingKeys.AutomationEnabled,
+            SettingKeys.AutomationIntervalMinutes, AutomationLastRunKey, ct, defaultEnabled: true, defaultInterval: 30);
 
-        if (!readersDue && !employeesDue && !accessDue && !cardsDue)
+        if (!readersDue && !employeesDue && !accessDue && !cardsDue && !automationDue)
             return;
 
         await using var dbLock = await TryAcquireLockAsync(db, ct);
@@ -91,6 +94,15 @@ public class SyncScheduler(IServiceScopeFactory scopeFactory, ILogger<SyncSchedu
             logger.LogInformation("Synchronizace karet: {Result}", result);
         }
 
+        if (automationDue)
+        {
+            var automation = scope.ServiceProvider.GetRequiredService<Automation.AutomationService>();
+            var result = await automation.RunAsync("system", ct);
+            await settings.SetAsync(AutomationLastRunKey, DateTime.UtcNow.ToString("O"), "system", ct);
+            if (result.AnythingDone)
+                logger.LogInformation("Automatizace: {Result}", result);
+        }
+
         if (accessDue)
         {
             var sync = scope.ServiceProvider.GetRequiredService<AccessSyncService>();
@@ -101,12 +113,13 @@ public class SyncScheduler(IServiceScopeFactory scopeFactory, ILogger<SyncSchedu
     }
 
     private static async Task<bool> IsDueAsync(SettingsService settings,
-        string enabledKey, string intervalKey, string lastRunKey, CancellationToken ct)
+        string enabledKey, string intervalKey, string lastRunKey, CancellationToken ct,
+        bool defaultEnabled = false, int defaultInterval = 60)
     {
-        if (!await settings.GetBoolAsync(enabledKey, false, ct))
+        if (!await settings.GetBoolAsync(enabledKey, defaultEnabled, ct))
             return false;
 
-        var interval = TimeSpan.FromMinutes(Math.Max(5, await settings.GetIntAsync(intervalKey, 60, ct)));
+        var interval = TimeSpan.FromMinutes(Math.Max(5, await settings.GetIntAsync(intervalKey, defaultInterval, ct)));
         var lastRun = DateTime.TryParse(await settings.GetAsync(lastRunKey, ct), null,
             System.Globalization.DateTimeStyles.RoundtripKind, out var parsed)
             ? parsed

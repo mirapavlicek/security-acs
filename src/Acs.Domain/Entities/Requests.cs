@@ -41,7 +41,15 @@ public class AccessRequest
 
     public string? Justification { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Platnost přístupu — po uplynutí se automaticky založí revokace.</summary>
     public DateTime? ValidUntil { get; set; }
+
+    /// <summary>
+    /// Oddělení, kvůli kterému žádost vznikla automatickým zařazením.
+    /// Při změně oddělení zaměstnance se takový přístup automaticky odebere.
+    /// </summary>
+    public string? AutoAssignedDepartment { get; set; }
 
     public List<AccessRequestItem> Items { get; set; } = [];
 }
@@ -81,6 +89,9 @@ public class AccessRequestItem
     public DateTime? DecidedAt { get; set; }
     public DateTime? PushedAt { get; set; }
     public string? PushResult { get; set; }
+
+    /// <summary>Kdy byla naposledy odeslána připomínka schvalovatelům (proti spamu).</summary>
+    public DateTime? LastReminderAt { get; set; }
 
     public List<ApprovalDecision> Decisions { get; set; } = [];
 
