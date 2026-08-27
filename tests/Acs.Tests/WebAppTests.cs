@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Mvc.Testing.Handlers;
 using Microsoft.EntityFrameworkCore;
@@ -14,6 +15,10 @@ public sealed class AcsWebFactory : WebApplicationFactory<Program>, IDisposable
 
     protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
     {
+        // Testy musí být deterministické i na stroji s produkčním prostředím
+        // (updater na nodech spouští testy s nastaveným ASPNETCORE_ENVIRONMENT=Production,
+        // což by zapnulo Secure cookies a rozbilo login test přes HTTP).
+        builder.UseEnvironment("Development");
         builder.UseSetting("Database:Provider", "Sqlite");
         builder.UseSetting("ConnectionStrings:Default", $"Data Source={_dbPath}");
     }
