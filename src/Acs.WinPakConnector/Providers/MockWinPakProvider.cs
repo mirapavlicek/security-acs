@@ -9,7 +9,7 @@ namespace Acs.WinPakConnector.Providers;
 /// Chová se jako plnohodnotný provider včetně zápisu a ovládání dveří,
 /// ale všechno se odehrává v paměti procesu.
 /// </summary>
-public sealed class MockWinPakProvider : WinPakProviderBase
+public sealed partial class MockWinPakProvider : WinPakProviderBase
 {
     public override string Mode => "Mock";
     public override bool SupportsWrite => true;

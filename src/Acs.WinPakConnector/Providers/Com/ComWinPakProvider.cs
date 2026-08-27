@@ -11,7 +11,7 @@ namespace Acs.WinPakConnector.Providers.Com;
 /// proto se všechna volání serializují jedním semaforem. Zátěž je malá
 /// (synchronizace číselníků a jednotlivé zápisy karet), takže to nevadí.
 /// </summary>
-public sealed class ComWinPakProvider : WinPakProviderBase, IDisposable
+public sealed partial class ComWinPakProvider : WinPakProviderBase, IDisposable
 {
     private readonly WinPakComOptions _options;
     private readonly WinPakDatabaseApi _database;

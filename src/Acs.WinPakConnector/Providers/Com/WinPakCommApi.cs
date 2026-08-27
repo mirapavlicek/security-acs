@@ -25,8 +25,11 @@ public sealed class WinPakCallbackSink
 /// Obálka nad Communication Server API (COM objekt <c>ACCW.MTSCBServer</c>):
 /// stav a ovládání dveří plus odběr událostí z panelů.
 /// </summary>
-public sealed class WinPakCommApi(IComFactory com, WinPakComOptions options)
+public sealed partial class WinPakCommApi(IComFactory com, WinPakComOptions options)
 {
+    private readonly IComFactory _com = com;
+    private readonly WinPakComOptions _options = options;
+
     /// <summary>Typ serveru pro <c>IsConnected2</c> — 0 znamená všechny.</summary>
     private const int AllServers = 0;
 
@@ -46,15 +49,15 @@ public sealed class WinPakCommApi(IComFactory com, WinPakComOptions options)
         if (_server is not null)
             return;
 
-        var server = com.Create(options.CommServerProgId);
+        var server = _com.Create(_options.CommServerProgId);
         _sink.MessageReceived += OnMessage;
 
         // InitServer2 se používá při přihlašování doménovými údaji, jinak stačí InitServer.
-        var connected = string.IsNullOrWhiteSpace(options.Domain)
+        var connected = string.IsNullOrWhiteSpace(_options.Domain)
             ? ComValue.ToBool(server.Invoke("InitServer",
-                [_sink, options.CommViewType, options.UserName, options.Password, 0]))
+                [_sink, _options.CommViewType, _options.UserName, _options.Password, 0]))
             : ComValue.ToBool(server.Invoke("InitServer2",
-                [_sink, options.CommViewType, options.UserName, options.Password, options.Domain, 0]));
+                [_sink, _options.CommViewType, _options.UserName, _options.Password, _options.Domain, 0]));
 
         if (!connected)
         {
@@ -95,7 +98,7 @@ public sealed class WinPakCommApi(IComFactory com, WinPakComOptions options)
             foreach (var winPakEvent in parsed)
             {
                 _events.Enqueue(winPakEvent);
-                while (_events.Count > Math.Max(options.EventBufferSize, 1))
+                while (_events.Count > Math.Max(_options.EventBufferSize, 1))
                     _events.Dequeue();
             }
         }
@@ -105,7 +108,7 @@ public sealed class WinPakCommApi(IComFactory com, WinPakComOptions options)
     public IReadOnlyList<WinPakEvent> GetRecentEvents(int limit)
     {
         lock (_eventsLock)
-            return _events.TakeLast(Math.Clamp(limit, 1, options.EventBufferSize)).ToList();
+            return _events.TakeLast(Math.Clamp(limit, 1, _options.EventBufferSize)).ToList();
     }
 
     public IReadOnlyList<ServerStatusDto> GetServerStatus()
@@ -122,7 +125,7 @@ public sealed class WinPakCommApi(IComFactory com, WinPakComOptions options)
         var returned = Server.Invoke("ListConnectedDevices", args);
 
         return ComValue.AsEnumerable(returned ?? args[0])
-            .Select(com.Wrap)
+            .Select(_com.Wrap)
             .Select(device => new DeviceDto(
                 Hid: ComValue.ToStringOrEmpty(device.GetProperty("HWDeviceID")),
                 Name: ComValue.ToStringOrEmpty(device.GetProperty("DeviceName")),

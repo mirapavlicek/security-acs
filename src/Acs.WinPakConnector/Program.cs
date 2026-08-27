@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using Acs.WinPakConnector.Auth;
+using Acs.WinPakConnector.Endpoints;
 using Acs.WinPakConnector.Models;
 using Acs.WinPakConnector.Providers;
 using Acs.WinPakConnector.Providers.Com;
@@ -186,6 +187,9 @@ api.MapGet("/events", async (int? limit, IWinPakProvider provider, CancellationT
         : Results.Json(
             new { error = $"Režim {provider.Mode} události z panelů neodebírá." },
             statusCode: StatusCodes.Status501NotImplemented));
+
+// Rozšířená část API (číselníky, hardware, systém, povely) — vlastní soubor kvůli rozsahu.
+api.MapCatalog();
 
 app.Run();
 

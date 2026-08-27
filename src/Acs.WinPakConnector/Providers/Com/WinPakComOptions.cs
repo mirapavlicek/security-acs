@@ -30,7 +30,17 @@ public sealed class WinPakComOptions
 
     public string CardHolderProgId { get; set; } = "NCIHelper.CardHolder";
 
+    public string AccessLevelProgId { get; set; } = "NCIHelper.AccessLevel";
+
+    public string TimeZoneProgId { get; set; } = "NCIHelper.TimeZone";
+
+    public string HolidayProgId { get; set; } = "NCIHelper.MasterHoliday";
+
+    public string HolidayGroupProgId { get; set; } = "NCIHelper.HolidayGroup";
+
     public string CommServerProgId { get; set; } = "ACCW.MTSCBServer";
+
+    public string NetAxsDoorInfoProgId { get; set; } = "Accw.NetAXSDoorInfo";
 
     /// <summary>Kolik posledních událostí z komunikačního serveru se drží v paměti pro <c>GET /api/v1/events</c>.</summary>
     public int EventBufferSize { get; set; } = 500;
