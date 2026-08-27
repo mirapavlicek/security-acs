@@ -308,6 +308,46 @@ public sealed class CatalogEndpointTests(ConnectorFactory factory) : IClassFixtu
         Assert.Contains("statusId", status);
     }
 
+    [Theory]
+    [InlineData("DeviceName", "R-001")]
+    [InlineData("AccessLevelName", "AL-01")]
+    [InlineData("TimeZoneName", "1")]
+    [InlineData("AccountEmails", "")]
+    [InlineData("ReaderDirectPoint", "1")]
+    [InlineData("PanelGroupCheck", "1")]
+    public async Task Drobne_dotazy_vraci_vysledek(string kind, string value)
+    {
+        var result = await CreateClient()
+            .GetFromJsonAsync<LookupResultDto>($"/api/v1/lookup/{kind}?value={Uri.EscapeDataString(value)}");
+
+        Assert.NotNull(result!.Result);
+    }
+
+    [Fact]
+    public async Task Navazana_casova_zona_se_da_zjistit_pro_ctecku_i_vystup()
+    {
+        var client = CreateClient();
+
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.GetAsync("/api/v1/associated-time-zone?accessLevelName=Serverovna&readerName=R-004")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.GetAsync("/api/v1/associated-time-zone?panelId=1&outputId=101")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Objektovy_zapis_karty_projde_pres_REST()
+    {
+        var client = CreateClient();
+
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsJsonAsync(
+            "/api/v1/cards/300111/object", new UpsertCardRequest("CH-1001"))).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PutAsJsonAsync(
+            "/api/v1/cards/300111/object", new UpsertCardRequest("CH-1001", CardStatus.Inactive))).StatusCode);
+
+        var card = await client.GetFromJsonAsync<CardDto>("/api/v1/cards/300111");
+        Assert.Equal(CardStatus.Inactive, card!.Status);
+    }
+
     [Fact]
     public async Task Hromadne_zamknuti_dveri_a_refresh_prochazi()
     {

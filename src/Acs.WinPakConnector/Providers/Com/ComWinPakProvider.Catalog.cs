@@ -95,13 +95,15 @@ public sealed partial class ComWinPakProvider : IWinPakCatalogApi
                 _database.ImportPhoto(id, index, contentBase64);
         }, ct);
 
-    public Task DeleteCardHolderImageAsync(string id, int index, bool signature, CancellationToken ct)
+    public Task DeleteCardHolderImageAsync(string id, int index, bool signature, bool shortVariant, CancellationToken ct)
         => RunAsync(() =>
         {
-            if (signature)
-                _database.DeleteSignature(id, index);
-            else
+            if (!signature)
                 _database.DeletePhoto(id, index);
+            else if (shortVariant)
+                _database.DeleteSignatureShort(id, index);
+            else
+                _database.DeleteSignature(id, index);
         }, ct);
 
     // ---------- Časové zóny ----------
@@ -114,6 +116,9 @@ public sealed partial class ComWinPakProvider : IWinPakCatalogApi
 
     public Task<string> AddTimeZoneAsync(UpsertTimeZoneRequest request, CancellationToken ct)
         => RunAsync(() => _database.AddTimeZone(request), ct);
+
+    public Task CreateTimeZoneAsync(UpsertTimeZoneRequest request, CancellationToken ct)
+        => RunAsync(() => _database.CreateTimeZone(request), ct);
 
     public Task EditTimeZoneAsync(string currentName, UpsertTimeZoneRequest request, CancellationToken ct)
         => RunAsync(() => _database.EditTimeZone(currentName, request), ct);
@@ -217,8 +222,16 @@ public sealed partial class ComWinPakProvider : IWinPakCatalogApi
     public Task<IReadOnlyList<ReaderDto>> GetReadersInBranchAsync(string branchName, CancellationToken ct)
         => RunAsync(() => _database.GetReadersInAccessAreaBranch(branchName), ct);
 
-    public Task<IReadOnlyList<TimeZoneDto>> GetReaderTimeZonesAsync(string readerName, CancellationToken ct)
-        => RunAsync(() => _database.GetAvailableTimeZonesOfReader(readerName), ct);
+    public Task<IReadOnlyList<TimeZoneDto>> GetReaderTimeZonesAsync(string readerName, bool forAccount, CancellationToken ct)
+        => RunAsync(() => forAccount
+            ? _database.GetAvailableTimeZonesOfAccessReader(readerName)
+            : _database.GetAvailableTimeZonesOfReader(readerName), ct);
+
+    public Task<IReadOnlyList<TimeZoneDto>> GetBranchTimeZonesAsync(string branchName, CancellationToken ct)
+        => RunAsync(() => _database.GetAvailableTimeZonesOfBranch(branchName), ct);
+
+    public Task<string?> GetAssociatedGroupAsync(string accessLevelName, string readerName, CancellationToken ct)
+        => RunAsync(() => _database.GetAssociatedGroupOfReader(accessLevelName, readerName), ct);
 
     public Task<IReadOnlyList<PanelPointDto>> GetReaderGroupsAsync(string readerName, CancellationToken ct)
         => RunAsync(() => _database.GetAvailableGroupsOfReader(readerName), ct);
@@ -249,6 +262,56 @@ public sealed partial class ComWinPakProvider : IWinPakCatalogApi
     public Task<BadgeDto> GetBadgeAsync(string badgeId, CancellationToken ct)
         => RunAsync(() => _database.GetBadge(badgeId), ct);
 
+    public Task<LookupResultDto> LookupAsync(LookupKind kind, string value, CancellationToken ct)
+        => RunAsync(() => new LookupResultDto(kind, value, kind switch
+        {
+            LookupKind.DeviceName => _database.GetDeviceName(ComValue.ToLong(value)),
+            LookupKind.AccountByDevice => _database.GetAccountIdByHid(ComValue.ToLong(value)),
+            LookupKind.AccessLevelName => _database.GetAccessLevelName(value),
+            LookupKind.TimeZoneName => _database.GetTimeZoneName(value),
+            LookupKind.AccountName => _database.GetAccountName(value),
+            LookupKind.SubAccountName => _database.GetSubAccountName(value),
+            LookupKind.AccountEmails => _database.GetAccountEmails(),
+            LookupKind.ReaderTimeZoneDetails => _database.GetReaderTimeZoneDetails(),
+            LookupKind.LoopTimeZones => _database.GetLoopTimeZones(),
+            LookupKind.ReaderDirectPoint => Join(_database.GetDirectPointTimeZoneOfReader(ComValue.ToLong(value))),
+            LookupKind.PanelGroupCheck => _database.IsPanelGroupChecked(ComValue.ToLong(value)).ToString(),
+            _ => null,
+        }), ct);
+
+    private static string Join((string? DeviceId, string? TimeZoneId) point)
+        => $"{point.DeviceId}/{point.TimeZoneId}";
+
+    public Task<TimeZoneDto?> GetAssociatedTimeZoneAsync(AssociatedTimeZoneQuery query, CancellationToken ct)
+        => RunAsync(() => query switch
+        {
+            { AccessLevelName: { } level, ReaderName: { } reader }
+                => _database.GetAssociatedTimeZoneOfReader(level, reader),
+            { PanelId: { } panel, OutputId: { } output, LockUnlock: { } lockUnlock }
+                => _database.GetAssociatedTimeZoneOfOutputEx(panel, output, lockUnlock),
+            { PanelId: { } panel, OutputId: { } output }
+                => _database.GetAssociatedTimeZoneOfOutput(panel, output),
+            { PanelId: { } panel, GroupId: { } group }
+                => _database.GetAssociatedTimeZoneOfGroup(panel, group),
+            _ => throw new ArgumentException(
+                "Zadejte buď přístupovou úroveň a čtečku, nebo panel a výstup či skupinu."),
+        }, ct);
+
+    public Task<IReadOnlyList<PanelDto>> GetPanelsUsingHolidayGroupAsync(string holidayGroupId, CancellationToken ct)
+        => RunAsync(() => _database.IsolatePanelsForHolidayGroupDelete(holidayGroupId), ct);
+
+    public Task DeleteAccessLevelWithReplacementAsync(string accessLevelId, string replacementId, bool multiple, CancellationToken ct)
+        => RunAsync(() => _database.DeleteAccessLevelWithReplacement(accessLevelId, replacementId, multiple), ct);
+
+    public Task WriteCardObjectAsync(string cardNumber, UpsertCardRequest request, bool edit, CancellationToken ct)
+        => RunAsync(() =>
+        {
+            if (edit)
+                _database.EditCard(cardNumber, request);
+            else
+                _database.AddCard(cardNumber, request);
+        }, ct);
+
     // ---------- Komunikační server ----------
 
     public Task AcknowledgeAlarmAsync(long hid, int point, CancellationToken ct)
@@ -270,6 +333,15 @@ public sealed partial class ComWinPakProvider : IWinPakCatalogApi
                 Comm.ShuntAlarm(hid);
             else
                 Comm.UnshuntAlarm(hid);
+        }, ct);
+
+    public Task LockEntryPointAsync(long hid, int point, bool unlock, CancellationToken ct)
+        => RunAsync(() =>
+        {
+            if (unlock)
+                Comm.UnlockEntryPoint(hid, point);
+            else
+                Comm.LockEntryPoint(hid, point);
         }, ct);
 
     public Task UnshuntAlarmPointAsync(long hid, int point, CancellationToken ct)

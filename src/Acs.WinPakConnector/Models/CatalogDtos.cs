@@ -157,6 +157,44 @@ public record TemplateDto(string Id, string Name, string? AccountId, int Type, s
 
 public record BadgeDto(string Id, string? Data, int Height, int Width);
 
+/// <summary>Drobné dotazy WIN-PAKu typu „přelož id na název“ nebo diagnostický souhrn.</summary>
+public enum LookupKind
+{
+    /// <summary>Název zařízení podle jeho HID.</summary>
+    DeviceName,
+    /// <summary>Účet, kterému zařízení patří.</summary>
+    AccountByDevice,
+    /// <summary>Název přístupové úrovně podle id.</summary>
+    AccessLevelName,
+    /// <summary>Název časové zóny podle id.</summary>
+    TimeZoneName,
+    /// <summary>Název účtu podle id.</summary>
+    AccountName,
+    /// <summary>Název podúčtu podle id.</summary>
+    SubAccountName,
+    /// <summary>E-mailové adresy účtu pro reporty.</summary>
+    AccountEmails,
+    /// <summary>Souhrn časových zón čteček v účtu.</summary>
+    ReaderTimeZoneDetails,
+    /// <summary>Souhrn časových zón smyčky účtu.</summary>
+    LoopTimeZones,
+    /// <summary>Přímý bod a časová zóna čtečky (vrací dvě hodnoty oddělené lomítkem).</summary>
+    ReaderDirectPoint,
+    /// <summary>Zda má panel zapnutou volbu skupin.</summary>
+    PanelGroupCheck,
+}
+
+public record LookupResultDto(LookupKind Kind, string Value, string? Result);
+
+/// <summary>Na co se ptáme při zjišťování navázané časové zóny.</summary>
+public record AssociatedTimeZoneQuery(
+    string? AccessLevelName = null,
+    string? ReaderName = null,
+    long? PanelId = null,
+    long? OutputId = null,
+    long? GroupId = null,
+    int? LockUnlock = null);
+
 // ---------- Komunikační server ----------
 
 /// <summary>Detail transakce alarmu nebo události (<c>GetDetailsByID</c>).</summary>

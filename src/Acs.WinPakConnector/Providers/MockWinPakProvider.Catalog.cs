@@ -176,7 +176,7 @@ public sealed partial class MockWinPakProvider : IWinPakCatalogApi
         return Task.CompletedTask;
     }
 
-    public Task DeleteCardHolderImageAsync(string id, int index, bool signature, CancellationToken ct)
+    public Task DeleteCardHolderImageAsync(string id, int index, bool signature, bool shortVariant, CancellationToken ct)
     {
         _cardHolderImages.TryRemove(ImageKey(id, index, signature), out _);
         return Task.CompletedTask;
@@ -200,6 +200,9 @@ public sealed partial class MockWinPakProvider : IWinPakCatalogApi
         _timeZones[id] = new TimeZoneDto(id, request.Name, request.Description, AccountName);
         return Task.FromResult(id);
     }
+
+    public Task CreateTimeZoneAsync(UpsertTimeZoneRequest request, CancellationToken ct)
+        => AddTimeZoneAsync(request, ct);
 
     public Task EditTimeZoneAsync(string currentName, UpsertTimeZoneRequest request, CancellationToken ct)
     {
@@ -379,8 +382,14 @@ public sealed partial class MockWinPakProvider : IWinPakCatalogApi
         => Task.FromResult<IReadOnlyList<ReaderDto>>(
             Readers.Where(r => r.Description?.Contains(branchName, StringComparison.OrdinalIgnoreCase) == true).ToList());
 
-    public Task<IReadOnlyList<TimeZoneDto>> GetReaderTimeZonesAsync(string readerName, CancellationToken ct)
+    public Task<IReadOnlyList<TimeZoneDto>> GetReaderTimeZonesAsync(string readerName, bool forAccount, CancellationToken ct)
         => Task.FromResult<IReadOnlyList<TimeZoneDto>>(_timeZones.Values.ToList());
+
+    public Task<IReadOnlyList<TimeZoneDto>> GetBranchTimeZonesAsync(string branchName, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<TimeZoneDto>>(_timeZones.Values.ToList());
+
+    public Task<string?> GetAssociatedGroupAsync(string accessLevelName, string readerName, CancellationToken ct)
+        => Task.FromResult<string?>("110");
 
     public Task<IReadOnlyList<PanelPointDto>> GetReaderGroupsAsync(string readerName, CancellationToken ct)
         => Task.FromResult<IReadOnlyList<PanelPointDto>>([new("110", "Skupina A", null)]);
@@ -420,6 +429,34 @@ public sealed partial class MockWinPakProvider : IWinPakCatalogApi
     public Task<BadgeDto> GetBadgeAsync(string badgeId, CancellationToken ct)
         => Task.FromResult(new BadgeDto(badgeId, "<badge/>", 54, 86));
 
+    public Task<LookupResultDto> LookupAsync(LookupKind kind, string value, CancellationToken ct)
+        => Task.FromResult(new LookupResultDto(kind, value, kind switch
+        {
+            LookupKind.DeviceName => Readers.FirstOrDefault(r => r.Id == value)?.Name,
+            LookupKind.AccountByDevice or LookupKind.AccountName => "FNMH",
+            LookupKind.AccessLevelName => AccessLevels.FirstOrDefault(al => al.Id == value)?.Name,
+            LookupKind.TimeZoneName => _timeZones.GetValueOrDefault(value)?.Name,
+            LookupKind.SubAccountName => "Default",
+            LookupKind.AccountEmails => "acs@fnmh.cz",
+            LookupKind.ReaderTimeZoneDetails => "<Readers/>",
+            LookupKind.LoopTimeZones => "<Loops/>",
+            LookupKind.ReaderDirectPoint => "1/1",
+            LookupKind.PanelGroupCheck => bool.TrueString,
+            _ => null,
+        }));
+
+    public Task<TimeZoneDto?> GetAssociatedTimeZoneAsync(AssociatedTimeZoneQuery query, CancellationToken ct)
+        => Task.FromResult(_timeZones.Values.FirstOrDefault());
+
+    public Task<IReadOnlyList<PanelDto>> GetPanelsUsingHolidayGroupAsync(string holidayGroupId, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<PanelDto>>([]);
+
+    public Task DeleteAccessLevelWithReplacementAsync(string accessLevelId, string replacementId, bool multiple, CancellationToken ct)
+        => Record($"delete-access-level-with-replacement:{accessLevelId}->{replacementId}");
+
+    public Task WriteCardObjectAsync(string cardNumber, UpsertCardRequest request, bool edit, CancellationToken ct)
+        => UpsertCardAsync(cardNumber, request, ct);
+
     // ---------- Komunikační server ----------
 
     public Task AcknowledgeAlarmAsync(long hid, int point, CancellationToken ct)
@@ -436,6 +473,9 @@ public sealed partial class MockWinPakProvider : IWinPakCatalogApi
 
     public Task ShuntAlarmAsync(long hid, bool shunt, CancellationToken ct)
         => Record($"{(shunt ? "shunt" : "unshunt")}:{hid}");
+
+    public Task LockEntryPointAsync(long hid, int point, bool unlock, CancellationToken ct)
+        => Record($"{(unlock ? "unlock" : "lock")}-entry-point:{hid}/{point}");
 
     public Task UnshuntAlarmPointAsync(long hid, int point, CancellationToken ct)
         => Record($"unshunt-point:{hid}/{point}");

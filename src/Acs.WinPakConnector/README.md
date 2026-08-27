@@ -193,6 +193,6 @@ se čtrnácti parametry, `AddUpdateCardEx` s devatenácti, `BulkAddCards`
 s jedenácti a rozdílných tvarů `Isolate*`/`Reassign*` volání. Parser `<NLZ>`
 zpráv je testovaný na ukázkách přímo z příručky.
 
-Pokrytí: **135 ze 147** dokumentovaných metod databázového API a **všech 42**
+Pokrytí: **139 ze 147** dokumentovaných metod databázového API a **všech 42**
 funkcí komunikačního serveru. Nepokryté zůstávají jen ty, u kterých příručka
 uvádí jen název bez signatury — seznam a důvody jsou v `docs/winpak-api/README.md`.

@@ -66,7 +66,7 @@ public interface IWinPakCatalogApi
 
     Task ImportCardHolderImageAsync(string id, int index, bool signature, string contentBase64, CancellationToken ct);
 
-    Task DeleteCardHolderImageAsync(string id, int index, bool signature, CancellationToken ct);
+    Task DeleteCardHolderImageAsync(string id, int index, bool signature, bool shortVariant, CancellationToken ct);
 
     // ---------- Časové zóny ----------
 
@@ -75,6 +75,9 @@ public interface IWinPakCatalogApi
     Task<TimeZoneDto?> GetTimeZoneByNameAsync(string name, CancellationToken ct);
 
     Task<string> AddTimeZoneAsync(UpsertTimeZoneRequest request, CancellationToken ct);
+
+    /// <summary>Jednodušší varianta <c>CreateTimezone</c> (bez objektu, jen název a účty).</summary>
+    Task CreateTimeZoneAsync(UpsertTimeZoneRequest request, CancellationToken ct);
 
     Task EditTimeZoneAsync(string currentName, UpsertTimeZoneRequest request, CancellationToken ct);
 
@@ -140,7 +143,11 @@ public interface IWinPakCatalogApi
 
     Task<IReadOnlyList<ReaderDto>> GetReadersInBranchAsync(string branchName, CancellationToken ct);
 
-    Task<IReadOnlyList<TimeZoneDto>> GetReaderTimeZonesAsync(string readerName, CancellationToken ct);
+    Task<IReadOnlyList<TimeZoneDto>> GetReaderTimeZonesAsync(string readerName, bool forAccount, CancellationToken ct);
+
+    Task<IReadOnlyList<TimeZoneDto>> GetBranchTimeZonesAsync(string branchName, CancellationToken ct);
+
+    Task<string?> GetAssociatedGroupAsync(string accessLevelName, string readerName, CancellationToken ct);
 
     Task<IReadOnlyList<PanelPointDto>> GetReaderGroupsAsync(string readerName, CancellationToken ct);
 
@@ -162,6 +169,17 @@ public interface IWinPakCatalogApi
 
     Task<BadgeDto> GetBadgeAsync(string badgeId, CancellationToken ct);
 
+    /// <summary>Drobné dotazy „přelož id na název“ a diagnostické souhrny, které WIN-PAK nabízí.</summary>
+    Task<LookupResultDto> LookupAsync(LookupKind kind, string value, CancellationToken ct);
+
+    Task<TimeZoneDto?> GetAssociatedTimeZoneAsync(AssociatedTimeZoneQuery query, CancellationToken ct);
+
+    Task<IReadOnlyList<PanelDto>> GetPanelsUsingHolidayGroupAsync(string holidayGroupId, CancellationToken ct);
+
+    Task DeleteAccessLevelWithReplacementAsync(string accessLevelId, string replacementId, bool multiple, CancellationToken ct);
+
+    Task WriteCardObjectAsync(string cardNumber, UpsertCardRequest request, bool edit, CancellationToken ct);
+
     // ---------- Komunikační server ----------
 
     Task AcknowledgeAlarmAsync(long hid, int point, CancellationToken ct);
@@ -173,6 +191,8 @@ public interface IWinPakCatalogApi
     Task<TransactionDetailDto> GetTransactionDetailsAsync(long hid, int point, CancellationToken ct);
 
     Task ShuntAlarmAsync(long hid, bool shunt, CancellationToken ct);
+
+    Task LockEntryPointAsync(long hid, int point, bool unlock, CancellationToken ct);
 
     Task UnshuntAlarmPointAsync(long hid, int point, CancellationToken ct);
 

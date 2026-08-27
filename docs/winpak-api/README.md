@@ -37,7 +37,7 @@ Veškerá funkčnost visí na objektu `Application` (přes 130 metod). Metody vr
 
 ### Pokrytí konektorem
 
-Konektor implementuje **135 ze 147 metod** objektu `Application`, které příručka
+Konektor implementuje **139 ze 147 metod** objektu `Application`, které příručka
 popisuje včetně signatury, a **všech 42 funkcí** komunikačního serveru.
 Nepokryté zůstávají jen ty, u kterých příručka uvádí název v seznamu metod, ale
 neuvádí signaturu ani parametry — bez toho je nelze zavolat spolehlivě:
@@ -264,11 +264,12 @@ Konektor tyto zprávy parsuje v `Providers/Com/NlzMessage.cs`.
 | --- | --- |
 | `GET /api/v1/cards?withoutHolder=` | `GetCardsByAccountName`, `GetCardsWithoutCHIDByAcctID` |
 | `PUT /api/v1/cards/{cardNumber}/netaxs` | `AddUpdateCardEx` |
+| `POST` / `PUT /api/v1/cards/{cardNumber}/object` | `AddCard`, `EditCard` |
 | `POST /api/v1/cards/bulk`, `/bulk-delete` | `BulkAddCards`, `BulkDeleteCards` |
 | `GET /api/v1/cardholders/search-fields`, `POST /api/v1/cardholders/search` | `GetCardHolderSearchFieldsByAccountName`, `GetCardHoldersOnSearch` |
 | `GET /api/v1/note-field-templates` | `GetNoteFieldTemplateDetailsByAccount` |
 | `GET/PUT/DELETE /api/v1/cardholders/{id}/photo/{index}` | `GetPhoto` + `GetPhotoSize`, `ImportPhoto`, `DeletePhoto` |
-| `GET/PUT/DELETE /api/v1/cardholders/{id}/signature/{index}` | `GetSig` + `GetSigSize`, `ImportSig`, `DeleteSignature` |
+| `GET/PUT/DELETE /api/v1/cardholders/{id}/signature/{index}[?shortVariant=true]` | `GetSig` + `GetSigSize`, `ImportSig`, `DeleteSignature` / `DeleteSig` |
 
 ### Přístupové úrovně
 
@@ -278,21 +279,21 @@ Konektor tyto zprávy parsuje v `Providers/Com/NlzMessage.cs`.
 | `POST /api/v1/access-levels`, `/object`, `PUT /api/v1/access-levels/{id}`, `/by-name/{name}` | `CreateAccessLevel`, `AddAccessLevel`, `AddUpdateAL`, `EditAccessLevel` |
 | `POST /api/v1/access-levels/{name}/readers`, `/entrance` | `ConfigureAccessLevel`, `ConfigureEntranceAccess` |
 | `GET /api/v1/access-levels/{name}/cards`, `/reassign-candidates`, `POST .../reassign` | `IsolateAccessLevel`, `GetAccesslevelsForReassign`, `ReassignAccessLevel` |
-| `DELETE /api/v1/access-levels/{name}` | `DeleteAccessLevel` |
+| `DELETE /api/v1/access-levels/{name}`, `POST /{id}/delete-with-replacement` | `DeleteAccessLevel`, `DeleteAL` |
 
 ### Časové zóny a svátky
 
 | REST konektoru | COM volání |
 | --- | --- |
 | `GET /api/v1/time-zones`, `/by-name/{name}` | `GetTimeZonesByAccountName` / `GetAllTimezones`, `GetTimeZoneByName` |
-| `POST /api/v1/time-zones`, `PUT /by-name/{name}`, `DELETE /{id}` | `AddTimezone`, `EditTimeZone`, `DeleteTimeZone` |
+| `POST /api/v1/time-zones`, `/simple`, `PUT /by-name/{name}`, `DELETE /{id}` | `AddTimezone`, `CreateTimezone`, `EditTimeZone`, `DeleteTimeZone` |
 | `GET/PUT /api/v1/time-zones/{id}/ranges`, `DELETE .../ranges/{rangeId}` | `GetTimeZoneRangesByTZID`, `ConfigureTimeZoneRange`, `DeleteTimeZoneRange` |
 | `GET /api/v1/time-zones/{id}/usage` | všechna `Isolate*ForTZReassign` a `IsolatePanelsForTZDelete` |
 | `GET /api/v1/time-zones/{id}/reassign-candidates` | `GetTZsForReassign`, `GetTZsForOperatorReassign` |
 | `POST /api/v1/time-zones/reassign` | všechna `Reassign*TZ` |
 | `POST /api/v1/time-zones/{id}/remove-from-panels` | `DeletePanelTZ` |
 | `GET /api/v1/holidays/{id}`, `POST /api/v1/holidays`, `PUT /by-name/{name}`, `DELETE /{id}` | `GetHolidayByID`, `AddHoliday`, `EditHoliday`, `DeleteHoliday` |
-| `GET /api/v1/holiday-groups`, `/{id}/holidays`, `POST`, `PUT /by-name/{name}`, `DELETE /{id}` | `GetHolidayGroupsByAcctID`, `GetHolidaysByHolidayGroupID`, `AddHolidayGroup`, `EditHolidayGroup`, `DeleteHolidayGroup` |
+| `GET /api/v1/holiday-groups`, `/{id}/holidays`, `/{id}/panels`, `POST`, `PUT /by-name/{name}`, `DELETE /{id}` | `GetHolidayGroupsByAcctID`, `GetHolidaysByHolidayGroupID`, `AddHolidayGroup`, `EditHolidayGroup`, `DeleteHolidayGroup` |
 
 ### Hardware
 
@@ -304,8 +305,10 @@ Konektor tyto zprávy parsuje v `Providers/Com/NlzMessage.cs`.
 | `GET/PUT /api/v1/panels/{id}/holiday-groups` | `GetConfiguredHolidayGroupsByPanel`, `ConfigurePanelHolidayGroup` |
 | `PUT /api/v1/panels/{id}/outputs/{outputId}/time-zone` | `ConfigureOutputTimezone` / `ConfigureOutputTimezoneEx` |
 | `PUT /api/v1/panels/{id}/groups/{groupId}/time-zone` | `ConfigureGroupTimezone` |
-| `GET /api/v1/access-areas`, `/{branch}/readers` | `GetAccessAreaBranchesByAccountName`, `GetReadersInAccessAreaBranch` |
-| `GET /api/v1/readers/{name}/time-zones`, `/groups` | `GetAvailableTimeZonesOfReader`, `GetAvailableGroupsofReader` |
+| `GET /api/v1/access-areas`, `/{branch}/readers`, `/{branch}/time-zones` | `GetAccessAreaBranchesByAccountName`, `GetReadersInAccessAreaBranch`, `GetAvailableTimezonesOfBranch` |
+| `GET /api/v1/readers/{name}/time-zones[?forAccount=true]`, `/groups` | `GetAvailableTimeZonesOfReader` / `GetAvailableTimeZonesOfAccessReader`, `GetAvailableGroupsofReader` |
+| `GET /api/v1/associated-time-zone`, `/associated-group` | `GetAssociatedTimeZoneOfReader`, `GetAssociatedTimezoneOfOutput(EX)`, `GetAssociatedTimezoneOfGroup`, `GetAssociatedGroupofReader` |
+| `GET /api/v1/lookup/{kind}` | `GetDeviceNameByHWDeviceID`, `GetAcctIDByHID`, `GetAccessLevelNameByID`, `GetTimezoneNameByID`, `GetAccountNameByAcctID`, `GetSubAccountNameBySubAcctID`, `GetAccountEmailIDs`, `GetReaderTZDetailsByAccountId`, `LoopTimeZoneByAccountId`, `GetDirectPointTZDetailsofReader`, `IsGroupChecked` |
 
 ### Systém a povely
 
@@ -318,6 +321,7 @@ Konektor tyto zprávy parsuje v `Providers/Com/NlzMessage.cs`.
 | `POST /api/v1/devices/{hid}/alarm/acknowledge`, `/alarm/clear`, `/note` | `AckAlarm`, `ClrAlarm`, `AddNote` |
 | `GET /api/v1/devices/{hid}/transaction`, `/status` | `GetDetailsByID`, `GetStatus` |
 | `POST /api/v1/devices/{hid}/shunt`, `/unshunt`, `/unshunt-point` | `AlarmShuntByHID`, `AlarmUnShuntByHID`, `AlarmUnShunt` |
+| `POST /api/v1/devices/{hid}/entry-point/lock`, `/unlock` | `EntryPointLock`, `EntryPointUnLock` |
 | `POST /api/v1/devices/{hid}/buffer`, `/unbuffer` | `BufferByHID`, `UnBufferByHID` |
 | `POST /api/v1/devices/{hid}/energize`, `/de-energize`, `/restore-time-zone`, `/command` | `Energize`, `DeEnergize`, `RestoreTZByHID`, `ExecCustomCommand` |
 | `POST /api/v1/panels/{hid}/initialize`, `/cancel-initialize`, `/refresh-time-zones` | `PanelInitialize`, `PanelCancelInitialize`, `PanelRefreshTZByHID` |

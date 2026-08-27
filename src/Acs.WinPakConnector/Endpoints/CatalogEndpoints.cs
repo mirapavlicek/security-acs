@@ -167,15 +167,17 @@ public static class CatalogEndpoints
 
         api.MapDelete("/cardholders/{id}/photo/{index:int}", async (string id, int index, IWinPakProvider p, CancellationToken ct) =>
         {
-            await Catalog(p).DeleteCardHolderImageAsync(id, index, signature: false, ct);
+            await Catalog(p).DeleteCardHolderImageAsync(id, index, signature: false, shortVariant: false, ct);
             return Results.NoContent();
         });
 
-        api.MapDelete("/cardholders/{id}/signature/{index:int}", async (string id, int index, IWinPakProvider p, CancellationToken ct) =>
-        {
-            await Catalog(p).DeleteCardHolderImageAsync(id, index, signature: true, ct);
-            return Results.NoContent();
-        });
+        // Podpis jde smazat dvěma voláními; „short“ použije variantu bez stavového kódu.
+        api.MapDelete("/cardholders/{id}/signature/{index:int}",
+            async (string id, int index, bool? shortVariant, IWinPakProvider p, CancellationToken ct) =>
+            {
+                await Catalog(p).DeleteCardHolderImageAsync(id, index, signature: true, shortVariant ?? false, ct);
+                return Results.NoContent();
+            });
     }
 
     private static void MapTimeZones(IEndpointRouteBuilder api)
@@ -195,6 +197,12 @@ public static class CatalogEndpoints
 
             var id = await Catalog(p).AddTimeZoneAsync(request, ct);
             return Results.Created($"/api/v1/time-zones/{id}", new { id });
+        });
+
+        api.MapPost("/time-zones/simple", async (UpsertTimeZoneRequest request, IWinPakProvider p, CancellationToken ct) =>
+        {
+            await Catalog(p).CreateTimeZoneAsync(request, ct);
+            return Results.NoContent();
         });
 
         api.MapPut("/time-zones/by-name/{name}", async (string name, UpsertTimeZoneRequest request, IWinPakProvider p, CancellationToken ct) =>
@@ -350,8 +358,14 @@ public static class CatalogEndpoints
         api.MapGet("/access-areas/{branch}/readers", async (string branch, IWinPakProvider p, CancellationToken ct)
             => Results.Ok(await Catalog(p).GetReadersInBranchAsync(branch, ct)));
 
-        api.MapGet("/readers/{name}/time-zones", async (string name, IWinPakProvider p, CancellationToken ct)
-            => Results.Ok(await Catalog(p).GetReaderTimeZonesAsync(name, ct)));
+        api.MapGet("/readers/{name}/time-zones", async (string name, bool? forAccount, IWinPakProvider p, CancellationToken ct)
+            => Results.Ok(await Catalog(p).GetReaderTimeZonesAsync(name, forAccount ?? false, ct)));
+
+        api.MapGet("/access-areas/{branch}/time-zones", async (string branch, IWinPakProvider p, CancellationToken ct)
+            => Results.Ok(await Catalog(p).GetBranchTimeZonesAsync(branch, ct)));
+
+        api.MapGet("/associated-group", async (string accessLevelName, string readerName, IWinPakProvider p, CancellationToken ct)
+            => Results.Ok(new { groupId = await Catalog(p).GetAssociatedGroupAsync(accessLevelName, readerName, ct) }));
 
         api.MapGet("/readers/{name}/groups", async (string name, IWinPakProvider p, CancellationToken ct)
             => Results.Ok(await Catalog(p).GetReaderGroupsAsync(name, ct)));
@@ -398,6 +412,43 @@ public static class CatalogEndpoints
 
         api.MapGet("/badges/{id}", async (string id, IWinPakProvider p, CancellationToken ct)
             => Results.Ok(await Catalog(p).GetBadgeAsync(id, ct)));
+
+        // Drobné dotazy WIN-PAKu (překlad id na název, diagnostické souhrny) —
+        // jeden endpoint místo tuctu skoro identických.
+        api.MapGet("/lookup/{kind}", async (LookupKind kind, string? value, IWinPakProvider p, CancellationToken ct)
+            => Results.Ok(await Catalog(p).LookupAsync(kind, value ?? "", ct)));
+
+        api.MapGet("/associated-time-zone", async (
+            string? accessLevelName, string? readerName, long? panelId, long? outputId, long? groupId,
+            int? lockUnlock, IWinPakProvider p, CancellationToken ct) =>
+        {
+            var query = new AssociatedTimeZoneQuery(accessLevelName, readerName, panelId, outputId, groupId, lockUnlock);
+            return await Catalog(p).GetAssociatedTimeZoneAsync(query, ct) is { } zone
+                ? Results.Ok(zone)
+                : Results.NotFound();
+        });
+
+        api.MapGet("/holiday-groups/{id}/panels", async (string id, IWinPakProvider p, CancellationToken ct)
+            => Results.Ok(await Catalog(p).GetPanelsUsingHolidayGroupAsync(id, ct)));
+
+        api.MapPost("/access-levels/{id}/delete-with-replacement",
+            async (string id, string replacementId, bool? multiple, IWinPakProvider p, CancellationToken ct) =>
+            {
+                await Catalog(p).DeleteAccessLevelWithReplacementAsync(id, replacementId, multiple ?? false, ct);
+                return Results.NoContent();
+            });
+
+        api.MapPost("/cards/{cardNumber}/object", async (string cardNumber, UpsertCardRequest request, IWinPakProvider p, CancellationToken ct) =>
+        {
+            await Catalog(p).WriteCardObjectAsync(cardNumber, request, edit: false, ct);
+            return Results.NoContent();
+        });
+
+        api.MapPut("/cards/{cardNumber}/object", async (string cardNumber, UpsertCardRequest request, IWinPakProvider p, CancellationToken ct) =>
+        {
+            await Catalog(p).WriteCardObjectAsync(cardNumber, request, edit: true, ct);
+            return Results.NoContent();
+        });
     }
 
     private static void MapCommands(IEndpointRouteBuilder api)
@@ -437,6 +488,20 @@ public static class CatalogEndpoints
             await Catalog(p).ShuntAlarmAsync(hid, shunt: false, ct);
             return Results.NoContent();
         });
+
+        api.MapPost("/devices/{hid:long}/entry-point/lock",
+            async (long hid, AlarmPointRequest? request, IWinPakProvider p, CancellationToken ct) =>
+            {
+                await Catalog(p).LockEntryPointAsync(hid, request?.Point ?? 0, unlock: false, ct);
+                return Results.NoContent();
+            });
+
+        api.MapPost("/devices/{hid:long}/entry-point/unlock",
+            async (long hid, AlarmPointRequest? request, IWinPakProvider p, CancellationToken ct) =>
+            {
+                await Catalog(p).LockEntryPointAsync(hid, request?.Point ?? 0, unlock: true, ct);
+                return Results.NoContent();
+            });
 
         api.MapPost("/devices/{hid:long}/unshunt-point",
             async (long hid, AlarmPointRequest? request, IWinPakProvider p, CancellationToken ct) =>
