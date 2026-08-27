@@ -28,6 +28,8 @@ public class MyAccessModel(AcsDbContext db, RequestWorkflowService workflow) : P
 
         var items = await db.AccessRequestItems
             .Include(i => i.Reader).ThenInclude(r => r!.Room).ThenInclude(room => room!.Floor).ThenInclude(f => f!.Building)
+            .Include(i => i.Reader).ThenInclude(r => r!.Room).ThenInclude(room => room!.Corridor)
+            .Include(i => i.Reader).ThenInclude(r => r!.Corridor).ThenInclude(c => c!.Floor).ThenInclude(f => f!.Building)
             .Include(i => i.ReaderGroup)
             .Where(i => i.Request!.TargetEmployeeId == Employee.Id && i.Request.Kind == RequestKind.Grant)
             .ToListAsync();

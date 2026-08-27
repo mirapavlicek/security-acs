@@ -29,7 +29,7 @@
 <div class="card">
     <table class="data">
         <thead>
-        <tr><th>Název</th><th>Panel</th><th>Místnost</th><th>Zdroj</th><th>Vyžaduje</th><th>Aktivní</th><th>Synchronizováno</th><th></th></tr>
+        <tr><th>Název</th><th>Panel</th><th>Umístění</th><th>Zdroj</th><th>Vyžaduje</th><th>Aktivní</th><th>Synchronizováno</th><th></th></tr>
         </thead>
         <tbody>
         @foreach (var reader in Model.Readers)
@@ -37,7 +37,7 @@
             <tr>
                 <td>@reader.Name</td>
                 <td class="muted">@reader.PanelName</td>
-                <td>@(reader.Room is null ? "—" : $"{reader.Room.Floor?.Building?.Name} / {reader.Room.Floor?.Name} / {reader.Room.Name}")</td>
+                <td>@reader.LocationPath()</td>
                 <td><span class="badge">@(reader.Source == RecordSource.Imported ? "WIN-PAK" : "ruční")</span></td>
                 <td class="muted">@string.Join(", ", reader.Dependencies.Select(d => d.RequiresReader?.Name))</td>
                 <td>@(reader.IsActive ? "ano" : "ne")</td>

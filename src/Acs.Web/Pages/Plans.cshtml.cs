@@ -27,7 +27,8 @@ public class PlansModel(AcsDbContext db, Acs.Infrastructure.Workflow.ReaderGroup
             return;
 
         Readers = await db.Readers
-            .Where(r => r.Room != null && r.Room.FloorId == SelectedFloor.Id)
+            .Where(r => (r.Room != null && r.Room.FloorId == SelectedFloor.Id)
+                        || (r.Corridor != null && r.Corridor.FloorId == SelectedFloor.Id))
             .ToListAsync();
 
         // Čtečky, ke kterým má přihlášený uživatel (jako zaměstnanec) aktivní přístup.

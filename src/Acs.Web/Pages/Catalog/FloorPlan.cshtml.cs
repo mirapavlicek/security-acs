@@ -28,8 +28,10 @@ public class FloorPlanModel(AcsDbContext db, AuditService audit) : PageModel
 
     public async Task<IActionResult> OnPostAsync(int id, int readerId, string x, string y)
     {
-        var reader = await db.Readers.Include(r => r.Room).FirstOrDefaultAsync(r => r.Id == readerId);
-        if (reader is null || reader.Room?.FloorId != id)
+        var reader = await db.Readers
+            .Include(r => r.Room).Include(r => r.Corridor)
+            .FirstOrDefaultAsync(r => r.Id == readerId);
+        if (reader is null || (reader.Room?.FloorId != id && reader.Corridor?.FloorId != id))
             return NotFound();
 
         if (double.TryParse(x, NumberStyles.Float, CultureInfo.InvariantCulture, out var px)
@@ -48,7 +50,8 @@ public class FloorPlanModel(AcsDbContext db, AuditService audit) : PageModel
 
     private Task<List<Reader>> LoadReadersAsync(int floorId)
         => db.Readers
-            .Where(r => r.Room != null && r.Room.FloorId == floorId)
+            .Where(r => (r.Room != null && r.Room.FloorId == floorId)
+                        || (r.Corridor != null && r.Corridor.FloorId == floorId))
             .OrderBy(r => r.Name)
             .ToListAsync();
 }

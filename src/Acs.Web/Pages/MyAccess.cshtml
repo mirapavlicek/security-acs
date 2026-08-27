@@ -36,7 +36,7 @@ else
                 var displayName = item.Reader?.Name ?? $"Skupina: {item.ReaderGroup?.Name}";
                 <tr>
                     <td>@displayName</td>
-                    <td class="muted">@(item.Reader?.Room is null ? "—" : $"{item.Reader.Room.Floor?.Building?.Name} / {item.Reader.Room.Floor?.Name} / {item.Reader.Room.Name}")</td>
+                    <td class="muted">@(item.Reader?.LocationPath() ?? "—")</td>
                     <td><span class="badge badge-primary">@(item.Status == RequestStatus.PushedToWinPak ? "v systému (API)" : "v systému (ručně)")</span></td>
                     <td class="muted">@item.PushedAt?.ToString("yyyy-MM-dd")</td>
                     <td style="width:1%">

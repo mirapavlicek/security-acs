@@ -16,6 +16,18 @@ public class Building
     public string? Description { get; set; }
     public byte[]? SchemaImage { get; set; }
     public string? SchemaContentType { get; set; }
+    public List<BuildingSection> Sections { get; set; } = [];
+    public List<Floor> Floors { get; set; } = [];
+}
+
+/// <summary>Část budovy (např. „G“ v budově MOC). Patra mohou (ale nemusí) patřit do části.</summary>
+public class BuildingSection
+{
+    public int Id { get; set; }
+    public int BuildingId { get; set; }
+    public Building? Building { get; set; }
+    public required string Name { get; set; }
+    public int SortOrder { get; set; }
     public List<Floor> Floors { get; set; } = [];
 }
 
@@ -24,11 +36,37 @@ public class Floor
     public int Id { get; set; }
     public int BuildingId { get; set; }
     public Building? Building { get; set; }
+
+    /// <summary>Část budovy, do které patro patří (volitelné — malé budovy části nemají).</summary>
+    public int? SectionId { get; set; }
+    public BuildingSection? Section { get; set; }
+
     public required string Name { get; set; }
     public int SortOrder { get; set; }
     public byte[]? SchemaImage { get; set; }
     public string? SchemaContentType { get; set; }
+    public List<Corridor> Corridors { get; set; } = [];
     public List<Room> Rooms { get; set; } = [];
+}
+
+/// <summary>
+/// Chodba (např. „A100“). Může mít čtečky a místnosti; chodby se mohou řetězit
+/// přes <see cref="ParentCorridorId"/> (i napříč patry — např. chodba → schodiště).
+/// Při žádosti o čtečku místnosti se automaticky přidají čtečky celého řetězu chodeb.
+/// </summary>
+public class Corridor
+{
+    public int Id { get; set; }
+    public int FloorId { get; set; }
+    public Floor? Floor { get; set; }
+    public required string Name { get; set; }
+
+    /// <summary>Nadřazená chodba v řetězu (kudy se do této chodby vchází).</summary>
+    public int? ParentCorridorId { get; set; }
+    public Corridor? ParentCorridor { get; set; }
+
+    public List<Room> Rooms { get; set; } = [];
+    public List<Reader> Readers { get; set; } = [];
 }
 
 public class Room
@@ -36,6 +74,11 @@ public class Room
     public int Id { get; set; }
     public int FloorId { get; set; }
     public Floor? Floor { get; set; }
+
+    /// <summary>Chodba, ze které se do místnosti vchází (volitelné).</summary>
+    public int? CorridorId { get; set; }
+    public Corridor? Corridor { get; set; }
+
     public required string Name { get; set; }
     public string? Description { get; set; }
     public List<Reader> Readers { get; set; } = [];
@@ -63,6 +106,10 @@ public class Reader
     public int? RoomId { get; set; }
     public Room? Room { get; set; }
 
+    /// <summary>Čtečka umístěná přímo na chodbě (alternativa k místnosti).</summary>
+    public int? CorridorId { get; set; }
+    public Corridor? Corridor { get; set; }
+
     /// <summary>Schvalovací matice pro žádosti o tuto čtečku (null = bez schvalování).</summary>
     public int? ApprovalMatrixId { get; set; }
     public ApprovalMatrix? ApprovalMatrix { get; set; }
@@ -74,6 +121,18 @@ public class Reader
     public DateTime? LastSyncedAt { get; set; }
 
     public List<ReaderDependency> Dependencies { get; set; } = [];
+
+    /// <summary>Cesta umístění: budova / část / patro / chodba / místnost (vyžaduje načtené navigace).</summary>
+    public string LocationPath()
+    {
+        List<string?> parts = Room is not null
+            ? [Room.Floor?.Building?.Name, Room.Floor?.Section?.Name, Room.Floor?.Name, Room.Corridor?.Name, Room.Name]
+            : Corridor is not null
+                ? [Corridor.Floor?.Building?.Name, Corridor.Floor?.Section?.Name, Corridor.Floor?.Name, Corridor.Name]
+                : [];
+        var path = string.Join(" / ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
+        return path.Length > 0 ? path : "—";
+    }
 }
 
 /// <summary>

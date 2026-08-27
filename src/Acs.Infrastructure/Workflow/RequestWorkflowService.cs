@@ -30,7 +30,15 @@ public class RequestWorkflowService(
 
     // ---------- Podání žádosti ----------
 
-    /// <summary>Vrátí id čteček rozšířené o všechny vyžadované čtečky (tranzitivně).</summary>
+    /// <summary>
+    /// Vrátí id čteček rozšířené o všechny vyžadované čtečky (tranzitivně):
+    /// <list type="bullet">
+    ///   <item>ruční závislosti (graf „čtečka vyžaduje čtečku“),</item>
+    ///   <item><b>chodbový řetěz</b> — čtečka v místnosti automaticky vyžaduje čtečky
+    ///     chodby, ze které se do místnosti vchází, a čtečky všech nadřazených chodb
+    ///     v řetězu (chodby se mohou řetězit i napříč patry).</item>
+    /// </list>
+    /// </summary>
     public async Task<HashSet<int>> ExpandWithDependenciesAsync(IEnumerable<int> readerIds, CancellationToken ct = default)
     {
         var edges = await db.ReaderDependencies
@@ -39,15 +47,59 @@ public class RequestWorkflowService(
         var graph = edges.GroupBy(e => e.ReaderId)
             .ToDictionary(g => g.Key, g => g.Select(e => e.RequiresReaderId).ToList());
 
+        // Chodbové mapy: čtečka → výchozí chodba (přímá nebo přes místnost),
+        // chodba → rodič, chodba → čtečky na ní.
+        var readerCorridors = await db.Readers
+            .Select(r => new { r.Id, CorridorId = r.CorridorId ?? (r.Room != null ? r.Room.CorridorId : null) })
+            .Where(x => x.CorridorId != null)
+            .ToDictionaryAsync(x => x.Id, x => x.CorridorId!.Value, ct);
+        var corridorParents = await db.Corridors
+            .Where(c => c.ParentCorridorId != null)
+            .ToDictionaryAsync(c => c.Id, c => c.ParentCorridorId!.Value, ct);
+        var corridorReaders = (await db.Readers
+                .Where(r => r.CorridorId != null && r.IsActive)
+                .Select(r => new { r.Id, CorridorId = r.CorridorId!.Value })
+                .ToListAsync(ct))
+            .GroupBy(x => x.CorridorId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Id).ToList());
+
         var result = new HashSet<int>();
         var stack = new Stack<int>(readerIds);
         while (stack.Count > 0)
         {
             var current = stack.Pop();
-            if (!result.Add(current) || !graph.TryGetValue(current, out var required))
+            if (!result.Add(current))
                 continue;
-            foreach (var r in required)
-                stack.Push(r);
+
+            // ruční závislosti
+            if (graph.TryGetValue(current, out var required))
+            {
+                foreach (var r in required)
+                    stack.Push(r);
+            }
+
+            // chodbový řetěz: chodba čtečky (pro čtečku na chodbě je to rodičovská
+            // chodba — vlastní chodbu už pokrývá sama) a všichni předci
+            if (readerCorridors.TryGetValue(current, out var startCorridor))
+            {
+                var corridorId = corridorReaders.TryGetValue(startCorridor, out var own) && own.Contains(current)
+                    ? (corridorParents.TryGetValue(startCorridor, out var p) ? p : (int?)null)
+                    : startCorridor;
+
+                var visitedCorridors = new HashSet<int>();
+                while (corridorId is not null && visitedCorridors.Add(corridorId.Value))
+                {
+                    if (corridorReaders.TryGetValue(corridorId.Value, out var onCorridor))
+                    {
+                        foreach (var r in onCorridor)
+                            stack.Push(r);
+                    }
+
+                    corridorId = corridorParents.TryGetValue(corridorId.Value, out var parent)
+                        ? parent
+                        : null;
+                }
+            }
         }
 
         return result;
