@@ -99,6 +99,83 @@ public sealed partial class WinPakDatabaseApi
             request.StartNumber, request.StopNumber, accountId, subAccountId, operatorId, operatorName);
     }
 
+    /// <summary>
+    /// Starší objektová varianta zápisu karty (<c>AddCard</c> / <c>EditCard</c>).
+    /// <see cref="UpsertCard"/> je pro běžné použití praktičtější, ale některé
+    /// instalace mají na těchto voláních navázané vlastní chování.
+    /// </summary>
+    public void AddCard(string cardNumber, UpsertCardRequest request)
+    {
+        EnsureSession();
+        var card = CreateCardObject(cardNumber, request);
+
+        var args = new object?[] { card.Target, 0 };
+        App.Invoke("AddCard", args);
+        WinPakStatus.EnsureCardSucceeded("Založení karty", ComValue.ToInt(args[1]));
+    }
+
+    public void EditCard(string cardNumber, UpsertCardRequest request)
+    {
+        EnsureSession();
+        var card = CreateCardObject(cardNumber, request);
+
+        var args = new object?[] { cardNumber, _options.AccountName, _options.SubAccountName, card.Target, 0 };
+        App.Invoke("EditCard", args);
+        WinPakStatus.EnsureCardSucceeded("Úprava karty", ComValue.ToInt(args[4]));
+    }
+
+    private IComDispatch CreateCardObject(string cardNumber, UpsertCardRequest request)
+    {
+        var card = _com.Create(_options.CardProgId);
+        card.SetProperty("CardNumber", cardNumber);
+        card.SetProperty("AccountName", _options.AccountName);
+        if (!string.IsNullOrWhiteSpace(_options.SubAccountName))
+            card.SetProperty("SubAccountName", _options.SubAccountName);
+        card.SetProperty("Issue", request.Issue);
+        card.SetProperty("ActivationDate", request.ActivationDate ?? DateTime.Today);
+        card.SetProperty("ExpirationDate", request.ExpirationDate ?? NoExpiration);
+        if (request.CardHolderId is not null)
+            card.SetProperty("CardHolderID", ComValue.ToLong(request.CardHolderId));
+        if (request.Pin is not null)
+            card.SetProperty("PIN1", request.Pin);
+        if (request.AccessLevelIds is { Count: > 0 })
+            card.SetProperty("AccessLevels", ToIds(request.AccessLevelIds));
+
+        return card;
+    }
+
+    /// <summary>
+    /// Rozšířená varianta <c>AddUpdateCardEx</c> s nastavením NetAXS karty
+    /// (dočasná/omezená karta, typ, limit použití, trigger).
+    /// </summary>
+    public void UpsertCardEx(string cardNumber, UpsertCardRequest request, NetAxsCardOptions netAxs,
+        long accountId, long subAccountId)
+    {
+        var existing = GetCard(cardNumber);
+        var accessLevelIds = ToIds(request.AccessLevelIds ?? existing?.AccessLevelIds);
+
+        Call("AddUpdateCardEx",
+            ComValue.ToLong(existing?.RecordId),
+            cardNumber,
+            accountId,
+            subAccountId,
+            (int)request.Status,
+            request.Issue,
+            ComValue.ToLong(request.CardHolderId ?? existing?.CardHolderId),
+            request.Pin ?? "",
+            request.ActivationDate ?? existing?.ActivationDate ?? DateTime.Today,
+            request.ExpirationDate ?? existing?.ExpirationDate ?? NoExpiration,
+            0,
+            0,
+            accessLevelIds.Length > 1,
+            accessLevelIds,
+            netAxs.TemporaryCard,
+            (short)netAxs.CardType,
+            (short)netAxs.UsageLimit,
+            netAxs.LimitedCard,
+            netAxs.Trigger);
+    }
+
     /// <summary>Maximální povolená délka čísla karty v této instalaci.</summary>
     public int GetMaxCardNumberLength() => ComValue.ToInt(Call("GetMaxCardNumberLength", 0)[0]);
 

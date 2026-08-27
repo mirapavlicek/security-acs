@@ -59,6 +59,26 @@ Přístupové úrovně patří ve WIN-PAKu **kartě**, ne držiteli. Endpointy n
 držitelem jsou proto zkratka: konektor načte jeho karty, přepočítá jim seznam
 úrovní a uloží je zpět.
 
+### Rozšířená část (správa systému)
+
+Konektor pokrývá i zbytek API — číselníky, konfiguraci hardwaru a povely.
+Úplný seznam endpointů s odpovídajícími COM voláními je v
+`docs/winpak-api/README.md`, kapitola „Mapování na REST konektoru“. Ve zkratce:
+
+| Oblast | Endpointy |
+| --- | --- |
+| Karty | `/cards` (výpis, `?withoutHolder=true`), `/cards/bulk`, `/cards/bulk-delete`, `/cards/{n}/netaxs` |
+| Držitelé | `/cardholders/search-fields`, `/cardholders/search`, `/note-field-templates`, `/cardholders/{id}/photo/{i}`, `/cardholders/{id}/signature/{i}` |
+| Přístupové úrovně | `/access-levels/{name}` (+ `/tree`, `/cards`, `/reassign-candidates`, `/readers`, `/entrance`, `/reassign`) |
+| Časové zóny | `/time-zones` (+ `/{id}/ranges`, `/{id}/usage`, `/{id}/reassign-candidates`, `/reassign`, `/{id}/remove-from-panels`) |
+| Svátky | `/holidays`, `/holiday-groups` |
+| Hardware | `/hardware`, `/panels` (+ výstupy, skupiny, časové zóny, svátky), `/access-areas`, `/readers/{name}/time-zones` |
+| Systém | `/system`, `/schedules/{id}`, `/templates/{id}`, `/badges/{id}` |
+| Povely | `/devices/{hid}/…` (alarmy, shunt, buffer, výstupy), `/panels/{hid}/initialize`, `/doors/lock-all`, `/doors/schedule`, `/doors/{hid}/netaxs-mode`, `/event-filters`, `/muster` |
+
+Režim `Mssql` na těchto endpointech vrací 501; režim `Mock` je obsluhuje
+z paměti, aby šlo vyvíjet a testovat bez WIN-PAKu.
+
 Chování chyb: `401` špatný klíč, `404` neexistující záznam, `422` WIN-PAK zápis
 odmítl (hláška nese jeho stavový kód), `501` provider operaci nepodporuje,
 `502` konektor se nedostal k WIN-PAKu, `503` klíč není nakonfigurován.
@@ -169,5 +189,10 @@ nebo odposlech linky proto může ovlivnit fyzický přístup. Doporučení:
 Skutečný WIN-PAK v CI k dispozici není, proto testy volají COM přes atrapu
 (`FakeComDispatch`) a kontrolují, že konektor používá přesně ty metody, pořadí
 parametrů a stavové kódy, jaké popisuje příručka — včetně `AddUpdateCard`
-se čtrnácti parametry a překladu chybových stavů. Parser `<NLZ>` zpráv je
-testovaný na ukázkách přímo z příručky.
+se čtrnácti parametry, `AddUpdateCardEx` s devatenácti, `BulkAddCards`
+s jedenácti a rozdílných tvarů `Isolate*`/`Reassign*` volání. Parser `<NLZ>`
+zpráv je testovaný na ukázkách přímo z příručky.
+
+Pokrytí: **135 ze 147** dokumentovaných metod databázového API a **všech 42**
+funkcí komunikačního serveru. Nepokryté zůstávají jen ty, u kterých příručka
+uvádí jen název bez signatury — seznam a důvody jsou v `docs/winpak-api/README.md`.

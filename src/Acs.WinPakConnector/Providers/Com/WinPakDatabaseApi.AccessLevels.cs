@@ -75,6 +75,36 @@ public sealed partial class WinPakDatabaseApi
             ToIds(request.ReaderTimeZoneIds),               // anReaderTimeZones
             ToIds(request.ReaderGroupIds));                 // anReaderGroups
 
+    /// <summary>Objektová varianta zápisu úrovně (<c>AddAccessLevel</c> / <c>EditAccessLevel</c>).</summary>
+    public void AddAccessLevel(CreateAccessLevelRequest request)
+    {
+        EnsureSession();
+        var level = CreateAccessLevelObject(request);
+
+        var args = new object?[] { level.Target, 0 };
+        App.Invoke("AddAccessLevel", args);
+        WinPakStatus.EnsureCardSucceeded("Založení přístupové úrovně", ComValue.ToInt(args[1]));
+    }
+
+    public void EditAccessLevel(string currentName, CreateAccessLevelRequest request)
+    {
+        EnsureSession();
+        var level = CreateAccessLevelObject(request);
+
+        var args = new object?[] { currentName, level.Target, 0 };
+        App.Invoke("EditAccessLevel", args);
+        WinPakStatus.EnsureCardSucceeded("Úprava přístupové úrovně", ComValue.ToInt(args[2]));
+    }
+
+    private IComDispatch CreateAccessLevelObject(CreateAccessLevelRequest request)
+    {
+        var level = _com.Create(_options.AccessLevelProgId);
+        level.SetProperty("AccessLevelName", request.Name);
+        level.SetProperty("AccessLevelDesc", request.Description ?? "");
+        level.SetProperty("AccountName", _options.AccountName);
+        return level;
+    }
+
     public void DeleteAccessLevel(string accessLevelName)
         => CallCardWrite("Smazání přístupové úrovně", "DeleteAccessLevel",
             accessLevelName, _options.AccountName, 0);

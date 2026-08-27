@@ -35,27 +35,98 @@ Veškerá funkčnost visí na objektu `Application` (přes 130 metod). Metody vr
 `HRESULT` (`S_OK` = 0) a výsledky předávají `[out]` parametry — kolekce jako
 `VARIANT` s polem COM objektů.
 
-### Metody, které konektor volá
+### Pokrytí konektorem
+
+Konektor implementuje **135 ze 147 metod** objektu `Application`, které příručka
+popisuje včetně signatury, a **všech 42 funkcí** komunikačního serveru.
+Nepokryté zůstávají jen ty, u kterých příručka uvádí název v seznamu metod, ale
+neuvádí signaturu ani parametry — bez toho je nelze zavolat spolehlivě:
+
+| Nepokryté volání | Důvod |
+| --- | --- |
+| `AddMasterHoliday`, `EditMasterHoliday`, `DeleteMasterHoliday`, `GetMasterHolidays`, `GetMasterHolidayByName` | příručka neuvádí signaturu; běžné svátky (`AddHoliday` a spol.) pokryté jsou |
+| `ConfigureDoorSchedule` | příručka neuvádí signaturu; spuštění door schedule přes komunikační server (`ExecuteDoorSchedule`) pokryté je |
+| `GetGrpIDForPanel` | příručka neuvádí signaturu |
+| `SetOperatorID` | příručka neuvádí signaturu; čtení operátora (`GetCurrentOperator`) pokryté je |
+
+Dvě položky v obsahu příručky jsou překlepy v názvu téže metody
+(`GetAccessLevelForReassign` → `GetAccesslevelsForReassign`,
+`GetConfiguredHolidayGrpousByPanel` → `GetConfiguredHolidayGroupsByPanel`);
+obě jsou implementované pod skutečným názvem ze signatury.
+
+### Relace a účty
 
 | COM volání (dokumentovaná signatura) | Použití v konektoru |
 | --- | --- |
 | `Login(user, password, domain, out userId)` | přihlášení; `userId > 0` = úspěch, `-1` = selhání |
 | `ConnectWPDatabase(user, password, domain, out status, userId)` | připojení k DB serveru; `status = -2` = spojení selhalo |
 | `IsConnected(out connected)` | health check |
-| `Logout()`, `DisconnectWPDatabase()` | ukončení relace |
+| `Logout()`, `DisconnectWPDatabase()`, `Disconnect()` | ukončení relace |
 | `GetAccounts(out accounts)` | seznam účtů (`WPAccount.AccountID`, `AccountName`) |
 | `GetSubAccountsByAccountID(accountId, out subAccounts)` | podúčty |
-| `GetReadersByAccountName(account, out readers)` | čtečky (`HWDevice`) |
-| `GetAccessLevelsByAccountName(account, subAccount, out levels)` | přístupové úrovně účtu |
-| `GetAllAccessLevels(out levels)` | přístupové úrovně napříč účty |
-| `GetCardHoldersByAccountName(account, subAccount, out holders)` | držitelé karet |
-| `GetCardHolderByCardHolderID(id, out holder)` | jeden držitel |
-| `GetCardsByCHID(cardHolderId, out cards)` | karty držitele |
+| `GetAccountByAcctID`, `GetAccountNameByAcctID`, `GetSubAccountNameBySubAcctID` | dohledání účtu podle id |
+| `GetAcctIDByHID(hid, out accountId)` | účet, kterému patří zařízení |
+
+### Karty a držitelé
+
+| COM volání | Použití v konektoru |
+| --- | --- |
+| `GetCardsByAccountName`, `GetCardsWithoutCHIDByAcctID`, `GetCardsByCHID` | výpisy karet |
 | `GetCardbyCardNumber(cardNo, account, subAccount, out card)` | karta podle čísla |
-| `AddCardHolder(cardHolder, out status)` | založení držitele |
-| `EditCardHolder(cardHolderId, cardHolder, out status)` | úprava držitele |
 | `AddUpdateCard(recordId, cardNo, accountId, subAccountId, status, issue, cardHolderId, pin, activation, expiration, backdrop1, backdrop2, multiple, accessLevelIds)` | založení i úprava karty jedním voláním (`recordId = 0` → nová karta) |
+| `AddUpdateCardEx(… + tempCard, cardType, usageLimit, limitedCard, trigger)` | totéž s NetAXS volbami |
+| `AddCard`, `EditCard` | objektové varianty zápisu |
 | `DeleteCard(cardNo, account, subAccount, out status)` | zrušení karty |
+| `BulkAddCards`, `BulkDeleteCards` | rozsah karet najednou |
+| `GetMaxCardNumberLength`, `GetCardNumeric` | pravidla čísel karet v instalaci |
+| `GetCardHoldersByAccountName`, `GetCardHolderByCardHolderID` | držitelé |
+| `AddCardHolder`, `EditCardHolder`, `DeleteCardHolder` | správa držitelů |
+| `GetCardHolderSearchFieldsByAccountName`, `GetCardHoldersOnSearch` | vyhledávání v databázi WIN-PAK |
+| `GetNoteFieldTemplateDetailsByAccount` | šablony poznámkových polí |
+| `GetPhoto`, `GetPhotoSize`, `ImportPhoto`, `DeletePhoto` | fotky držitele |
+| `GetSig`, `GetSigSize`, `ImportSig`, `DeleteSignature`, `DeleteSig` | podpisy držitele |
+
+### Přístupové úrovně
+
+| COM volání | Použití v konektoru |
+| --- | --- |
+| `GetAccessLevelsByAccountName`, `GetAllAccessLevels`, `GetAccessLevelByName`, `GetAccessLevelNameByID`, `GetAccessLevelType` | čtení |
+| `GetAccessTreeByName` | strom přístupů včetně časových zón |
+| `CreateAccessLevel`, `AddAccessLevel`, `EditAccessLevel`, `AddUpdateAL` | zakládání a úprava |
+| `ConfigureAccessLevel`, `ConfigureEntranceAccess` | přiřazení čteček, časových zón a skupin |
+| `IsolateAccessLevel`, `GetAccesslevelsForReassign`, `ReassignAccessLevel` | přeřazení karet před zrušením úrovně |
+| `DeleteAccessLevel`, `DeleteAL` | zrušení úrovně |
+
+### Časové zóny a svátky
+
+| COM volání | Použití v konektoru |
+| --- | --- |
+| `GetTimeZonesByAccountName`, `GetAllTimezones`, `GetTimeZoneByName`, `GetTimezoneNameByID` | čtení |
+| `AddTimezone`, `CreateTimezone`, `EditTimeZone`, `DeleteTimeZone` | správa zón |
+| `ConfigureTimeZoneRange`, `GetTimeZoneRangesByTZID`, `DeleteTimeZoneRange` | intervaly zóny |
+| `Isolate*ForTZReassign` (operátoři, panely, úrovně, akční skupiny, karty, zařízení) | kdo zónu používá |
+| `GetTZsForReassign`, `GetTZsForOperatorReassign` | kandidáti na náhradu |
+| `Reassign*TZ` (operátoři, úrovně, akční skupiny, karty, zařízení) | přeřazení na jinou zónu |
+| `IsolatePanelsForTZDelete`, `DeletePanelTZ` | odebrání zóny z panelů |
+| `GetReaderTZDetailsByAccountId`, `LoopTimeZoneByAccountId`, `GetDirectPointTZDetailsofReader` | souhrny zón u čteček |
+| `AddHoliday`, `EditHoliday`, `DeleteHoliday`, `GetHolidayByID` | svátky |
+| `AddHolidayGroup`, `EditHolidayGroup`, `DeleteHolidayGroup`, `GetHolidayGroupsByAcctID`, `GetHolidaysByHolidayGroupID` | skupiny svátků |
+| `IsolatePanelsForHGDelete`, `ConfigurePanelHolidayGroup`, `GetConfiguredHolidayGroupsByPanel` | svátky na panelech |
+
+### Hardware a systém
+
+| COM volání | Použití v konektoru |
+| --- | --- |
+| `GetReadersByAccountName`, `GetADVDetailsByAccountName`, `GetDeviceNameByHWDeviceID`, `GetDevNameByDeviceID` | čtečky a zařízení |
+| `GetPanelsByAcctID`, `GetOutputsByPanelID`, `GetGroupsByPanelID`, `IsGroupChecked` | panely, výstupy, skupiny |
+| `ConfigureOutputTimezone`, `ConfigureOutputTimezoneEx`, `ConfigureGroupTimezone`, `ConfigurePanelTimeZone` | časové zóny hardwaru |
+| `GetAssociatedTimezoneOfOutput`, `GetAssociatedTimezoneOfOutputEX`, `GetAssociatedTimezoneOfGroup`, `GetAvailableTimezonesOfPanel`, `GetConfiguredTimezonesByPanel` | čtení nastavení |
+| `GetAccessAreaBranchesByAccountName`, `GetReadersInAccessAreaBranch`, `GetAvailableTimezonesOfBranch` | přístupové oblasti |
+| `GetAvailableTimeZonesOfReader`, `GetAvailableTimeZonesOfAccessReader`, `GetAssociatedTimeZoneOfReader`, `GetAvailableGroupsofReader`, `GetAssociatedGroupofReader` | konfigurace čteček |
+| `GetWPDSN`, `GetWPDBServerTZ`, `GetWPDBServerTZoffset`, `GetCurrentOperator`, `GetConfiguredWPDomains`, `GetAccountEmailIDs` | systémové údaje |
+| `GetSchedule`, `AddEditSchedule`, `DeleteSchedule` | plány reportů |
+| `GetTemplate`, `AddEditTemplate`, `DeleteTemplate` | šablony reportů |
+| `GetBadgeData`, `GetBadgeDimension` | odznaky pro tisk karet |
 
 ### Návratové stavy zápisových metod
 
@@ -93,17 +164,36 @@ orientované na držitele, protože tak o přístupech uvažuje schvalovací wor
 
 ## Communication Server API (`ACCW.dll`)
 
+Konektor pokrývá všech 42 dokumentovaných funkcí.
+
 | COM volání | Použití v konektoru |
 | --- | --- |
 | `InitServer(caller, viewType, user, password, userId)` | registrace klienta |
 | `InitServer2(caller, viewType, user, password, domain, userId)` | totéž při přihlašování doménovými údaji |
 | `DoneServer(caller)` | odhlášení |
-| `IsConnected2(serverType, out xmlStatus)` | stav serverů (XML `<NLZ>`) |
+| `GetConfiguredWPDomains(out domains)` | domény; jediné volání použitelné před registrací |
+| `IsConnected(out status)`, `IsConnected2(serverType, out xmlStatus)` | stav serverů (XML `<NLZ>`) |
 | `ListConnectedDevices(out devices)` | připojená zařízení (ADV) |
-| `GetDoorStatus2(readerHid, out doorStatus)` | stav dveří (otevřeno/zavřeno + XML detail) |
+| `GetStatus(hid, deviceType, out statusId)`, `GetDefaultACRMode(hid, out mode)` | stav a výchozí režim zařízení |
+| `GetDoorStatus(readerHid, out code)`, `GetDoorStatus2(readerHid, out doorStatus)` | stav dveří (číselný i XML detail) |
 | `EntryPointLockByID(hid)` / `EntryPointUnLockByID(hid)` | zamknout / odemknout vstup |
+| `EntryPointLock(hid, point)` / `EntryPointUnLock(hid, point)` | totéž pro konkrétní bod |
 | `PulseByHID(hid)` / `TimedPulseByHID(hid, units, value)` | krátké otevření (units: 0 s, 1 min, 2 h) |
 | `DoorModeByHID(hid, mode)` | režim dveří |
+| `LockUnLockAllDoors(accountId, isLock)`, `RefreshDoorsByAccId(accountId, out status)` | hromadné operace se dveřmi |
+| `ExecuteDoorSchedule(panelHid, panelType, entranceId, entrancePointId, tzId)` | spuštění door schedule |
+| `GetNetAXSDoorModeByHID`, `SetNetAXSDoorModeByHID` | režim dveří NetAXS panelu |
+| `AckAlarm(hid, point)`, `ClrAlarm(hid, point)`, `AddNote(hid, point, note)` | práce s alarmy |
+| `GetDetailsByID(hid, point, out details)` | detail transakce |
+| `AlarmShuntByHID`, `AlarmUnShuntByHID`, `AlarmUnShunt(hid, point)`, `AlarmPulse` | shuntování alarmů |
+| `BufferByHID(hid, mode)`, `UnBufferByHID(hid, mode)` | bufferování transakcí (0 hard, 1 soft) |
+| `Energize(hid)`, `DeEnergize(hid)` | spínání výstupů |
+| `PanelInitialize(hid, type, tasks)`, `PanelCancelInitialize(hid)`, `PanelRefreshTZByHID(hid)` | inicializace panelů |
+| `RestoreTZByHID(hid)` | návrat zařízení pod kontrolu časové zóny |
+| `AddFilterHID`, `RemoveFilterHID`, `GetFilterHIDs` | filtr odebíraných událostí podle zařízení |
+| `AddFilterCommServerID`, `RemoveFilterCommServerID`, `GetFilterCommServerIDs` | filtr podle komunikačního serveru |
+| `GetMusterElemenets(out xml, areaId, accountId, sortField, sortOrder, out status)` | muster report |
+| `ExecCustomCommand(hid, command)` | vlastní příkaz pro zařízení |
 
 Režimy dveří: 1 zakázáno, 2 odemčeno, 3 zamčeno, 4 jen site code, 5 jen karta,
 6 jen PIN, 7 karta a PIN, 8 karta nebo PIN.
@@ -150,28 +240,92 @@ Konektor tyto zprávy parsuje v `Providers/Com/NlzMessage.cs`.
 
 ## Mapování na REST konektoru
 
+### Základ (používá hlavní ACS aplikace)
+
 | REST konektoru | COM volání |
 | --- | --- |
 | `GET /api/v1/info` | — (metadata konektoru) |
 | `GET /api/v1/status` | `IsConnected`, `IsConnected2` |
-| `GET /api/v1/accounts` | `GetAccounts`, `GetSubAccountsByAccountID` |
+| `GET /api/v1/accounts`, `GET /api/v1/accounts/{id}` | `GetAccounts`, `GetSubAccountsByAccountID`, `GetAccountByAcctID` |
 | `GET /api/v1/readers` | `GetReadersByAccountName` |
 | `GET /api/v1/access-levels` | `GetAccessLevelsByAccountName` / `GetAllAccessLevels` |
-| `GET /api/v1/cardholders` | `GetCardHoldersByAccountName` + `GetCardsByCHID` |
-| `GET /api/v1/cardholders/{id}` | `GetCardHolderByCardHolderID` + `GetCardsByCHID` |
-| `POST /api/v1/cardholders` | `AddCardHolder` |
-| `PUT /api/v1/cardholders/{id}` | `EditCardHolder` |
-| `GET /api/v1/cards/{cardNumber}` | `GetCardbyCardNumber` |
-| `PUT /api/v1/cards/{cardNumber}` | `AddUpdateCard` |
-| `DELETE /api/v1/cards/{cardNumber}` | `DeleteCard` |
-| `POST /api/v1/cardholders/{id}/access-levels` | `GetCardsByCHID` + `AddUpdateCard` |
-| `DELETE /api/v1/cardholders/{id}/access-levels/{alId}` | `GetCardsByCHID` + `AddUpdateCard` |
+| `GET /api/v1/cardholders`, `GET /api/v1/cardholders/{id}` | `GetCardHoldersByAccountName`, `GetCardHolderByCardHolderID` + `GetCardsByCHID` |
+| `POST /api/v1/cardholders`, `PUT /api/v1/cardholders/{id}`, `DELETE /api/v1/cardholders/{id}` | `AddCardHolder`, `EditCardHolder`, `DeleteCardHolder` |
+| `GET/PUT/DELETE /api/v1/cards/{cardNumber}` | `GetCardbyCardNumber`, `AddUpdateCard`, `DeleteCard` |
+| `POST` / `DELETE /api/v1/cardholders/{id}/access-levels[/{alId}]` | `GetCardsByCHID` + `AddUpdateCard` |
 | `GET /api/v1/devices` | `ListConnectedDevices` |
-| `GET /api/v1/doors/{hid}` | `GetDoorStatus2` |
-| `POST /api/v1/doors/{hid}/pulse` | `PulseByHID` / `TimedPulseByHID` |
-| `POST /api/v1/doors/{hid}/lock` | `EntryPointLockByID` |
-| `POST /api/v1/doors/{hid}/unlock` | `EntryPointUnLockByID` |
-| `POST /api/v1/doors/{hid}/mode` | `DoorModeByHID` |
+| `GET /api/v1/doors/{hid}`, `.../status-code` | `GetDoorStatus2`, `GetDoorStatus` |
+| `POST /api/v1/doors/{hid}/pulse`, `/lock`, `/unlock`, `/mode` | `PulseByHID` / `TimedPulseByHID`, `EntryPointLockByID`, `EntryPointUnLockByID`, `DoorModeByHID` |
+| `GET /api/v1/events` | zpětné volání `GotMessage` |
+
+### Karty a držitelé (rozšířené)
+
+| REST konektoru | COM volání |
+| --- | --- |
+| `GET /api/v1/cards?withoutHolder=` | `GetCardsByAccountName`, `GetCardsWithoutCHIDByAcctID` |
+| `PUT /api/v1/cards/{cardNumber}/netaxs` | `AddUpdateCardEx` |
+| `POST /api/v1/cards/bulk`, `/bulk-delete` | `BulkAddCards`, `BulkDeleteCards` |
+| `GET /api/v1/cardholders/search-fields`, `POST /api/v1/cardholders/search` | `GetCardHolderSearchFieldsByAccountName`, `GetCardHoldersOnSearch` |
+| `GET /api/v1/note-field-templates` | `GetNoteFieldTemplateDetailsByAccount` |
+| `GET/PUT/DELETE /api/v1/cardholders/{id}/photo/{index}` | `GetPhoto` + `GetPhotoSize`, `ImportPhoto`, `DeletePhoto` |
+| `GET/PUT/DELETE /api/v1/cardholders/{id}/signature/{index}` | `GetSig` + `GetSigSize`, `ImportSig`, `DeleteSignature` |
+
+### Přístupové úrovně
+
+| REST konektoru | COM volání |
+| --- | --- |
+| `GET /api/v1/access-levels/{name}`, `/tree` | `GetAccessLevelByName`, `GetAccessTreeByName` |
+| `POST /api/v1/access-levels`, `/object`, `PUT /api/v1/access-levels/{id}`, `/by-name/{name}` | `CreateAccessLevel`, `AddAccessLevel`, `AddUpdateAL`, `EditAccessLevel` |
+| `POST /api/v1/access-levels/{name}/readers`, `/entrance` | `ConfigureAccessLevel`, `ConfigureEntranceAccess` |
+| `GET /api/v1/access-levels/{name}/cards`, `/reassign-candidates`, `POST .../reassign` | `IsolateAccessLevel`, `GetAccesslevelsForReassign`, `ReassignAccessLevel` |
+| `DELETE /api/v1/access-levels/{name}` | `DeleteAccessLevel` |
+
+### Časové zóny a svátky
+
+| REST konektoru | COM volání |
+| --- | --- |
+| `GET /api/v1/time-zones`, `/by-name/{name}` | `GetTimeZonesByAccountName` / `GetAllTimezones`, `GetTimeZoneByName` |
+| `POST /api/v1/time-zones`, `PUT /by-name/{name}`, `DELETE /{id}` | `AddTimezone`, `EditTimeZone`, `DeleteTimeZone` |
+| `GET/PUT /api/v1/time-zones/{id}/ranges`, `DELETE .../ranges/{rangeId}` | `GetTimeZoneRangesByTZID`, `ConfigureTimeZoneRange`, `DeleteTimeZoneRange` |
+| `GET /api/v1/time-zones/{id}/usage` | všechna `Isolate*ForTZReassign` a `IsolatePanelsForTZDelete` |
+| `GET /api/v1/time-zones/{id}/reassign-candidates` | `GetTZsForReassign`, `GetTZsForOperatorReassign` |
+| `POST /api/v1/time-zones/reassign` | všechna `Reassign*TZ` |
+| `POST /api/v1/time-zones/{id}/remove-from-panels` | `DeletePanelTZ` |
+| `GET /api/v1/holidays/{id}`, `POST /api/v1/holidays`, `PUT /by-name/{name}`, `DELETE /{id}` | `GetHolidayByID`, `AddHoliday`, `EditHoliday`, `DeleteHoliday` |
+| `GET /api/v1/holiday-groups`, `/{id}/holidays`, `POST`, `PUT /by-name/{name}`, `DELETE /{id}` | `GetHolidayGroupsByAcctID`, `GetHolidaysByHolidayGroupID`, `AddHolidayGroup`, `EditHolidayGroup`, `DeleteHolidayGroup` |
+
+### Hardware
+
+| REST konektoru | COM volání |
+| --- | --- |
+| `GET /api/v1/hardware` | `GetADVDetailsByAccountName` |
+| `GET /api/v1/panels`, `/{id}/outputs`, `/{id}/groups` | `GetPanelsByAcctID`, `GetOutputsByPanelID`, `GetGroupsByPanelID` |
+| `GET/PUT /api/v1/panels/{id}/time-zones` | `GetAvailableTimezonesOfPanel` / `GetConfiguredTimezonesByPanel`, `ConfigurePanelTimeZone` |
+| `GET/PUT /api/v1/panels/{id}/holiday-groups` | `GetConfiguredHolidayGroupsByPanel`, `ConfigurePanelHolidayGroup` |
+| `PUT /api/v1/panels/{id}/outputs/{outputId}/time-zone` | `ConfigureOutputTimezone` / `ConfigureOutputTimezoneEx` |
+| `PUT /api/v1/panels/{id}/groups/{groupId}/time-zone` | `ConfigureGroupTimezone` |
+| `GET /api/v1/access-areas`, `/{branch}/readers` | `GetAccessAreaBranchesByAccountName`, `GetReadersInAccessAreaBranch` |
+| `GET /api/v1/readers/{name}/time-zones`, `/groups` | `GetAvailableTimeZonesOfReader`, `GetAvailableGroupsofReader` |
+
+### Systém a povely
+
+| REST konektoru | COM volání |
+| --- | --- |
+| `GET /api/v1/system` | `GetWPDSN`, `GetWPDBServerTZ`, `GetWPDBServerTZoffset`, `GetMaxCardNumberLength`, `GetCardNumeric`, `GetAccessLevelType`, `GetCurrentOperator`, `GetConfiguredWPDomains` |
+| `GET/PUT/DELETE /api/v1/schedules/{id}` | `GetSchedule`, `AddEditSchedule`, `DeleteSchedule` |
+| `GET/PUT/DELETE /api/v1/templates/{id}` | `GetTemplate`, `AddEditTemplate`, `DeleteTemplate` |
+| `GET /api/v1/badges/{id}` | `GetBadgeData`, `GetBadgeDimension` |
+| `POST /api/v1/devices/{hid}/alarm/acknowledge`, `/alarm/clear`, `/note` | `AckAlarm`, `ClrAlarm`, `AddNote` |
+| `GET /api/v1/devices/{hid}/transaction`, `/status` | `GetDetailsByID`, `GetStatus` |
+| `POST /api/v1/devices/{hid}/shunt`, `/unshunt`, `/unshunt-point` | `AlarmShuntByHID`, `AlarmUnShuntByHID`, `AlarmUnShunt` |
+| `POST /api/v1/devices/{hid}/buffer`, `/unbuffer` | `BufferByHID`, `UnBufferByHID` |
+| `POST /api/v1/devices/{hid}/energize`, `/de-energize`, `/restore-time-zone`, `/command` | `Energize`, `DeEnergize`, `RestoreTZByHID`, `ExecCustomCommand` |
+| `POST /api/v1/panels/{hid}/initialize`, `/cancel-initialize`, `/refresh-time-zones` | `PanelInitialize`, `PanelCancelInitialize`, `PanelRefreshTZByHID` |
+| `POST /api/v1/doors/lock-all`, `/refresh`, `/schedule` | `LockUnLockAllDoors`, `RefreshDoorsByAccId`, `ExecuteDoorSchedule` |
+| `GET/PUT /api/v1/doors/{hid}/netaxs-mode` | `GetNetAXSDoorModeByHID`, `SetNetAXSDoorModeByHID` |
+| `GET /api/v1/readers/{hid}/default-mode` | `GetDefaultACRMode` |
+| `GET/POST/DELETE /api/v1/event-filters[/{id}]` | `GetFilterHIDs`, `AddFilterHID`, `RemoveFilterHID` (a varianty `*CommServerID`) |
+| `GET /api/v1/muster` | `GetMusterElemenets` |
 
 ## Zdrojové příručky
 

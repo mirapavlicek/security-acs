@@ -153,4 +153,11 @@ public sealed partial class WinPakDatabaseApi
         var result = Call("DeleteSignature", ComValue.ToLong(cardHolderId), index, 0);
         WinPakStatus.EnsureCardHolderSucceeded("Smazání podpisu", ComValue.ToInt(result[2]));
     }
+
+    /// <summary>
+    /// Kratší varianta bez stavového kódu (<c>DeleteSig</c>). Příručka ji uvádí
+    /// vedle <c>DeleteSignature</c>; některé instalace mají jen jednu z nich.
+    /// </summary>
+    public void DeleteSignatureShort(string cardHolderId, int index)
+        => Call("DeleteSig", ComValue.ToLong(cardHolderId), index);
 }

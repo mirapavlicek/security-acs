@@ -40,10 +40,28 @@ public sealed partial class ComWinPakProvider : IWinPakCatalogApi
     public Task ReassignAccessLevelAsync(string accessLevelName, ReassignAccessLevelRequest request, CancellationToken ct)
         => RunAsync(() => _database.ReassignAccessLevel(accessLevelName, request), ct);
 
+    public Task AddAccessLevelAsync(CreateAccessLevelRequest request, CancellationToken ct)
+        => RunAsync(() => _database.AddAccessLevel(request), ct);
+
+    public Task EditAccessLevelAsync(string currentName, CreateAccessLevelRequest request, CancellationToken ct)
+        => RunAsync(() => _database.EditAccessLevel(currentName, request), ct);
+
+    // ---------- Účty ----------
+
+    public Task<AccountDto?> GetAccountAsync(string accountId, CancellationToken ct)
+        => RunAsync(() => _database.GetAccount(accountId), ct);
+
     // ---------- Karty ----------
 
     public Task<IReadOnlyList<CardDto>> GetCardsAsync(bool onlyWithoutHolder, CancellationToken ct)
         => RunAsync(() => onlyWithoutHolder ? _database.GetCardsWithoutHolder() : _database.GetCards(), ct);
+
+    public Task UpsertCardExAsync(string cardNumber, UpsertCardExRequest request, CancellationToken ct)
+        => RunAsync(() =>
+        {
+            var (accountId, subAccountId) = _database.ResolveAccountIds();
+            _database.UpsertCardEx(cardNumber, request.Card, request.NetAxs, accountId, subAccountId);
+        }, ct);
 
     public Task BulkAddCardsAsync(BulkAddCardsRequest request, CancellationToken ct)
         => RunAsync(() => _database.BulkAddCards(request), ct);
@@ -111,6 +129,18 @@ public sealed partial class ComWinPakProvider : IWinPakCatalogApi
 
     public Task DeleteTimeZoneRangeAsync(string timeZoneId, string rangeId, CancellationToken ct)
         => RunAsync(() => _database.DeleteTimeZoneRange(timeZoneId, rangeId), ct);
+
+    public Task<TimeZoneUsageDto> GetTimeZoneUsageAsync(string timeZoneId, CancellationToken ct)
+        => RunAsync(() => _database.GetTimeZoneUsage(timeZoneId), ct);
+
+    public Task<IReadOnlyList<TimeZoneDto>> GetTimeZonesForReassignAsync(string timeZoneId, bool forOperators, CancellationToken ct)
+        => RunAsync(() => _database.GetTimeZonesForReassign(timeZoneId, forOperators), ct);
+
+    public Task ReassignTimeZoneAsync(ReassignTimeZoneRequest request, CancellationToken ct)
+        => RunAsync(() => _database.ReassignTimeZone(request), ct);
+
+    public Task DeletePanelTimeZoneAsync(string timeZoneId, IReadOnlyList<string> panelIds, CancellationToken ct)
+        => RunAsync(() => _database.DeletePanelTimeZone(timeZoneId, panelIds), ct);
 
     // ---------- Svátky ----------
 
@@ -201,11 +231,17 @@ public sealed partial class ComWinPakProvider : IWinPakCatalogApi
     public Task<ScheduleDto?> GetScheduleAsync(string scheduleId, CancellationToken ct)
         => RunAsync(() => _database.GetSchedule(scheduleId), ct);
 
+    public Task UpsertScheduleAsync(ScheduleDto schedule, CancellationToken ct)
+        => RunAsync(() => _database.UpsertSchedule(schedule), ct);
+
     public Task DeleteScheduleAsync(string scheduleId, CancellationToken ct)
         => RunAsync(() => _database.DeleteSchedule(scheduleId), ct);
 
     public Task<TemplateDto?> GetTemplateAsync(string templateId, CancellationToken ct)
         => RunAsync(() => _database.GetTemplate(templateId), ct);
+
+    public Task UpsertTemplateAsync(TemplateDto template, CancellationToken ct)
+        => RunAsync(() => _database.UpsertTemplate(template), ct);
 
     public Task DeleteTemplateAsync(string templateId, CancellationToken ct)
         => RunAsync(() => _database.DeleteTemplate(templateId), ct);
@@ -235,6 +271,12 @@ public sealed partial class ComWinPakProvider : IWinPakCatalogApi
             else
                 Comm.UnshuntAlarm(hid);
         }, ct);
+
+    public Task UnshuntAlarmPointAsync(long hid, int point, CancellationToken ct)
+        => RunAsync(() => Comm.UnshuntAlarmPoint(hid, point), ct);
+
+    public Task<int> GetDoorStatusCodeAsync(long hid, CancellationToken ct)
+        => RunAsync(() => Comm.GetDoorStatusCode(hid), ct);
 
     public Task BufferAsync(long hid, int mode, bool buffer, CancellationToken ct)
         => RunAsync(() =>

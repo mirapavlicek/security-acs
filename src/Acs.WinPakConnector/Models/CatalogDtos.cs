@@ -12,6 +12,26 @@ public record UpsertTimeZoneRequest(string Name, string? Description = null, IRe
 
 public record TimeZoneRangeRequest(int DayType, string StartTime, string EndTime);
 
+/// <summary>Co všechno časovou zónu používá — WIN-PAK ji nedovolí smazat, dokud je někde navázaná.</summary>
+public record TimeZoneUsageDto(
+    string TimeZoneId,
+    IReadOnlyList<string> Operators,
+    IReadOnlyList<string> Panels,
+    IReadOnlyList<string> AccessLevels,
+    IReadOnlyList<string> ActionGroups,
+    IReadOnlyList<string> Cards,
+    IReadOnlyList<string> Devices);
+
+/// <summary>Přeřazení entit ze staré časové zóny na novou; posílají se jen vyplněné skupiny.</summary>
+public record ReassignTimeZoneRequest(
+    string CurrentTimeZoneId,
+    string NewTimeZoneId,
+    IReadOnlyList<string>? OperatorIds = null,
+    IReadOnlyList<string>? AccessLevelIds = null,
+    IReadOnlyList<string>? ActionGroupIds = null,
+    IReadOnlyList<string>? CardIds = null,
+    IReadOnlyList<string>? DeviceIds = null);
+
 // ---------- Svátky ----------
 
 /// <summary>Svátek. <c>Type</c> odpovídá číselníku <c>HolidayType</c> ve WIN-PAK.</summary>
@@ -72,6 +92,17 @@ public record BulkAddCardsRequest(
     IReadOnlyList<string>? AccessLevelIds = null);
 
 public record BulkDeleteCardsRequest(string StartNumber, string StopNumber);
+
+/// <summary>Doplňková nastavení karty pro NetAXS panely (<c>AddUpdateCardEx</c>).</summary>
+public record NetAxsCardOptions(
+    bool TemporaryCard = false,
+    int CardType = 0,
+    int UsageLimit = 0,
+    bool LimitedCard = false,
+    long Trigger = 0);
+
+/// <summary>Zápis karty rozšířený o NetAXS volby.</summary>
+public record UpsertCardExRequest(UpsertCardRequest Card, NetAxsCardOptions NetAxs);
 
 // ---------- Držitelé ----------
 

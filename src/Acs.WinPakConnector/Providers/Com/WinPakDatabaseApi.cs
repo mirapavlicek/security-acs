@@ -67,6 +67,7 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
         {
             _app.Invoke("DisconnectWPDatabase", []);
             _app.Invoke("Logout", []);
+            _app.Invoke("Disconnect", []);
         }
         catch (Exception)
         {
@@ -166,6 +167,27 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
     }
 
     private long AccountId => ResolveAccountIds().AccountId;
+
+    /// <summary>Účet podle id (<c>GetAccountByAcctID</c>).</summary>
+    public AccountDto? GetAccount(string accountId)
+    {
+        var result = Call("GetAccountByAcctID", ComValue.ToLong(accountId), null);
+        var raw = ComValue.AsEnumerable(result[1]).FirstOrDefault();
+        if (raw is null)
+            return null;
+
+        var account = _com.Wrap(raw);
+        var id = ComValue.ToStringOrEmpty(account.GetProperty("AccountID"));
+        return new AccountDto(id,
+            ComValue.ToStringOrEmpty(account.GetProperty("AccountName")),
+            GetSubAccounts(ComValue.ToLong(id)));
+    }
+
+    public string? GetAccountName(string accountId)
+        => ComValue.ToStringOrNull(Call("GetAccountNameByAcctID", ComValue.ToLong(accountId), null)[1]);
+
+    public string? GetSubAccountName(string subAccountId)
+        => ComValue.ToStringOrNull(Call("GetSubAccountNameBySubAcctID", ComValue.ToLong(subAccountId), null)[1]);
 
     // ---------- Čtečky ----------
 

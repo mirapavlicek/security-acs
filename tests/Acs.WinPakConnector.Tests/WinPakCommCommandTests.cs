@@ -71,6 +71,28 @@ public sealed class WinPakCommCommandTests
     }
 
     [Fact]
+    public void Odshuntovani_konkretniho_bodu_ma_vlastni_volani()
+    {
+        CreateApi().UnshuntAlarmPoint(23, 5);
+
+        Assert.Equal([23L, 5], _com.Call("AlarmUnShunt").Args);
+    }
+
+    [Fact]
+    public void Starsi_ciselny_stav_dveri_se_cte_z_navratove_hodnoty()
+    {
+        Server.Returns["GetDoorStatus"] = 1;
+
+        Assert.Equal(1, CreateApi().GetDoorStatusCode(23));
+    }
+
+    [Fact]
+    public void Nezname_ciselne_stavy_dveri_vraci_minus_jedna()
+    {
+        Assert.Equal(-1, CreateApi().GetDoorStatusCode(23));
+    }
+
+    [Fact]
     public void Buffer_a_unbuffer_nesou_rezim()
     {
         var api = CreateApi();

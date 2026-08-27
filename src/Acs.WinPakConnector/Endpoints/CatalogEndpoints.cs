@@ -80,6 +80,25 @@ public static class CatalogEndpoints
             await Catalog(p).DeleteAccessLevelAsync(name, ct);
             return Results.NoContent();
         });
+
+        // Objektové varianty zápisu (AddAccessLevel / EditAccessLevel) — některé
+        // instalace na nich mají navázané vlastní chování.
+        api.MapPost("/access-levels/object", async (CreateAccessLevelRequest request, IWinPakProvider p, CancellationToken ct) =>
+        {
+            await Catalog(p).AddAccessLevelAsync(request, ct);
+            return Results.NoContent();
+        });
+
+        api.MapPut("/access-levels/by-name/{name}", async (string name, CreateAccessLevelRequest request, IWinPakProvider p, CancellationToken ct) =>
+        {
+            await Catalog(p).EditAccessLevelAsync(name, request, ct);
+            return Results.NoContent();
+        });
+
+        api.MapGet("/accounts/{id}", async (string id, IWinPakProvider p, CancellationToken ct)
+            => await Catalog(p).GetAccountAsync(id, ct) is { } account
+                ? Results.Ok(account)
+                : Results.NotFound());
     }
 
     private static void MapCards(IEndpointRouteBuilder api)
@@ -99,6 +118,13 @@ public static class CatalogEndpoints
         api.MapPost("/cards/bulk-delete", async (BulkDeleteCardsRequest request, IWinPakProvider p, CancellationToken ct) =>
         {
             await Catalog(p).BulkDeleteCardsAsync(request, ct);
+            return Results.NoContent();
+        });
+
+        // Rozšířený zápis karty s NetAXS volbami (dočasná/omezená karta, limit použití).
+        api.MapPut("/cards/{cardNumber}/netaxs", async (string cardNumber, UpsertCardExRequest request, IWinPakProvider p, CancellationToken ct) =>
+        {
+            await Catalog(p).UpsertCardExAsync(cardNumber, request, ct);
             return Results.NoContent();
         });
     }
@@ -195,6 +221,26 @@ public static class CatalogEndpoints
         api.MapDelete("/time-zones/{id}/ranges/{rangeId}", async (string id, string rangeId, IWinPakProvider p, CancellationToken ct) =>
         {
             await Catalog(p).DeleteTimeZoneRangeAsync(id, rangeId, ct);
+            return Results.NoContent();
+        });
+
+        // Zónu nelze smazat, dokud ji někdo používá — proto nejdřív „kdo ji používá“,
+        // pak seznam náhrad a nakonec přeřazení.
+        api.MapGet("/time-zones/{id}/usage", async (string id, IWinPakProvider p, CancellationToken ct)
+            => Results.Ok(await Catalog(p).GetTimeZoneUsageAsync(id, ct)));
+
+        api.MapGet("/time-zones/{id}/reassign-candidates", async (string id, bool? forOperators, IWinPakProvider p, CancellationToken ct)
+            => Results.Ok(await Catalog(p).GetTimeZonesForReassignAsync(id, forOperators ?? false, ct)));
+
+        api.MapPost("/time-zones/reassign", async (ReassignTimeZoneRequest request, IWinPakProvider p, CancellationToken ct) =>
+        {
+            await Catalog(p).ReassignTimeZoneAsync(request, ct);
+            return Results.NoContent();
+        });
+
+        api.MapPost("/time-zones/{id}/remove-from-panels", async (string id, List<string> panelIds, IWinPakProvider p, CancellationToken ct) =>
+        {
+            await Catalog(p).DeletePanelTimeZoneAsync(id, panelIds, ct);
             return Results.NoContent();
         });
     }
@@ -321,6 +367,12 @@ public static class CatalogEndpoints
                 ? Results.Ok(schedule)
                 : Results.NotFound());
 
+        api.MapPut("/schedules/{id}", async (string id, ScheduleDto schedule, IWinPakProvider p, CancellationToken ct) =>
+        {
+            await Catalog(p).UpsertScheduleAsync(schedule with { Id = id }, ct);
+            return Results.NoContent();
+        });
+
         api.MapDelete("/schedules/{id}", async (string id, IWinPakProvider p, CancellationToken ct) =>
         {
             await Catalog(p).DeleteScheduleAsync(id, ct);
@@ -331,6 +383,12 @@ public static class CatalogEndpoints
             => await Catalog(p).GetTemplateAsync(id, ct) is { } template
                 ? Results.Ok(template)
                 : Results.NotFound());
+
+        api.MapPut("/templates/{id}", async (string id, TemplateDto template, IWinPakProvider p, CancellationToken ct) =>
+        {
+            await Catalog(p).UpsertTemplateAsync(template with { Id = id }, ct);
+            return Results.NoContent();
+        });
 
         api.MapDelete("/templates/{id}", async (string id, IWinPakProvider p, CancellationToken ct) =>
         {
@@ -379,6 +437,16 @@ public static class CatalogEndpoints
             await Catalog(p).ShuntAlarmAsync(hid, shunt: false, ct);
             return Results.NoContent();
         });
+
+        api.MapPost("/devices/{hid:long}/unshunt-point",
+            async (long hid, AlarmPointRequest? request, IWinPakProvider p, CancellationToken ct) =>
+            {
+                await Catalog(p).UnshuntAlarmPointAsync(hid, request?.Point ?? 0, ct);
+                return Results.NoContent();
+            });
+
+        api.MapGet("/doors/{hid:long}/status-code", async (long hid, IWinPakProvider p, CancellationToken ct)
+            => Results.Ok(new { status = await Catalog(p).GetDoorStatusCodeAsync(hid, ct) }));
 
         api.MapPost("/devices/{hid:long}/buffer", async (long hid, BufferRequest? request, IWinPakProvider p, CancellationToken ct) =>
         {

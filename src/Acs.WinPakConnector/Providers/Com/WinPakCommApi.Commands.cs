@@ -48,6 +48,23 @@ public sealed partial class WinPakCommApi
         Server.Invoke("AlarmUnShuntByHID", [hid]);
     }
 
+    /// <summary>Odshuntování konkrétního bodu zařízení (<c>AlarmUnShunt</c>).</summary>
+    public void UnshuntAlarmPoint(long hid, int point)
+    {
+        EnsureStarted();
+        Server.Invoke("AlarmUnShunt", [hid, point]);
+    }
+
+    /// <summary>
+    /// Starší číselná varianta stavu dveří (<c>GetDoorStatus</c>):
+    /// 0 zavřeno, 1 otevřeno, -1 neznámo.
+    /// </summary>
+    public int GetDoorStatusCode(long hid)
+    {
+        EnsureStarted();
+        return ComValue.ToInt(Server.Invoke("GetDoorStatus", [hid]), -1);
+    }
+
     // ---------- Vstupní body podle bodu ----------
 
     /// <summary>Zamkne konkrétní bod zařízení (varianta <c>EntryPointLock</c> s číslem bodu).</summary>

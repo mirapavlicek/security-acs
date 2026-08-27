@@ -34,9 +34,19 @@ public interface IWinPakCatalogApi
 
     Task ReassignAccessLevelAsync(string accessLevelName, ReassignAccessLevelRequest request, CancellationToken ct);
 
+    Task AddAccessLevelAsync(CreateAccessLevelRequest request, CancellationToken ct);
+
+    Task EditAccessLevelAsync(string currentName, CreateAccessLevelRequest request, CancellationToken ct);
+
+    // ---------- Účty ----------
+
+    Task<AccountDto?> GetAccountAsync(string accountId, CancellationToken ct);
+
     // ---------- Karty ----------
 
     Task<IReadOnlyList<CardDto>> GetCardsAsync(bool onlyWithoutHolder, CancellationToken ct);
+
+    Task UpsertCardExAsync(string cardNumber, UpsertCardExRequest request, CancellationToken ct);
 
     Task BulkAddCardsAsync(BulkAddCardsRequest request, CancellationToken ct);
 
@@ -75,6 +85,14 @@ public interface IWinPakCatalogApi
     Task ConfigureTimeZoneRangesAsync(string timeZoneId, IReadOnlyList<TimeZoneRangeRequest> ranges, CancellationToken ct);
 
     Task DeleteTimeZoneRangeAsync(string timeZoneId, string rangeId, CancellationToken ct);
+
+    Task<TimeZoneUsageDto> GetTimeZoneUsageAsync(string timeZoneId, CancellationToken ct);
+
+    Task<IReadOnlyList<TimeZoneDto>> GetTimeZonesForReassignAsync(string timeZoneId, bool forOperators, CancellationToken ct);
+
+    Task ReassignTimeZoneAsync(ReassignTimeZoneRequest request, CancellationToken ct);
+
+    Task DeletePanelTimeZoneAsync(string timeZoneId, IReadOnlyList<string> panelIds, CancellationToken ct);
 
     // ---------- Svátky ----------
 
@@ -132,9 +150,13 @@ public interface IWinPakCatalogApi
 
     Task<ScheduleDto?> GetScheduleAsync(string scheduleId, CancellationToken ct);
 
+    Task UpsertScheduleAsync(ScheduleDto schedule, CancellationToken ct);
+
     Task DeleteScheduleAsync(string scheduleId, CancellationToken ct);
 
     Task<TemplateDto?> GetTemplateAsync(string templateId, CancellationToken ct);
+
+    Task UpsertTemplateAsync(TemplateDto template, CancellationToken ct);
 
     Task DeleteTemplateAsync(string templateId, CancellationToken ct);
 
@@ -151,6 +173,10 @@ public interface IWinPakCatalogApi
     Task<TransactionDetailDto> GetTransactionDetailsAsync(long hid, int point, CancellationToken ct);
 
     Task ShuntAlarmAsync(long hid, bool shunt, CancellationToken ct);
+
+    Task UnshuntAlarmPointAsync(long hid, int point, CancellationToken ct);
+
+    Task<int> GetDoorStatusCodeAsync(long hid, CancellationToken ct);
 
     Task BufferAsync(long hid, int mode, bool buffer, CancellationToken ct);
 

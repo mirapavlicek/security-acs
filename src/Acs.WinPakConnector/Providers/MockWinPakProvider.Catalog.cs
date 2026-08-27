@@ -99,7 +99,21 @@ public sealed partial class MockWinPakProvider : IWinPakCatalogApi
     public Task ReassignAccessLevelAsync(string accessLevelName, ReassignAccessLevelRequest request, CancellationToken ct)
         => Record($"reassign-access-level:{accessLevelName}->{request.NewAccessLevelName}");
 
+    public Task AddAccessLevelAsync(CreateAccessLevelRequest request, CancellationToken ct)
+        => Record($"add-access-level:{request.Name}");
+
+    public Task EditAccessLevelAsync(string currentName, CreateAccessLevelRequest request, CancellationToken ct)
+        => Record($"edit-access-level:{currentName}->{request.Name}");
+
+    // ---------- Účty ----------
+
+    public Task<AccountDto?> GetAccountAsync(string accountId, CancellationToken ct)
+        => Task.FromResult(Accounts.FirstOrDefault(a => a.Id == accountId));
+
     // ---------- Karty ----------
+
+    public Task UpsertCardExAsync(string cardNumber, UpsertCardExRequest request, CancellationToken ct)
+        => UpsertCardAsync(cardNumber, request.Card, ct);
 
     public Task<IReadOnlyList<CardDto>> GetCardsAsync(bool onlyWithoutHolder, CancellationToken ct)
     {
@@ -220,6 +234,19 @@ public sealed partial class MockWinPakProvider : IWinPakCatalogApi
             _timeZoneRanges[timeZoneId] = ranges.Where(r => r.Id != rangeId).ToList();
         return Task.CompletedTask;
     }
+
+    public Task<TimeZoneUsageDto> GetTimeZoneUsageAsync(string timeZoneId, CancellationToken ct)
+        => Task.FromResult(new TimeZoneUsageDto(timeZoneId, [], [], [], [], [], []));
+
+    public Task<IReadOnlyList<TimeZoneDto>> GetTimeZonesForReassignAsync(string timeZoneId, bool forOperators, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<TimeZoneDto>>(
+            _timeZones.Values.Where(z => z.Id != timeZoneId).ToList());
+
+    public Task ReassignTimeZoneAsync(ReassignTimeZoneRequest request, CancellationToken ct)
+        => Record($"reassign-tz:{request.CurrentTimeZoneId}->{request.NewTimeZoneId}");
+
+    public Task DeletePanelTimeZoneAsync(string timeZoneId, IReadOnlyList<string> panelIds, CancellationToken ct)
+        => Record($"delete-panel-tz:{timeZoneId}:{string.Join('|', panelIds)}");
 
     // ---------- Svátky ----------
 
@@ -375,11 +402,17 @@ public sealed partial class MockWinPakProvider : IWinPakCatalogApi
     public Task<ScheduleDto?> GetScheduleAsync(string scheduleId, CancellationToken ct)
         => Task.FromResult<ScheduleDto?>(new ScheduleDto(scheduleId, "Denní report", "1", 1, 1, 1, true, false, false));
 
+    public Task UpsertScheduleAsync(ScheduleDto schedule, CancellationToken ct)
+        => Record($"upsert-schedule:{schedule.Id}:{schedule.Name}");
+
     public Task DeleteScheduleAsync(string scheduleId, CancellationToken ct)
         => Record($"delete-schedule:{scheduleId}");
 
     public Task<TemplateDto?> GetTemplateAsync(string templateId, CancellationToken ct)
         => Task.FromResult<TemplateDto?>(new TemplateDto(templateId, "Přehled průchodů", "1", 1, "<template/>"));
+
+    public Task UpsertTemplateAsync(TemplateDto template, CancellationToken ct)
+        => Record($"upsert-template:{template.Id}:{template.Name}");
 
     public Task DeleteTemplateAsync(string templateId, CancellationToken ct)
         => Record($"delete-template:{templateId}");
@@ -403,6 +436,12 @@ public sealed partial class MockWinPakProvider : IWinPakCatalogApi
 
     public Task ShuntAlarmAsync(long hid, bool shunt, CancellationToken ct)
         => Record($"{(shunt ? "shunt" : "unshunt")}:{hid}");
+
+    public Task UnshuntAlarmPointAsync(long hid, int point, CancellationToken ct)
+        => Record($"unshunt-point:{hid}/{point}");
+
+    public Task<int> GetDoorStatusCodeAsync(long hid, CancellationToken ct)
+        => Task.FromResult(0);
 
     public Task BufferAsync(long hid, int mode, bool buffer, CancellationToken ct)
         => Record($"{(buffer ? "buffer" : "unbuffer")}:{hid}:{mode}");

@@ -30,7 +30,13 @@ public sealed class WinPakComOptions
 
     public string CardHolderProgId { get; set; } = "NCIHelper.CardHolder";
 
+    public string CardProgId { get; set; } = "NCIHelper.Card";
+
     public string AccessLevelProgId { get; set; } = "NCIHelper.AccessLevel";
+
+    public string ScheduleProgId { get; set; } = "NCIHelper.Schedule";
+
+    public string TemplateProgId { get; set; } = "NCIHelper.Template";
 
     public string TimeZoneProgId { get; set; } = "NCIHelper.TimeZone";
 

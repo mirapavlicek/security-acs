@@ -70,6 +70,42 @@ public sealed partial class WinPakDatabaseApi
         Email: ComValue.ToBool(schedule.GetProperty("ScheduleEmailReport")),
         Fax: ComValue.ToBool(schedule.GetProperty("ScheduleFaxReport")));
 
+    /// <summary>Založí nebo upraví plán reportu (<c>AddEditSchedule</c>).</summary>
+    public void UpsertSchedule(ScheduleDto schedule)
+    {
+        EnsureSession();
+        var com = _com.Create(_options.ScheduleProgId);
+        com.SetProperty("ScheduleId", ComValue.ToLong(schedule.Id));
+        com.SetProperty("ScheduleName", schedule.Name);
+        com.SetProperty("AccountId", ComValue.ToLong(schedule.AccountId) is var id && id > 0 ? id : AccountId);
+        com.SetProperty("ScheduleType", schedule.ScheduleType);
+        com.SetProperty("ScheduleFrequency", schedule.Frequency);
+        com.SetProperty("ScheduleReportType", schedule.ReportType);
+        com.SetProperty("SchedulePrintReport", schedule.Print);
+        com.SetProperty("ScheduleEmailReport", schedule.Email);
+        com.SetProperty("ScheduleFaxReport", schedule.Fax);
+
+        var args = new object?[] { com.Target, 0 };
+        App.Invoke("AddEditSchedule", args);
+        WinPakStatus.EnsureCardSucceeded("Uložení plánu reportu", ComValue.ToInt(args[1]));
+    }
+
+    /// <summary>Založí nebo upraví šablonu reportu (<c>AddEditTemplate</c>).</summary>
+    public void UpsertTemplate(TemplateDto template)
+    {
+        EnsureSession();
+        var com = _com.Create(_options.TemplateProgId);
+        com.SetProperty("TemplateId", ComValue.ToLong(template.Id));
+        com.SetProperty("ScheduleName", template.Name);
+        com.SetProperty("AccountId", ComValue.ToLong(template.AccountId) is var id && id > 0 ? id : AccountId);
+        com.SetProperty("ReportType", template.Type);
+        com.SetProperty("TemplateString", template.Definition ?? "");
+
+        var args = new object?[] { com.Target, 0 };
+        App.Invoke("AddEditTemplate", args);
+        WinPakStatus.EnsureCardSucceeded("Uložení šablony reportu", ComValue.ToInt(args[1]));
+    }
+
     public void DeleteSchedule(string scheduleId)
         => CallCardWrite("Smazání plánu reportu", "DeleteSchedule",
             ComValue.ToLong(scheduleId), AccountId, 0);
