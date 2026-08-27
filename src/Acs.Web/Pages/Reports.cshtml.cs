@@ -51,6 +51,8 @@ public class ReportsModel(AcsDbContext db, Acs.Infrastructure.Workflow.ReaderGro
     {
         var items = await db.AccessRequestItems
             .Include(i => i.Reader!).ThenInclude(r => r.Room!).ThenInclude(room => room.Floor!).ThenInclude(f => f.Building)
+            .Include(i => i.Reader!).ThenInclude(r => r.Room!).ThenInclude(room => room.Corridor)
+            .Include(i => i.Reader!).ThenInclude(r => r.Corridor!).ThenInclude(c => c.Floor!).ThenInclude(f => f.Building)
             .Include(i => i.ReaderGroup)
             .Include(i => i.Request!).ThenInclude(r => r.TargetEmployee)
             .Where(i => i.Request!.Kind == RequestKind.Grant
@@ -71,6 +73,8 @@ public class ReportsModel(AcsDbContext db, Acs.Infrastructure.Workflow.ReaderGro
             var readerIds = await groups.ExpandReaderIdsAsync(i.ReaderGroupId!.Value);
             var readers = await db.Readers
                 .Include(r => r.Room!).ThenInclude(room => room.Floor!).ThenInclude(f => f.Building)
+                .Include(r => r.Room!).ThenInclude(room => room.Corridor)
+                .Include(r => r.Corridor!).ThenInclude(c => c.Floor!).ThenInclude(f => f.Building)
                 .Where(r => readerIds.Contains(r.Id))
                 .ToListAsync();
             rows.AddRange(readers.Select(r => Row(i, r)));
@@ -80,9 +84,7 @@ public class ReportsModel(AcsDbContext db, Acs.Infrastructure.Workflow.ReaderGro
 
         static AccessReportRow Row(AccessRequestItem i, Reader reader) => new(
             ReaderName: reader.Name,
-            Location: reader.Room is null
-                ? "—"
-                : $"{reader.Room.Floor?.Building?.Name} / {reader.Room.Floor?.Name} / {reader.Room.Name}",
+            Location: reader.LocationPath(),
             EmployeeName: i.Request!.TargetEmployee!.FullName,
             Department: i.Request.TargetEmployee.Department,
             CardNumber: i.Request.TargetEmployee.CardNumber,

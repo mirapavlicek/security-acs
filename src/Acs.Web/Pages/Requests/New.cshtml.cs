@@ -36,6 +36,8 @@ public class NewModel(AcsDbContext db, RequestWorkflowService workflow) : PageMo
 
         Readers = await db.Readers.Where(r => r.IsActive)
             .Include(r => r.Room).ThenInclude(room => room!.Floor).ThenInclude(f => f!.Building)
+            .Include(r => r.Room).ThenInclude(room => room!.Corridor)
+            .Include(r => r.Corridor).ThenInclude(c => c!.Floor).ThenInclude(f => f!.Building)
             .Include(r => r.Dependencies).ThenInclude(d => d.RequiresReader)
             .OrderBy(r => r.Name).ToListAsync();
 

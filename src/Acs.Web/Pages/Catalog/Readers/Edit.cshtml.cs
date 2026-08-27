@@ -13,6 +13,7 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
     public Reader Reader { get; set; } = new() { Name = "" };
 
     public List<Room> Rooms { get; private set; } = [];
+    public List<Corridor> Corridors { get; private set; } = [];
     public List<ApprovalMatrix> Matrices { get; private set; } = [];
     public List<ReaderDependency> Dependencies { get; private set; } = [];
     public List<Reader> DependencyCandidates { get; private set; } = [];
@@ -41,6 +42,10 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
             return RedirectToPage(new { id = Reader.Id == 0 ? (int?)null : Reader.Id });
         }
 
+        // Čtečka je buď v místnosti, nebo na chodbě — při zadání obojího má přednost chodba.
+        if (Reader.CorridorId is not null)
+            Reader.RoomId = null;
+
         if (Reader.Id == 0)
         {
             Reader.Source = RecordSource.Manual;
@@ -59,6 +64,7 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
             existing.PanelName = Reader.PanelName;
             existing.AccessLevelExternalId = Reader.AccessLevelExternalId;
             existing.RoomId = Reader.RoomId;
+            existing.CorridorId = Reader.CorridorId;
             existing.ApprovalMatrixId = Reader.ApprovalMatrixId;
             existing.IsActive = Reader.IsActive;
             await db.SaveChangesAsync();
@@ -139,6 +145,11 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
             .ToListAsync();
 
         Matrices = await db.ApprovalMatrices.Where(m => m.IsActive).OrderBy(m => m.Name).ToListAsync();
+
+        Corridors = await db.Corridors
+            .Include(c => c.Floor).ThenInclude(f => f!.Building)
+            .OrderBy(c => c.Floor!.Building!.Name).ThenBy(c => c.Name)
+            .ToListAsync();
 
         if (id is not null)
         {

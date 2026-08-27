@@ -45,9 +45,9 @@
                     <input type="checkbox" name="readerIds" value="@reader.Id" id="reader-@reader.Id" />
                     <label for="reader-@reader.Id">
                         @reader.Name
-                        @if (reader.Room is not null)
+                        @if (reader.Room is not null || reader.Corridor is not null)
                         {
-                            <span class="muted"> — @reader.Room.Floor?.Building?.Name / @reader.Room.Floor?.Name / @reader.Room.Name</span>
+                            <span class="muted"> — @reader.LocationPath()</span>
                         }
                         @if (reader.Dependencies.Count > 0)
                         {

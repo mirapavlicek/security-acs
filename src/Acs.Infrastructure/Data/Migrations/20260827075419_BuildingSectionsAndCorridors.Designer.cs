@@ -4,6 +4,7 @@ using Acs.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Acs.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AcsDbContext))]
-    partial class AcsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260827075419_BuildingSectionsAndCorridors")]
+    partial class BuildingSectionsAndCorridors
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -578,38 +581,6 @@ namespace Acs.Infrastructure.Data.Migrations
                     b.ToTable("Floors");
                 });
 
-            modelBuilder.Entity("Acs.Domain.Entities.PlanDevice", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("FloorId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("varchar(128)");
-
-                    b.Property<int>("Type")
-                        .HasColumnType("int");
-
-                    b.Property<double>("X")
-                        .HasColumnType("double");
-
-                    b.Property<double>("Y")
-                        .HasColumnType("double");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("FloorId");
-
-                    b.ToTable("PlanDevices");
-                });
-
             modelBuilder.Entity("Acs.Domain.Entities.Reader", b =>
                 {
                     b.Property<int>("Id")
@@ -776,18 +747,6 @@ namespace Acs.Infrastructure.Data.Migrations
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("longtext");
-
-                    b.Property<double?>("PlanH")
-                        .HasColumnType("double");
-
-                    b.Property<double?>("PlanW")
-                        .HasColumnType("double");
-
-                    b.Property<double?>("PlanX")
-                        .HasColumnType("double");
-
-                    b.Property<double?>("PlanY")
-                        .HasColumnType("double");
 
                     b.HasKey("Id");
 
@@ -1036,17 +995,6 @@ namespace Acs.Infrastructure.Data.Migrations
                     b.Navigation("Building");
 
                     b.Navigation("Section");
-                });
-
-            modelBuilder.Entity("Acs.Domain.Entities.PlanDevice", b =>
-                {
-                    b.HasOne("Acs.Domain.Entities.Floor", "Floor")
-                        .WithMany()
-                        .HasForeignKey("FloorId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Floor");
                 });
 
             modelBuilder.Entity("Acs.Domain.Entities.Reader", b =>

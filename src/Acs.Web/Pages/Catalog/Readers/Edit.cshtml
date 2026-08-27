@@ -22,12 +22,20 @@
         <input asp-for="Reader.PanelName" />
         <label>WIN-PAK access level (pro zápis přístupů)</label>
         <input asp-for="Reader.AccessLevelExternalId" placeholder="např. AL-03" />
-        <label>Místnost</label>
+        <label>Místnost (vchází se do ní touto čtečkou)</label>
         <select asp-for="Reader.RoomId">
             <option value="">— žádná —</option>
             @foreach (var room in Model.Rooms)
             {
                 <option value="@room.Id">@room.Floor?.Building?.Name / @room.Floor?.Name / @room.Name</option>
+            }
+        </select>
+        <label>Chodba (čtečka je přímo na chodbě — alternativa k místnosti)</label>
+        <select asp-for="Reader.CorridorId">
+            <option value="">— žádná —</option>
+            @foreach (var corridor in Model.Corridors)
+            {
+                <option value="@corridor.Id">@corridor.Floor?.Building?.Name / @corridor.Floor?.Name / @corridor.Name</option>
             }
         </select>
         <label>Schvalovací matice</label>

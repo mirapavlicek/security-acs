@@ -10,8 +10,11 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
     public DbSet<AppUser> Users => Set<AppUser>();
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<Building> Buildings => Set<Building>();
+    public DbSet<BuildingSection> BuildingSections => Set<BuildingSection>();
     public DbSet<Floor> Floors => Set<Floor>();
+    public DbSet<Corridor> Corridors => Set<Corridor>();
     public DbSet<Room> Rooms => Set<Room>();
+    public DbSet<PlanDevice> PlanDevices => Set<PlanDevice>();
     public DbSet<Reader> Readers => Set<Reader>();
     public DbSet<ReaderDependency> ReaderDependencies => Set<ReaderDependency>();
     public DbSet<ApprovalMatrix> ApprovalMatrices => Set<ApprovalMatrix>();
@@ -54,7 +57,43 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
             e.HasIndex(x => x.ExternalId);
             e.Property(x => x.Name).HasMaxLength(256);
             e.HasOne(x => x.Room).WithMany(r => r.Readers).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.Corridor).WithMany(c => c.Readers).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.ApprovalMatrix).WithMany().OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<BuildingSection>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.HasOne(x => x.Building).WithMany(b => b.Sections)
+                .HasForeignKey(x => x.BuildingId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Floor>(e =>
+        {
+            e.HasOne(x => x.Section).WithMany(s => s.Floors)
+                .HasForeignKey(x => x.SectionId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<Corridor>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.HasOne(x => x.Floor).WithMany(f => f.Corridors)
+                .HasForeignKey(x => x.FloorId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.ParentCorridor).WithMany()
+                .HasForeignKey(x => x.ParentCorridorId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<Room>(e =>
+        {
+            e.HasOne(x => x.Corridor).WithMany(c => c.Rooms)
+                .HasForeignKey(x => x.CorridorId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<PlanDevice>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.HasOne(x => x.Floor).WithMany()
+                .HasForeignKey(x => x.FloorId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ReaderDependency>(e =>

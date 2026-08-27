@@ -51,6 +51,12 @@ Dále hotovo: e-mailové notifikace (SMTP), reporty kdo-má-kam s CSV exportem,
 mapování AD skupin na role a **obousměrná synchronizace s WIN-PAK** (změny
 provedené přímo ve WIN-PAK — udělení, odebrání, zadání z fronty — se
 automaticky propíší zpět do ACS).
+
+Od v1.1: **skupiny čteček** (i vnořené) — žádat lze o skupinu jako celek,
+skupina má vlastní matici a schvalování prochází **řetězem matic** (skupina →
+nadřazené skupiny, např. Chirurgie → Bezpečnost); **zaměstnanci se načítají
+z AD** a **karty z SQL**; **automatické zařazení dle oddělení** (nástup na
+chirurgii → předschválený základní přístup skupiny Chirurgie).
 Zbývá: nasazení na cílové servery (skripty připraveny, spouští se z macOS-ai
 proxyhubu) a napojení konektoru na reálný WIN-PAK (MSSQL přístup / licence
 SDK — viz otevřené otázky, kapitola 8 v `docs/PLAN.md`).

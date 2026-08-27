@@ -21,6 +21,10 @@ public class IndexModel(AcsDbContext db, ReaderSyncService readerSync) : PageMod
     {
         var query = db.Readers
             .Include(r => r.Room).ThenInclude(room => room!.Floor).ThenInclude(f => f!.Building)
+            .Include(r => r.Room).ThenInclude(room => room!.Floor).ThenInclude(f => f!.Section)
+            .Include(r => r.Room).ThenInclude(room => room!.Corridor)
+            .Include(r => r.Corridor).ThenInclude(c => c!.Floor).ThenInclude(f => f!.Building)
+            .Include(r => r.Corridor).ThenInclude(c => c!.Floor).ThenInclude(f => f!.Section)
             .Include(r => r.Dependencies).ThenInclude(d => d.RequiresReader)
             .AsQueryable();
 
