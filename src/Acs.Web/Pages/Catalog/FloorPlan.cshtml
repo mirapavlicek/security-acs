@@ -4,51 +4,229 @@
     ViewData["Title"] = $"Plán: {Model.Floor.Building?.Name} / {Model.Floor.Name}";
 }
 <h1>@ViewData["Title"]</h1>
-
-@if (Model.Message is not null)
-{
-    <div class="alert alert-success">@Model.Message</div>
-}
-
-<p class="muted">Vyberte čtečku a kliknutím do plánu jí nastavte pozici. Čtečky patří na plán tohoto patra podle přiřazené místnosti.</p>
+<p class="muted">
+    Interaktivní editor: místnosti přetahujte myší (roh vpravo dole mění velikost),
+    čtečky a zařízení přetahujte jako ikony. Neumístěné prvky přidáte tlačítky.
+    Podkladový obrázek (např. export z CAD) je volitelný — nahrává se v Budovách.
+</p>
 
 <div class="card">
-    <form method="post" id="position-form">
-        <label>Čtečka</label>
-        <select name="readerId" required style="max-width:320px">
-            @foreach (var reader in Model.Readers)
-            {
-                <option value="@reader.Id">@reader.Name @(reader.SchemaX is null ? "(bez pozice)" : "")</option>
-            }
-        </select>
-        <input type="hidden" name="x" id="pos-x" />
-        <input type="hidden" name="y" id="pos-y" />
-        <span class="muted" id="pos-info">— klikněte do plánu —</span>
-        <button class="btn" type="submit" id="save-btn" disabled>Uložit pozici</button>
-        <a class="btn btn-ghost" asp-page="Places">Zpět</a>
-    </form>
-
-    <div style="position:relative;margin-top:1rem;border:1px solid var(--border)" id="plan-wrap">
-        <img src="/floors/@Model.Floor.Id/schema" alt="Schéma patra" id="plan-img" style="display:block;width:100%" />
-        @foreach (var reader in Model.Readers.Where(r => r.SchemaX is not null && r.SchemaY is not null))
-        {
-            <div class="hotspot" style="left:@(reader.SchemaX!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture))%;top:@(reader.SchemaY!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture))%"
-                 title="@reader.Name"></div>
-        }
+    <div style="margin-bottom:0.6rem">
+        <button class="btn" id="save-btn" type="button">Uložit plán</button>
+        <span id="save-info" class="muted"></span>
+        <span style="float:right">
+            <select id="device-type" style="max-width:130px;display:inline-block">
+                <option value="Camera">Kamera</option>
+                <option value="Ezs">EZS</option>
+                <option value="Rozhlas">Rozhlas</option>
+                <option value="Tv">TV</option>
+            </select>
+            <input type="text" id="device-name" placeholder="název zařízení" style="max-width:160px;display:inline-block" />
+            <button class="btn btn-sm" id="add-device" type="button">Přidat zařízení</button>
+        </span>
     </div>
+
+    <div id="unplaced" style="margin-bottom:0.6rem"></div>
+
+    <div style="border:1px solid var(--border);background:var(--surface)">
+        <svg id="plan" viewBox="0 0 100 100" preserveAspectRatio="none"
+             style="display:block;width:100%;aspect-ratio:4/3;touch-action:none">
+            @if (Model.HasUnderlay)
+            {
+                <image href="/floors/@Model.Floor.Id/schema" x="0" y="0" width="100" height="100"
+                       preserveAspectRatio="none" opacity="0.45" />
+            }
+            <g id="layer-rooms"></g>
+            <g id="layer-devices"></g>
+        </svg>
+    </div>
+    <p class="muted" style="margin-bottom:0">
+        Legenda: <span style="color:#0b6bcb">■ místnost</span> ·
+        <span style="color:#2e7d32">● čtečka</span> ·
+        <span style="color:#b26a00">◆ kamera</span> ·
+        <span style="color:#c62828">◆ EZS</span> ·
+        <span style="color:#6a3cb5">◆ rozhlas</span> ·
+        <span style="color:#00695c">◆ TV</span>
+    </p>
+    <a class="btn btn-ghost" asp-page="Places" style="margin-top:0.6rem">Zpět na Budovy</a>
 </div>
+
+@Html.AntiForgeryToken()
 
 @section Scripts {
 <script>
-    const img = document.getElementById('plan-img');
-    img.addEventListener('click', e => {
-        const rect = img.getBoundingClientRect();
-        const x = ((e.clientX - rect.left) / rect.width * 100).toFixed(2);
-        const y = ((e.clientY - rect.top) / rect.height * 100).toFixed(2);
-        document.getElementById('pos-x').value = x;
-        document.getElementById('pos-y').value = y;
-        document.getElementById('pos-info').textContent = `pozice: ${x} %, ${y} %`;
-        document.getElementById('save-btn').disabled = false;
+(() => {
+    const layout = @Html.Raw(Model.LayoutJson);
+    const svg = document.getElementById('plan');
+    const roomsLayer = document.getElementById('layer-rooms');
+    const devicesLayer = document.getElementById('layer-devices');
+    const NS = 'http://www.w3.org/2000/svg';
+    const deviceColors = { Camera: '#b26a00', Ezs: '#c62828', Rozhlas: '#6a3cb5', Tv: '#00695c' };
+    const deviceLabels = { Camera: 'K', Ezs: 'E', Rozhlas: 'R', Tv: 'TV' };
+    let dirty = false;
+
+    function svgPoint(evt) {
+        const pt = svg.createSVGPoint();
+        pt.x = evt.clientX; pt.y = evt.clientY;
+        const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+        return { x: Math.max(0, Math.min(100, p.x)), y: Math.max(0, Math.min(100, p.y)) };
+    }
+
+    function el(tag, attrs) {
+        const e = document.createElementNS(NS, tag);
+        for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+        return e;
+    }
+
+    // --- tažení ---
+    let drag = null; // { move(dx,dy points), start:{x,y} }
+    svg.addEventListener('pointermove', evt => {
+        if (!drag) return;
+        const p = svgPoint(evt);
+        drag.move(p.x - drag.start.x, p.y - drag.start.y);
+        drag.start = p;
+        dirty = true;
+        render();
     });
+    const endDrag = () => { drag = null; };
+    svg.addEventListener('pointerup', endDrag);
+    svg.addEventListener('pointerleave', endDrag);
+
+    function startDrag(evt, move) {
+        evt.preventDefault();
+        svg.setPointerCapture?.(evt.pointerId);
+        drag = { move, start: svgPoint(evt) };
+    }
+
+    // --- vykreslení ---
+    function render() {
+        roomsLayer.replaceChildren();
+        devicesLayer.replaceChildren();
+
+        for (const room of layout.rooms.filter(r => r.x != null)) {
+            const g = el('g', { cursor: 'move' });
+            const rect = el('rect', {
+                x: room.x, y: room.y, width: room.w ?? 12, height: room.h ?? 9,
+                fill: 'rgba(11,107,203,0.13)', stroke: '#0b6bcb', 'stroke-width': 0.35, rx: 0.6,
+            });
+            const label = el('text', {
+                x: room.x + 1, y: room.y + 3, 'font-size': 2.4, fill: '#0b6bcb', 'pointer-events': 'none',
+            });
+            label.textContent = room.name;
+            const handle = el('rect', {
+                x: room.x + (room.w ?? 12) - 1.6, y: room.y + (room.h ?? 9) - 1.6,
+                width: 1.6, height: 1.6, fill: '#0b6bcb', cursor: 'nwse-resize',
+            });
+            rect.addEventListener('pointerdown', e => startDrag(e, (dx, dy) => {
+                room.x = Math.max(0, Math.min(100 - (room.w ?? 12), room.x + dx));
+                room.y = Math.max(0, Math.min(100 - (room.h ?? 9), room.y + dy));
+            }));
+            handle.addEventListener('pointerdown', e => {
+                e.stopPropagation();
+                startDrag(e, (dx, dy) => {
+                    room.w = Math.max(3, Math.min(100 - room.x, (room.w ?? 12) + dx));
+                    room.h = Math.max(3, Math.min(100 - room.y, (room.h ?? 9) + dy));
+                });
+            });
+            g.append(rect, label, handle);
+            roomsLayer.append(g);
+        }
+
+        for (const reader of layout.readers.filter(r => r.x != null)) {
+            const g = el('g', { cursor: 'move' });
+            const dot = el('circle', { cx: reader.x, cy: reader.y, r: 1.1, fill: '#2e7d32', stroke: '#fff', 'stroke-width': 0.25 });
+            const label = el('text', { x: reader.x + 1.5, y: reader.y + 0.7, 'font-size': 1.9, fill: '#2e7d32', 'pointer-events': 'none' });
+            label.textContent = reader.name;
+            dot.addEventListener('pointerdown', e => startDrag(e, (dx, dy) => {
+                reader.x = Math.max(0, Math.min(100, reader.x + dx));
+                reader.y = Math.max(0, Math.min(100, reader.y + dy));
+            }));
+            g.append(dot, label);
+            devicesLayer.append(g);
+        }
+
+        layout.devices.forEach((device, index) => {
+            const color = deviceColors[device.type] ?? '#555';
+            const g = el('g', { cursor: 'move' });
+            const icon = el('rect', {
+                x: device.x - 1.1, y: device.y - 1.1, width: 2.2, height: 2.2,
+                fill: color, stroke: '#fff', 'stroke-width': 0.25, transform: `rotate(45 ${device.x} ${device.y})`,
+            });
+            const mark = el('text', {
+                x: device.x, y: device.y + 0.55, 'font-size': 1.3, fill: '#fff',
+                'text-anchor': 'middle', 'pointer-events': 'none',
+            });
+            mark.textContent = deviceLabels[device.type] ?? '?';
+            const label = el('text', { x: device.x + 2, y: device.y + 0.7, 'font-size': 1.9, fill: color, 'pointer-events': 'none' });
+            label.textContent = device.name;
+            icon.addEventListener('pointerdown', e => startDrag(e, (dx, dy) => {
+                device.x = Math.max(0, Math.min(100, device.x + dx));
+                device.y = Math.max(0, Math.min(100, device.y + dy));
+            }));
+            icon.addEventListener('dblclick', () => {
+                if (confirm(`Odebrat zařízení ${device.name}?`)) {
+                    layout.devices.splice(index, 1);
+                    dirty = true;
+                    render();
+                    renderUnplaced();
+                }
+            });
+            g.append(icon, mark, label);
+            devicesLayer.append(g);
+        });
+    }
+
+    // --- neumístěné prvky ---
+    function renderUnplaced() {
+        const host = document.getElementById('unplaced');
+        host.replaceChildren();
+        const unplaced = [
+            ...layout.rooms.filter(r => r.x == null).map(r => ({ label: `místnost ${r.name}`, place: () => { r.x = 42; r.y = 42; r.w = 14; r.h = 10; } })),
+            ...layout.readers.filter(r => r.x == null).map(r => ({ label: `čtečka ${r.name}`, place: () => { r.x = 50; r.y = 50; } })),
+        ];
+        if (unplaced.length === 0) return;
+        const info = document.createElement('span');
+        info.className = 'muted';
+        info.textContent = 'Neumístěno: ';
+        host.append(info);
+        for (const u of unplaced) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-sm btn-ghost';
+            btn.textContent = `+ ${u.label}`;
+            btn.addEventListener('click', () => { u.place(); dirty = true; render(); renderUnplaced(); });
+            host.append(btn, document.createTextNode(' '));
+        }
+    }
+
+    // --- přidání zařízení ---
+    document.getElementById('add-device').addEventListener('click', () => {
+        const type = document.getElementById('device-type').value;
+        const name = document.getElementById('device-name').value.trim() || type;
+        layout.devices.push({ id: null, type, name, x: 50, y: 50 });
+        document.getElementById('device-name').value = '';
+        dirty = true;
+        render();
+    });
+
+    // --- uložení ---
+    document.getElementById('save-btn').addEventListener('click', async () => {
+        const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+        const info = document.getElementById('save-info');
+        info.textContent = 'ukládám…';
+        const response = await fetch(location.pathname + '?handler=SaveLayout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
+            body: JSON.stringify(layout),
+        });
+        info.textContent = response.ok ? 'uloženo ✓' : 'chyba uložení!';
+        if (response.ok) dirty = false;
+    });
+
+    window.addEventListener('beforeunload', e => { if (dirty) e.preventDefault(); });
+
+    render();
+    renderUnplaced();
+})();
 </script>
 }

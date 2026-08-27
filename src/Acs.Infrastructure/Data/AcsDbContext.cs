@@ -14,6 +14,7 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
     public DbSet<Floor> Floors => Set<Floor>();
     public DbSet<Corridor> Corridors => Set<Corridor>();
     public DbSet<Room> Rooms => Set<Room>();
+    public DbSet<PlanDevice> PlanDevices => Set<PlanDevice>();
     public DbSet<Reader> Readers => Set<Reader>();
     public DbSet<ReaderDependency> ReaderDependencies => Set<ReaderDependency>();
     public DbSet<ApprovalMatrix> ApprovalMatrices => Set<ApprovalMatrix>();
@@ -86,6 +87,13 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
         {
             e.HasOne(x => x.Corridor).WithMany(c => c.Rooms)
                 .HasForeignKey(x => x.CorridorId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<PlanDevice>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.HasOne(x => x.Floor).WithMany()
+                .HasForeignKey(x => x.FloorId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ReaderDependency>(e =>

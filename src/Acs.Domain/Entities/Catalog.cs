@@ -82,6 +82,12 @@ public class Room
     public required string Name { get; set; }
     public string? Description { get; set; }
     public List<Reader> Readers { get; set; } = [];
+
+    /// <summary>Geometrie na interaktivním plánu patra (procenta plochy, null = neumístěno).</summary>
+    public double? PlanX { get; set; }
+    public double? PlanY { get; set; }
+    public double? PlanW { get; set; }
+    public double? PlanH { get; set; }
 }
 
 /// <summary>Čtečka — importovaná z WIN-PAK přes konektor, nebo ruční.</summary>

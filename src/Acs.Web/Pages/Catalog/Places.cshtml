@@ -67,10 +67,7 @@
                     <button class="btn btn-sm btn-ghost" type="submit"
                             onclick="return confirm('Smazat patro @floor.Name?')">Smazat patro</button>
                 </form>
-                @if (floor.SchemaImage is not null)
-                {
-                    <a class="btn btn-sm btn-ghost" asp-page="FloorPlan" asp-route-id="@floor.Id">Editor plánu</a>
-                }
+                <a class="btn btn-sm btn-ghost" asp-page="FloorPlan" asp-route-id="@floor.Id">Editor plánu</a>
             </h3>
 
             <h4 style="margin:0.4rem 0 0.2rem">Chodby</h4>

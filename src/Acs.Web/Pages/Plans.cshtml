@@ -8,12 +8,12 @@
 <div class="card">
     <form method="get">
         <label>Patro</label>
-        <select name="floorId" onchange="this.form.submit()" style="max-width:360px">
+        <select name="floorId" onchange="this.form.submit()" style="max-width:400px">
             <option value="">— vyberte patro —</option>
             @foreach (var floor in Model.FloorsWithSchema)
             {
                 <option value="@floor.Id" selected="@(floor.Id == Model.SelectedFloor?.Id)">
-                    @floor.Building?.Name / @floor.Name
+                    @floor.Building?.Name @(floor.Section is null ? "" : $"/ {floor.Section.Name}") / @floor.Name
                 </option>
             }
         </select>
@@ -21,25 +21,74 @@
 
     @if (Model.FloorsWithSchema.Count == 0)
     {
-        <p class="muted">Zatím nejsou nahraná žádná schémata (nahrává správce číselníků v Budovách).</p>
+        <p class="muted">Zatím nejsou žádné plány (sestavuje správce číselníků v Budovách → Editor plánu).</p>
     }
 </div>
 
 @if (Model.SelectedFloor is not null)
 {
     <div class="card">
-        <p>
-            <span class="hotspot hotspot-inline hotspot-mine"></span> máte přístup&nbsp;&nbsp;
-            <span class="hotspot hotspot-inline"></span> bez přístupu
+        <p style="margin-top:0">
+            <span style="color:#2e7d32">●</span> máte přístup&nbsp;&nbsp;
+            <span class="muted">●</span> bez přístupu&nbsp;&nbsp;
+            <span style="color:#b26a00">◆</span> kamera&nbsp;
+            <span style="color:#c62828">◆</span> EZS&nbsp;
+            <span style="color:#6a3cb5">◆</span> rozhlas&nbsp;
+            <span style="color:#00695c">◆</span> TV
         </p>
-        <div style="position:relative;border:1px solid var(--border)">
-            <img src="/floors/@Model.SelectedFloor.Id/schema" alt="Schéma patra" style="display:block;width:100%" />
-            @foreach (var reader in Model.Readers.Where(r => r.SchemaX is not null && r.SchemaY is not null))
-            {
-                <div class="hotspot @(Model.MyReaderIds.Contains(reader.Id) ? "hotspot-mine" : "")"
-                     style="left:@(reader.SchemaX!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture))%;top:@(reader.SchemaY!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture))%"
-                     title="@reader.Name@(Model.MyReaderIds.Contains(reader.Id) ? " — máte přístup" : "")"></div>
-            }
+        <div style="border:1px solid var(--border);background:var(--surface)">
+            <svg id="plan-view" viewBox="0 0 100 100" preserveAspectRatio="none"
+                 style="display:block;width:100%;aspect-ratio:4/3">
+                @if (Model.HasUnderlay)
+                {
+                    <image href="/floors/@Model.SelectedFloor.Id/schema" x="0" y="0" width="100" height="100"
+                           preserveAspectRatio="none" opacity="0.45" />
+                }
+                <g id="view-content"></g>
+            </svg>
         </div>
     </div>
+
+    @section Scripts {
+    <script>
+    (() => {
+        const layout = @Html.Raw(Model.LayoutJson);
+        const host = document.getElementById('view-content');
+        const NS = 'http://www.w3.org/2000/svg';
+        const deviceColors = { Camera: '#b26a00', Ezs: '#c62828', Rozhlas: '#6a3cb5', Tv: '#00695c' };
+        const deviceLabels = { Camera: 'K', Ezs: 'E', Rozhlas: 'R', Tv: 'TV' };
+
+        function el(tag, attrs, text) {
+            const e = document.createElementNS(NS, tag);
+            for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+            if (text) e.textContent = text;
+            return e;
+        }
+
+        for (const room of layout.rooms) {
+            host.append(
+                el('rect', { x: room.x, y: room.y, width: room.w ?? 12, height: room.h ?? 9,
+                    fill: 'rgba(11,107,203,0.10)', stroke: '#0b6bcb', 'stroke-width': 0.3, rx: 0.6 }),
+                el('text', { x: room.x + 1, y: room.y + 3, 'font-size': 2.4, fill: '#0b6bcb' }, room.name));
+        }
+
+        for (const reader of layout.readers) {
+            const color = reader.mine ? '#2e7d32' : '#8a97a5';
+            const dot = el('circle', { cx: reader.x, cy: reader.y, r: 1.1, fill: color, stroke: '#fff', 'stroke-width': 0.25 });
+            dot.append(el('title', {}, reader.name + (reader.mine ? ' — máte přístup' : '')));
+            host.append(dot, el('text', { x: reader.x + 1.5, y: reader.y + 0.7, 'font-size': 1.9, fill: color }, reader.name));
+        }
+
+        for (const device of layout.devices) {
+            const color = deviceColors[device.type] ?? '#555';
+            host.append(
+                el('rect', { x: device.x - 1.1, y: device.y - 1.1, width: 2.2, height: 2.2, fill: color,
+                    stroke: '#fff', 'stroke-width': 0.25, transform: `rotate(45 ${device.x} ${device.y})` }),
+                el('text', { x: device.x, y: device.y + 0.55, 'font-size': 1.3, fill: '#fff', 'text-anchor': 'middle' },
+                    deviceLabels[device.type] ?? '?'),
+                el('text', { x: device.x + 2, y: device.y + 0.7, 'font-size': 1.9, fill: color }, device.name));
+        }
+    })();
+    </script>
+    }
 }

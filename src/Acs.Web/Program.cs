@@ -127,6 +127,9 @@ builder.Services.AddAuthorization(options =>
         p => p.RequireRole(nameof(AppRole.Admin), nameof(AppRole.CardAdmin)));
 });
 
+// Antiforgery i přes hlavičku — pro JSON POSTy z interaktivního editoru plánů.
+builder.Services.AddAntiforgery(options => options.HeaderName = "X-CSRF-TOKEN");
+
 builder.Services.AddRazorPages(options =>
 {
     options.Conventions.AllowAnonymousToPage("/Account/Login");
