@@ -12,16 +12,39 @@
 
 <div class="card" style="max-width:720px">
     <form method="post">
-        <label>Pro zaměstnance</label>
-        <select name="targetEmployeeId" required>
-            <option value="">— vyberte —</option>
-            @foreach (var employee in Model.Employees)
+        @if (!Model.CanActForOthers)
+        {
+            @* Běžný uživatel žádá vždy sám za sebe — rovnou předvyplněno. *@
+            @if (Model.MyEmployeeId is null)
             {
-                <option value="@employee.Id" selected="@(employee.Id == Model.MyEmployeeId)">
-                    @employee.FullName @(employee.Department is null ? "" : $"({employee.Department})")
-                </option>
+                <div class="alert alert-error">
+                    Váš účet není spárován se zaměstnancem — žádost nelze podat.
+                    Kontaktujte správce číselníků (párování probíhá podle AD účtu).
+                </div>
             }
-        </select>
+            else
+            {
+                <label>Pro zaměstnance</label>
+                <p style="margin:0.2rem 0 0.6rem"><strong>@Model.MyEmployeeName</strong> <span class="muted">(vy)</span></p>
+                <input type="hidden" name="targetEmployeeId" value="@Model.MyEmployeeId" />
+            }
+        }
+        else
+        {
+            <label>Pro zaměstnance (pište pro hledání)</label>
+            <input type="text" id="employee-search" placeholder="Hledat jméno, oddělení, osobní číslo…"
+                   autocomplete="off" style="margin-bottom:0.3rem" />
+            <select name="targetEmployeeId" id="employee-select" required size="1">
+                <option value="">— vyberte —</option>
+                @foreach (var employee in Model.Employees)
+                {
+                    <option value="@employee.Id" selected="@(employee.Id == Model.MyEmployeeId)"
+                            data-search="@($"{employee.FullName} {employee.Department} {employee.PersonalNumber}".ToLowerInvariant())">
+                        @employee.FullName @(employee.Department is null ? "" : $"({employee.Department})")
+                    </option>
+                }
+            </select>
+        }
 
         @if (Model.Groups.Count > 0)
         {
@@ -38,7 +61,9 @@
         }
 
         <label>Čtečky (vyžadované čtečky z řetězce se doplní automaticky)</label>
-        <div style="max-height:300px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:0.5rem">
+        <input type="text" id="reader-search" placeholder="Hledat čtečku nebo umístění…"
+               autocomplete="off" style="margin-bottom:0.3rem" />
+        <div style="max-height:300px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:0.5rem" id="reader-list">
             @foreach (var reader in Model.Readers)
             {
                 <div class="checkbox-row" style="margin:0.25rem 0">
@@ -63,7 +88,45 @@
         <label>Zdůvodnění</label>
         <textarea name="justification" rows="3" placeholder="Proč je přístup potřeba…"></textarea>
 
-        <button class="btn" type="submit">Podat žádost</button>
+        <button class="btn" type="submit" disabled="@(!Model.CanActForOthers && Model.MyEmployeeId is null)">Podat žádost</button>
         <a class="btn btn-ghost" asp-page="Index">Zpět</a>
     </form>
 </div>
+
+@section Scripts {
+<script>
+(() => {
+    // Textové hledání zaměstnance — filtruje možnosti výběru za psaní.
+    const search = document.getElementById('employee-search');
+    const select = document.getElementById('employee-select');
+    if (search && select) {
+        const options = [...select.querySelectorAll('option[data-search]')];
+        search.addEventListener('input', () => {
+            const term = search.value.trim().toLowerCase();
+            let firstVisible = null;
+            for (const option of options) {
+                const match = term === '' || option.dataset.search.includes(term);
+                option.hidden = !match;
+                if (match && firstVisible === null) firstVisible = option;
+            }
+            // Když aktuálně vybraná možnost neodpovídá hledání, vyber první odpovídající.
+            const selected = select.selectedOptions[0];
+            if (term !== '' && (!selected || selected.hidden) && firstVisible)
+                select.value = firstVisible.value;
+        });
+    }
+
+    // Filtr čteček — skrývá řádky se zaškrtávátky podle textu.
+    const readerSearch = document.getElementById('reader-search');
+    const readerList = document.getElementById('reader-list');
+    if (readerSearch && readerList) {
+        const rows = [...readerList.querySelectorAll('.checkbox-row')];
+        readerSearch.addEventListener('input', () => {
+            const term = readerSearch.value.trim().toLowerCase();
+            for (const row of rows)
+                row.style.display = term === '' || row.textContent.toLowerCase().includes(term) ? '' : 'none';
+        });
+    }
+})();
+</script>
+}
