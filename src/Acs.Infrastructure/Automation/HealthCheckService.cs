@@ -15,11 +15,38 @@ public record HealthItem(HealthSeverity Severity, string Title, string Detail, s
 /// (chybějící mapování, nenastavené zdroje, čekající fronta…). Cílem je, aby
 /// administrátor nemusel chyby hledat v logu.
 /// </summary>
-public class HealthCheckService(AcsDbContext db, SettingsService settings, WinPakClient winPak)
+public class HealthCheckService(
+    AcsDbContext db, SettingsService settings, WinPakClient winPak, Auth.DcLocator dcLocator)
 {
     public async Task<List<HealthItem>> RunAsync(CancellationToken ct = default)
     {
         var items = new List<HealthItem>();
+
+        // --- Active Directory / DC lokátor ---
+        if (await settings.GetBoolAsync(SettingKeys.LdapEnabled, false, ct))
+        {
+            try
+            {
+                var candidates = await dcLocator.GetCandidateServersAsync(ct);
+                if (candidates.Count == 0)
+                {
+                    items.Add(new HealthItem(HealthSeverity.Problem, "DC lokátor nenašel žádný řadič",
+                        "SRV záznamy _ldap._tcp.dc._msdcs nevrací nic a fallback server není nastaven.",
+                        "Nastavení → Active Directory (doména / LDAP server)"));
+                }
+                else
+                {
+                    var active = await dcLocator.GetActiveServerAsync(ct);
+                    items.Add(new HealthItem(HealthSeverity.Info, "Aktivní doménový řadič",
+                        $"{active} (kandidátů: {candidates.Count} — {string.Join(", ", candidates.Take(4))})"));
+                }
+            }
+            catch (Exception ex)
+            {
+                items.Add(new HealthItem(HealthSeverity.Problem, "Žádný dostupný doménový řadič",
+                    ex.Message, "Nastavení → Active Directory"));
+            }
+        }
 
         // --- WIN-PAK konektor ---
         var baseUrl = await settings.GetAsync(SettingKeys.WinPakBaseUrl, ct);

@@ -132,7 +132,7 @@ public sealed class SyncServiceTests : IDisposable
     }
 
     private sealed class StubSourceFactory(IEmployeeSource source, SettingsService settings)
-        : EmployeeSourceFactory(settings, null!)
+        : EmployeeSourceFactory(settings, null!, null!)
     {
         public override Task<IEmployeeSource?> CreateAsync(CancellationToken ct = default)
             => Task.FromResult<IEmployeeSource?>(source);

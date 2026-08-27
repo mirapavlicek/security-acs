@@ -253,7 +253,10 @@ public sealed class AutomationTests : IDisposable
     {
         var http = new HttpClient(new StubHandler(_ => (HttpStatusCode.OK,
             """{"version":"1","providerMode":"Mssql","supportsWrite":false}""")));
-        var health = new HealthCheckService(_db, _settings, new WinPakClient(http, _settings));
+        var health = new HealthCheckService(_db, _settings, new WinPakClient(http, _settings),
+            new Acs.Infrastructure.Auth.DcLocator(_settings, NullLogger<Acs.Infrastructure.Auth.DcLocator>.Instance,
+                srvQuery: (_, _) => Task.FromResult<IReadOnlyList<Acs.Infrastructure.Auth.DcCandidate>>([]),
+                probe: (_, _, _) => Task.FromResult(true)));
 
         var items = await health.RunAsync();
 

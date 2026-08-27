@@ -1,24 +1,36 @@
 using System.DirectoryServices.Protocols;
-using System.Net;
+using Acs.Infrastructure.Auth;
 using Acs.Infrastructure.Settings;
 
 namespace Acs.Infrastructure.Sync;
 
 /// <summary>
-/// Zdroj zaměstnanců z Active Directory. Používá LDAP nastavení z GUI
-/// (server, LDAPS, base DN, servisní účet pro bind) a stránkované vyhledávání.
+/// Zdroj zaměstnanců z Active Directory. Cílový řadič vrací <see cref="DcLocator"/>
+/// (DNS SRV, failover); bind přes servisní účet, stránkované vyhledávání.
 /// Mapování atributů: sAMAccountName → AD účet i ExternalId,
 /// employeeID/employeeNumber → osobní číslo, givenName/sn → jméno,
 /// mail → e-mail, department → oddělení.
 /// </summary>
-public class LdapEmployeeSource(SettingsService settings) : IEmployeeSource
+public class LdapEmployeeSource(SettingsService settings, DcLocator dcLocator) : IEmployeeSource
 {
     public async Task<IReadOnlyList<EmployeeRecord>> FetchAsync(CancellationToken ct = default)
     {
-        var server = await settings.GetAsync(SettingKeys.LdapServer, ct)
-            ?? throw new InvalidOperationException("Není nastaven LDAP server (Nastavení → Active Directory).");
-        var port = await settings.GetIntAsync(SettingKeys.LdapPort, 636, ct);
+        try
+        {
+            return await FetchOnceAsync(ct);
+        }
+        catch (LdapException ex) when (LdapAuthenticator.IsConnectivityError(ex))
+        {
+            DcLocator.Invalidate();
+            return await FetchOnceAsync(ct); // druhý pokus proti jinému živému DC
+        }
+    }
+
+    private async Task<IReadOnlyList<EmployeeRecord>> FetchOnceAsync(CancellationToken ct)
+    {
+        var server = await dcLocator.GetActiveServerAsync(ct);
         var useSsl = await settings.GetBoolAsync(SettingKeys.LdapUseSsl, true, ct);
+        var port = await settings.GetIntAsync(SettingKeys.LdapPort, useSsl ? 636 : 389, ct);
         var baseDn = await settings.GetAsync(SettingKeys.LdapBaseDn, ct)
             ?? throw new InvalidOperationException("Není nastaveno Base DN (Nastavení → Active Directory).");
         var bindUser = await settings.GetAsync(SettingKeys.LdapBindUser, ct)
@@ -28,15 +40,7 @@ public class LdapEmployeeSource(SettingsService settings) : IEmployeeSource
         var filter = await settings.GetAsync(SettingKeys.EmployeeLdapFilter, ct)
             ?? "(&(objectCategory=person)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))";
 
-        var identifier = new LdapDirectoryIdentifier(server, port, fullyQualifiedDnsHostName: true, connectionless: false);
-        using var connection = new LdapConnection(identifier)
-        {
-            AuthType = AuthType.Basic,
-            Credential = new NetworkCredential(bindUser, bindPassword),
-        };
-        connection.SessionOptions.ProtocolVersion = 3;
-        if (useSsl)
-            connection.SessionOptions.SecureSocketLayer = true;
+        using var connection = LdapAuthenticator.CreateConnection(server, port, useSsl, bindUser, bindPassword);
         connection.Bind();
 
         var result = new List<EmployeeRecord>();
