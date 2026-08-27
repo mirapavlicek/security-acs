@@ -3,6 +3,21 @@
 @model Acs.Web.Pages.Catalog.Employees.IndexModel
 @{
     ViewData["Title"] = "Zaměstnanci";
+    var running = Model.EmployeeJobStatus?.Running == true || Model.CardJobStatus?.Running == true;
+
+    string TypeShort(IdentifierType t) => t switch
+    {
+        IdentifierType.Card => "karta",
+        IdentifierType.LicensePlate => "SPZ",
+        IdentifierType.Pin => "PIN",
+        IdentifierType.Tag => "čip",
+        IdentifierType.Biometric => "bio",
+        _ => "jiný",
+    };
+}
+@if (running)
+{
+    <meta http-equiv="refresh" content="10" />
 }
 <h1>Zaměstnanci</h1>
 
@@ -15,24 +30,53 @@
     <div class="alert alert-error">@Model.ErrorMessage</div>
 }
 
+@foreach (var job in new[] { Model.EmployeeJobStatus, Model.CardJobStatus })
+{
+    if (job is null) { continue; }
+    <div class="alert @(job.Error is not null ? "alert-error" : "alert-success")">
+        <strong>@job.Name</strong>
+        @if (job.Running)
+        {
+            <span> — probíhá @((int)job.Duration.TotalSeconds) s… (stránka se sama obnovuje)</span>
+        }
+        else if (job.Error is not null)
+        {
+            <span> — selhalo po @((int)job.Duration.TotalSeconds) s: @job.Error</span>
+        }
+        else
+        {
+            <span> — dokončeno za @((int)job.Duration.TotalSeconds) s: @job.Result</span>
+        }
+    </div>
+}
+
 <div class="card">
     <form method="get" class="inline-form">
-        <input type="text" name="search" value="@Model.Search" placeholder="Hledat jméno, oddělení, kartu…" style="max-width:300px;display:inline-block" />
+        <input type="text" name="search" value="@Model.Search"
+               placeholder="Jméno, oddělení, osobní číslo, karta, SPZ…"
+               style="max-width:340px;display:inline-block" />
         <button class="btn btn-sm" type="submit">Hledat</button>
     </form>
     <form method="post" asp-page-handler="Sync" class="inline-form" style="float:right">
-        <button class="btn btn-sm" type="submit">Synchronizovat ze zdroje</button>
+        <button class="btn btn-sm" type="submit" disabled="@(Model.EmployeeJobStatus?.Running == true)">
+            Importovat z AD
+        </button>
     </form>
     <form method="post" asp-page-handler="SyncCards" class="inline-form" style="float:right;margin-right:0.5rem">
-        <button class="btn btn-sm btn-ghost" type="submit">Synchronizovat karty (SQL)</button>
+        <button class="btn btn-sm btn-ghost" type="submit" disabled="@(Model.CardJobStatus?.Running == true)">
+            Synchronizovat karty (SQL)
+        </button>
     </form>
     <a class="btn btn-sm btn-ghost" style="float:right;margin-right:0.5rem" asp-page="Edit">+ Nový zaměstnanec</a>
 </div>
 
 <div class="card">
+    <p class="muted" style="margin-top:0">
+        Nalezeno @Model.TotalCount zaměstnanců@(Model.TotalCount > Model.Employees.Count ? $", zobrazeno prvních {Model.Employees.Count}" : "").
+    </p>
     <table class="data">
         <thead>
-        <tr><th>Jméno</th><th>Os. číslo</th><th>Oddělení</th><th>AD účet</th><th>Karta</th><th>Zdroj</th><th>Aktivní</th><th></th></tr>
+        <tr><th>Jméno</th><th>Os. číslo</th><th>Oddělení</th><th>AD účet</th><th>Identifikátory</th><th>Zdroj</th><th>Aktivní</th><th></th></tr>
         </thead>
         <tbody>
         @foreach (var employee in Model.Employees)
@@ -42,7 +86,20 @@
                 <td class="muted">@employee.PersonalNumber</td>
                 <td>@employee.Department</td>
                 <td class="muted">@employee.AdAccount</td>
-                <td class="muted">@employee.CardNumber</td>
+                <td class="muted">
+                    @if (Model.Identifiers.TryGetValue(employee.Id, out var ids) && ids.Count > 0)
+                    {
+                        @string.Join(", ", ids.Select(i => $"{TypeShort(i.Type)} {i.Value}"))
+                    }
+                    else if (employee.CardNumber is not null)
+                    {
+                        @($"karta {employee.CardNumber}")
+                    }
+                    else
+                    {
+                        <span>—</span>
+                    }
+                </td>
                 <td><span class="badge">@(employee.Source == RecordSource.Imported ? "import" : "ruční")</span></td>
                 <td>@(employee.IsActive ? "ano" : "ne")</td>
                 <td><a class="btn btn-sm btn-ghost" asp-page="Edit" asp-route-id="@employee.Id">Upravit</a></td>
@@ -52,6 +109,6 @@
     </table>
     @if (Model.Employees.Count == 0)
     {
-        <p class="muted">Žádní zaměstnanci. Nakonfigurujte zdroj v Nastavení a spusťte synchronizaci, nebo přidejte ručně.</p>
+        <p class="muted">Žádní zaměstnanci. Nakonfigurujte zdroj v Nastavení a spusťte import, nebo přidejte ručně.</p>
     }
 </div>

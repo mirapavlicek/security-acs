@@ -112,6 +112,10 @@
         <label>LDAP filtr zaměstnanců (režim Ad; výchozí = aktivní uživatelé)</label>
         <input type="text" name="EmployeeLdapFilter" value="@Model.Values[SettingKeys.EmployeeLdapFilter]"
                placeholder="(&amp;(objectCategory=person)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))" />
+        <label>Velikost stránky LDAP dotazu (AD zvládá max 1000)</label>
+        <input type="number" name="EmployeeLdapPageSize" value="@Model.Values[SettingKeys.EmployeeLdapPageSize]" placeholder="500" />
+        <label>Timeout LDAP dotazu (minuty) — velké domény trvají déle</label>
+        <input type="number" name="EmployeeLdapTimeoutMinutes" value="@Model.Values[SettingKeys.EmployeeLdapTimeoutMinutes]" placeholder="10" />
         <label>MSSQL connection string (prázdné = ponechat)</label>
         <input type="password" name="EmployeeMssqlConnectionString" autocomplete="new-password" />
         <label>MSSQL dotaz (sloupce: ExternalId, PersonalNumber, FirstName, LastName, Email, Department, AdAccount, CardNumber)</label>

@@ -168,9 +168,17 @@ public class Employee
     /// <summary>AD účet (sAMAccountName) pro párování s přihlášeným uživatelem.</summary>
     public string? AdAccount { get; set; }
 
-    /// <summary>Číslo karty / card holder id ve WIN-PAK.</summary>
+    /// <summary>Card holder id ve WIN-PAK (jedno na osobu).</summary>
     public string? WinPakCardHolderId { get; set; }
+
+    /// <summary>
+    /// Primární číslo karty — zkratka pro zobrazení a hledání.
+    /// Úplný seznam (více karet, SPZ, PIN…) je v <see cref="Identifiers"/>.
+    /// </summary>
     public string? CardNumber { get; set; }
+
+    /// <summary>Všechny identifikátory zaměstnance (karty, SPZ, PIN…).</summary>
+    public List<EmployeeIdentifier> Identifiers { get; set; } = [];
 
     public bool IsActive { get; set; } = true;
     public RecordSource Source { get; set; }

@@ -9,6 +9,7 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
 {
     public DbSet<AppUser> Users => Set<AppUser>();
     public DbSet<Employee> Employees => Set<Employee>();
+    public DbSet<EmployeeIdentifier> EmployeeIdentifiers => Set<EmployeeIdentifier>();
     public DbSet<Building> Buildings => Set<Building>();
     public DbSet<BuildingSection> BuildingSections => Set<BuildingSection>();
     public DbSet<Floor> Floors => Set<Floor>();
@@ -50,6 +51,15 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
             e.HasIndex(x => x.AdAccount);
             e.Property(x => x.FirstName).HasMaxLength(128);
             e.Property(x => x.LastName).HasMaxLength(128);
+        });
+
+        modelBuilder.Entity<EmployeeIdentifier>(e =>
+        {
+            e.Property(x => x.Value).HasMaxLength(128);
+            e.HasIndex(x => new { x.Type, x.Value });
+            e.HasIndex(x => x.EmployeeId);
+            e.HasOne(x => x.Employee).WithMany(emp => emp.Identifiers)
+                .HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Reader>(e =>
