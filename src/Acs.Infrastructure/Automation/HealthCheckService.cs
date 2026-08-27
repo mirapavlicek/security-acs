@@ -72,7 +72,11 @@ public class HealthCheckService(
                 {
                     items.Add(new HealthItem(HealthSeverity.Warning, "WIN-PAK konektor je jen pro čtení",
                         $"Režim {info.ProviderMode} neumí zápis — přístupy musí správce karet zadávat ručně.",
-                        "Konektor: přepnout na režim Sdk (vyžaduje licenci SRVWPPAPI)"));
+                        "Konektor: přepnout na režim Com (vyžaduje licenci SRVWPPAPI a COM+ na WIN-PAK serveru)"));
+                }
+                else
+                {
+                    await CheckWinPakServersAsync(items, cts.Token);
                 }
             }
             catch (Exception ex)
@@ -189,5 +193,36 @@ public class HealthCheckService(
         }
 
         return items;
+    }
+
+    /// <summary>
+    /// Konektor běží, ale WIN-PAK za ním nemusí. Databázový server je nutný pro
+    /// zápis přístupů, komunikační jen pro ovládání dveří — proto různá závažnost.
+    /// </summary>
+    private async Task CheckWinPakServersAsync(List<HealthItem> items, CancellationToken ct)
+    {
+        var status = await winPak.GetStatusAsync(ct);
+        if (status is null)
+            return;
+
+        if (status.Error is { Length: > 0 })
+        {
+            items.Add(new HealthItem(HealthSeverity.Problem, "Konektor se nepřipojil k WIN-PAK",
+                status.Error, "Konektor: přihlašovací údaje operátora a COM+ oprávnění"));
+            return;
+        }
+
+        if (!status.DatabaseServerConnected)
+        {
+            items.Add(new HealthItem(HealthSeverity.Problem, "Databázový server WIN-PAK je nedostupný",
+                "Přístupy nelze zapisovat ani číst.", "WIN-PAK server → služba databázového serveru"));
+        }
+
+        foreach (var server in status.Servers.Where(s => !s.Connected))
+        {
+            items.Add(new HealthItem(HealthSeverity.Warning, $"Server WIN-PAK {server.ServerName} není připojen",
+                "Ovládání dveří a sledování událostí z panelů nemusí fungovat.",
+                "WIN-PAK server → zkontrolovat služby"));
+        }
     }
 }
