@@ -30,7 +30,12 @@ public class SyncJobRunner(IServiceScopeFactory scopeFactory, ILogger<SyncJobRun
 
     /// <summary>
     /// Spustí úlohu na pozadí. Vrací false, pokud už stejná úloha běží.
+    /// <para>
     /// Delegát dostane vlastní DI scope (vlastní DbContext) — nesmí sdílet ten z požadavku.
+    /// <b>Nesahejte v něm na <c>HttpContext</c> ani <c>User</c></b>: úloha běží až po odeslání
+    /// odpovědi, kdy je kontext uvolněný. Hodnoty z požadavku (např. jméno uživatele)
+    /// si předejte do proměnné před voláním této metody.
+    /// </para>
     /// </summary>
     public bool Start(string name, Func<IServiceProvider, CancellationToken, Task<string>> work)
     {

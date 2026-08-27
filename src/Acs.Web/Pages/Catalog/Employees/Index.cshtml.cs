@@ -61,12 +61,16 @@ public class IndexModel(AcsDbContext db, SyncJobRunner jobs) : PageModel
     /// <summary>Import z AD běží na pozadí — u velkých domén trvá minuty.</summary>
     public IActionResult OnPostSync()
     {
+        // Jméno uživatele je nutné zachytit teď: úloha běží po skončení požadavku,
+        // kdy je HttpContext (a tím i User) už uvolněný.
+        var userName = User.Identity?.Name;
+
         var started = jobs.Start(EmployeeJob, async (services, ct) =>
         {
             var sync = services.GetRequiredService<EmployeeSyncService>();
-            var result = await sync.SyncAsync(User.Identity?.Name, ct);
+            var result = await sync.SyncAsync(userName, ct);
             var autoAssign = services.GetRequiredService<AutoAssignmentService>();
-            var assigned = await autoAssign.RunAsync(User.Identity?.Name, ct);
+            var assigned = await autoAssign.RunAsync(userName, ct);
             return $"{result}; {assigned}";
         });
 
@@ -78,10 +82,12 @@ public class IndexModel(AcsDbContext db, SyncJobRunner jobs) : PageModel
 
     public IActionResult OnPostSyncCards()
     {
+        var userName = User.Identity?.Name;
+
         var started = jobs.Start(CardJob, async (services, ct) =>
         {
             var sync = services.GetRequiredService<CardSyncService>();
-            return (await sync.SyncAsync(User.Identity?.Name, ct)).ToString();
+            return (await sync.SyncAsync(userName, ct)).ToString();
         });
 
         Message = started
