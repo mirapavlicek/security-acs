@@ -18,6 +18,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         SettingKeys.AppTitle, SettingKeys.DefaultTheme,
         SettingKeys.LdapEnabled, SettingKeys.LdapServer, SettingKeys.LdapPort, SettingKeys.LdapUseSsl,
         SettingKeys.LdapBaseDn, SettingKeys.LdapDomain, SettingKeys.LdapUserFilter, SettingKeys.LdapGroupRoleMap,
+        SettingKeys.LdapBindUser,
         SettingKeys.WinPakBaseUrl, SettingKeys.WinPakSyncEnabled, SettingKeys.WinPakSyncIntervalMinutes,
         SettingKeys.WinPakAccessSyncEnabled, SettingKeys.WinPakAccessSyncIntervalMinutes,
         SettingKeys.EmployeeSourceMode, SettingKeys.EmployeeMssqlQuery, SettingKeys.EmployeeApiUrl,
@@ -47,8 +48,9 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
     public async Task<IActionResult> OnPostLdapAsync(
         string? ldapEnabled, string? ldapServer, string? ldapPort, string? ldapUseSsl,
         string? ldapBaseDn, string? ldapDomain, string? ldapUserFilter, string? ldapBindPassword,
-        string? ldapGroupRoleMap)
+        string? ldapGroupRoleMap, string? ldapBindUser)
     {
+        await settings.SetAsync(SettingKeys.LdapBindUser, ldapBindUser, UserName);
         await settings.SetAsync(SettingKeys.LdapGroupRoleMap, ldapGroupRoleMap, UserName);
         await settings.SetAsync(SettingKeys.LdapEnabled, ldapEnabled == "true" ? "true" : "false", UserName);
         await settings.SetAsync(SettingKeys.LdapServer, ldapServer, UserName);

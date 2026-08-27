@@ -49,6 +49,11 @@
         <input type="text" name="LdapBaseDn" value="@Model.Values[SettingKeys.LdapBaseDn]" placeholder="DC=fnmh,DC=local" />
         <label>Doména (UPN sufix)</label>
         <input type="text" name="LdapDomain" value="@Model.Values[SettingKeys.LdapDomain]" placeholder="fnmh.local" />
+        <label>Servisní účet pro bind (UPN nebo DN) — používá se pro načítání zaměstnanců z AD</label>
+        <input type="text" name="LdapBindUser" value="@Model.Values[SettingKeys.LdapBindUser]"
+               placeholder="svc-acs@nnh.local" autocomplete="off" />
+        <label>Heslo servisního účtu (prázdné = ponechat stávající)</label>
+        <input type="password" name="LdapBindPassword" autocomplete="new-password" />
         <label>Filtr uživatele ({0} = účet)</label>
         <input type="text" name="LdapUserFilter" value="@Model.Values[SettingKeys.LdapUserFilter]"
                placeholder="(&amp;(objectClass=user)(sAMAccountName={0}))" />
