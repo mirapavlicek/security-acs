@@ -223,7 +223,12 @@ table.data th, table.data td { text-align: left; padding: 0.55rem 0.8rem; border
 table.data th { background: var(--bg); color: var(--muted); font-weight: 600; }
 table.data tr:hover td { background: color-mix(in srgb, var(--primary) 6%, var(--surface)); }
 
+/* Odkazy v textu — výchozí modrá prohlížeče je na tmavém motivu nečitelná. */
+a { color: var(--primary); }
+a:hover { text-decoration: underline; }
+
 .alert { padding: 0.7rem 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid; }
+.alert a { color: inherit; text-decoration: underline; }
 .alert-error { color: var(--danger); border-color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }
 .alert-success { color: var(--success); border-color: var(--success); background: color-mix(in srgb, var(--success) 8%, var(--surface)); }
 

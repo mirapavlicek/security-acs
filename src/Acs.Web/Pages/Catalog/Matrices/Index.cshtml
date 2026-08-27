@@ -37,7 +37,7 @@
                 <td>@matrix.Levels.Count</td>
                 <td>
                     @Model.UsageCounts.GetValueOrDefault(matrix.Id)
-                    <a class="muted" asp-page="/Catalog/Readers/Index" asp-route-matrix="@matrix.Id">zobrazit</a>
+                    <a asp-page="/Catalog/Readers/Index" asp-route-matrix="@matrix.Id">zobrazit</a>
                 </td>
                 <td>@Model.GroupUsageCounts.GetValueOrDefault(matrix.Id)</td>
                 <td>@(matrix.IsActive ? "ano" : "ne")</td>
