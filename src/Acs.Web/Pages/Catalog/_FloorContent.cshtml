@@ -1,0 +1,136 @@
+@model Acs.Web.Pages.Catalog.FloorContent
+@{
+    var floor = Model.Floor;
+    var tableId = $"rooms-{floor.Id}";
+}
+
+<p>
+    <a class="btn btn-sm btn-ghost" asp-page="FloorPlan" asp-route-id="@floor.Id">Editor plánu</a>
+    <form method="post" asp-page="/Catalog/Places" asp-page-handler="UploadSchema" enctype="multipart/form-data" class="inline-form">
+        <input type="hidden" name="floorId" value="@floor.Id" />
+        <input type="file" name="file" accept="image/png,image/jpeg,image/svg+xml" style="display:inline-block;max-width:230px" />
+        <button class="btn btn-sm btn-ghost" type="submit">Nahrát schéma</button>
+    </form>
+    <form method="post" asp-page="/Catalog/Places" asp-page-handler="DeleteFloor" class="inline-form">
+        <input type="hidden" name="floorId" value="@floor.Id" />
+        <button class="btn btn-sm btn-ghost" type="submit"
+                onclick="return confirm('Smazat patro @floor.Name?')">Smazat patro</button>
+    </form>
+</p>
+
+<h4 style="margin:0.4rem 0 0.2rem">Chodby (@Model.Corridors.Count)</h4>
+@if (Model.Corridors.Count > 0)
+{
+    <table class="data" style="margin-bottom:0.4rem">
+        @foreach (var corridor in Model.Corridors)
+        {
+            <tr>
+                <td>@corridor.Name</td>
+                <td class="muted">
+                    @(corridor.ParentCorridor is null ? "bez nadřazené" : $"→ {corridor.ParentCorridor.Name}")
+                    · čteček: @Model.CorridorReaderCounts.GetValueOrDefault(corridor.Id)
+                    · místností: @Model.Rooms.Count(r => r.CorridorId == corridor.Id)
+                </td>
+                <td style="width:1%">
+                    <form method="post" asp-page="/Catalog/Places" asp-page-handler="DeleteCorridor" class="inline-form">
+                        <input type="hidden" name="floorId" value="@floor.Id" />
+                        <input type="hidden" name="corridorId" value="@corridor.Id" />
+                        <button class="btn btn-sm btn-ghost" type="submit">Smazat</button>
+                    </form>
+                </td>
+            </tr>
+        }
+    </table>
+}
+<form method="post" asp-page="/Catalog/Places" asp-page-handler="AddCorridor" class="inline-form">
+    <input type="hidden" name="floorId" value="@floor.Id" />
+    <input type="text" name="name" placeholder="Nová chodba (např. A100)…" required style="max-width:180px;display:inline-block" />
+    <button class="btn btn-sm" type="submit">Přidat chodbu</button>
+</form>
+
+@if (Model.Corridors.Count > 0)
+{
+    <form method="post" asp-page="/Catalog/Places" asp-page-handler="SetCorridorParent" class="inline-form" style="display:block;margin-top:0.4rem">
+        <input type="hidden" name="floorId" value="@floor.Id" />
+        <span class="muted">Řetěz chodeb:</span>
+        <select name="corridorId" required style="max-width:170px;display:inline-block">
+            @foreach (var corridor in Model.Corridors)
+            {
+                <option value="@corridor.Id">@corridor.Name</option>
+            }
+        </select>
+        <span class="muted">→</span>
+        <select name="parentCorridorId" style="max-width:230px;display:inline-block">
+            <option value="">— bez nadřazené —</option>
+            @foreach (var candidate in Model.AllCorridors)
+            {
+                <option value="@candidate.Id">@candidate.Name (@candidate.Floor?.Name)</option>
+            }
+        </select>
+        <button class="btn btn-sm" type="submit">Uložit řetěz</button>
+    </form>
+}
+
+<h4 style="margin:0.8rem 0 0.2rem">
+    Místnosti (@Model.Rooms.Count)
+    <input type="search" placeholder="Hledat místnost…" data-filter="@tableId"
+           style="max-width:200px;display:inline-block;font-weight:normal" />
+</h4>
+<table class="data" id="@tableId" style="margin-bottom:0.4rem">
+    @foreach (var room in Model.Rooms)
+    {
+        <tr>
+            <td>@room.Name <span class="muted">@room.Description</span></td>
+            <td class="muted">@(room.Corridor is null ? "bez chodby" : room.Corridor.Name)</td>
+            <td class="muted">čteček: @Model.RoomReaderCounts.GetValueOrDefault(room.Id)</td>
+            <td style="width:1%">
+                <form method="post" asp-page="/Catalog/Places" asp-page-handler="DeleteRoom" class="inline-form">
+                    <input type="hidden" name="floorId" value="@floor.Id" />
+                    <input type="hidden" name="roomId" value="@room.Id" />
+                    <button class="btn btn-sm btn-ghost" type="submit"
+                            onclick="return confirm('Smazat místnost @room.Name?')">Smazat</button>
+                </form>
+            </td>
+        </tr>
+    }
+</table>
+@if (Model.Rooms.Count == 0)
+{
+    <p class="muted">Patro zatím nemá žádné místnosti.</p>
+}
+
+<form method="post" asp-page="/Catalog/Places" asp-page-handler="AddRoom" class="inline-form">
+    <input type="hidden" name="floorId" value="@floor.Id" />
+    <input type="text" name="name" placeholder="Nová místnost (např. M1000)…" required style="max-width:180px;display:inline-block" />
+    <select name="corridorId" style="max-width:150px;display:inline-block">
+        <option value="">— chodba —</option>
+        @foreach (var corridor in Model.Corridors)
+        {
+            <option value="@corridor.Id">@corridor.Name</option>
+        }
+    </select>
+    <button class="btn btn-sm" type="submit">Přidat místnost</button>
+</form>
+
+@if (Model.Rooms.Count > 0)
+{
+    <form method="post" asp-page="/Catalog/Places" asp-page-handler="SetRoomCorridor" class="inline-form" style="display:block;margin-top:0.4rem">
+        <input type="hidden" name="floorId" value="@floor.Id" />
+        <span class="muted">Zařadit místnost:</span>
+        <select name="roomId" required style="max-width:200px;display:inline-block">
+            @foreach (var room in Model.Rooms)
+            {
+                <option value="@room.Id">@room.Name</option>
+            }
+        </select>
+        <span class="muted">→</span>
+        <select name="corridorId" style="max-width:170px;display:inline-block">
+            <option value="">— bez chodby —</option>
+            @foreach (var corridor in Model.Corridors)
+            {
+                <option value="@corridor.Id">@corridor.Name</option>
+            }
+        </select>
+        <button class="btn btn-sm" type="submit">Uložit zařazení</button>
+    </form>
+}

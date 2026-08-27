@@ -169,6 +169,18 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); o
 
 .inline-form { display: inline; }
 
+/* Rozbalovací strom budov — obsah se dotahuje až po kliknutí. */
+details.tree-node > summary {
+  cursor: pointer; padding: 0.5rem 0.2rem; list-style: none;
+  border-bottom: 1px solid var(--border);
+}
+details.tree-node > summary::-webkit-details-marker { display: none; }
+details.tree-node > summary::before { content: "▸ "; color: var(--muted); }
+details.tree-node[open] > summary::before { content: "▾ "; }
+details.tree-node > summary:hover { background: color-mix(in srgb, var(--primary) 6%, var(--surface)); }
+details.tree-floor { margin-left: 1rem; }
+details.tree-node > .tree-body { padding: 0.4rem 0 0.6rem 1rem; }
+
 table.data { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 8px; overflow: hidden; }
 table.data th, table.data td { text-align: left; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--border); font-size: 0.92rem; overflow-wrap: anywhere; }
 table.data th { background: var(--bg); color: var(--muted); font-weight: 600; }
