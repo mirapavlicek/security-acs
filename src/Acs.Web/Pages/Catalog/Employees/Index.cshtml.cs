@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Acs.Web.Pages.Catalog.Employees;
 
-public class IndexModel(AcsDbContext db, EmployeeSyncService employeeSync) : PageModel
+public class IndexModel(AcsDbContext db, EmployeeSyncService employeeSync, CardSyncService cardSync) : PageModel
 {
     public List<Employee> Employees { get; private set; } = [];
 
@@ -44,6 +44,21 @@ public class IndexModel(AcsDbContext db, EmployeeSyncService employeeSync) : Pag
         catch (Exception ex)
         {
             ErrorMessage = $"Synchronizace selhala: {ex.Message}";
+        }
+
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostSyncCardsAsync()
+    {
+        try
+        {
+            var result = await cardSync.SyncAsync(User.Identity?.Name);
+            Message = $"Synchronizace karet dokončena: {result}.";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Synchronizace karet selhala: {ex.Message}";
         }
 
         return RedirectToPage();

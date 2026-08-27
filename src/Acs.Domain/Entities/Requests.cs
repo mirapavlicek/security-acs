@@ -47,8 +47,10 @@ public class AccessRequest
 }
 
 /// <summary>
-/// Jedna čtečka v žádosti. Každá položka prochází vlastní schvalovací maticí;
-/// položky doplněné automaticky z řetězce závislostí mají <see cref="AutoAdded"/>.
+/// Položka žádosti — buď jedna čtečka, nebo celá skupina čteček (právě jedno).
+/// Položka prochází řetězem matic (fáze <see cref="Stages"/>): u skupiny je to
+/// matice skupiny a poté matice všech nadřazených skupin. Položky doplněné
+/// automaticky z řetězce závislostí mají <see cref="AutoAdded"/>.
 /// </summary>
 public class AccessRequestItem
 {
@@ -56,23 +58,34 @@ public class AccessRequestItem
     public int RequestId { get; set; }
     public AccessRequest? Request { get; set; }
 
-    public int ReaderId { get; set; }
+    /// <summary>Čtečka (null, pokud jde o skupinu).</summary>
+    public int? ReaderId { get; set; }
     public Reader? Reader { get; set; }
+
+    /// <summary>Skupina čteček (null, pokud jde o jednotlivou čtečku).</summary>
+    public int? ReaderGroupId { get; set; }
+    public ReaderGroup? ReaderGroup { get; set; }
 
     public bool AutoAdded { get; set; }
     public RequestStatus Status { get; set; } = RequestStatus.Pending;
 
-    /// <summary>Pořadí úrovně matice, na které položka právě čeká.</summary>
+    /// <summary>Pořadí úrovně aktuální matice, na které položka právě čeká.</summary>
     public int CurrentLevelOrder { get; set; } = 1;
 
-    /// <summary>Id matice zafixované v okamžiku podání (kvůli pozdějším změnám matic).</summary>
+    /// <summary>Aktuální matice (zafixovaná v okamžiku podání; u řetězu se posouvá po fázích).</summary>
     public int? MatrixId { get; set; }
+
+    /// <summary>Pořadí aktuální fáze řetězu matic (1, 2, …).</summary>
+    public int CurrentStageOrder { get; set; } = 1;
 
     public DateTime? DecidedAt { get; set; }
     public DateTime? PushedAt { get; set; }
     public string? PushResult { get; set; }
 
     public List<ApprovalDecision> Decisions { get; set; } = [];
+
+    /// <summary>Řetěz matic, kterými položka prochází (prázdné = jen <see cref="MatrixId"/>).</summary>
+    public List<AccessRequestItemStage> Stages { get; set; } = [];
 }
 
 /// <summary>Rozhodnutí schvalovatele (audit).</summary>
@@ -83,6 +96,10 @@ public class ApprovalDecision
     public AccessRequestItem? Item { get; set; }
 
     public int LevelOrder { get; set; }
+
+    /// <summary>Matice, v jejíž úrovni bylo rozhodnuto (kvůli řetězení matic).</summary>
+    public int? MatrixId { get; set; }
+
     public int ApproverUserId { get; set; }
     public AppUser? ApproverUser { get; set; }
 

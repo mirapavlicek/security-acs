@@ -13,7 +13,7 @@ public record AccessReportRow(
     string? Department, string? CardNumber, DateTime? Since);
 
 [Authorize(Policy = "CatalogManager")]
-public class ReportsModel(AcsDbContext db) : PageModel
+public class ReportsModel(AcsDbContext db, Acs.Infrastructure.Workflow.ReaderGroupService groups) : PageModel
 {
     [BindProperty(SupportsGet = true)]
     public string View { get; set; } = "byReader";
@@ -51,21 +51,41 @@ public class ReportsModel(AcsDbContext db) : PageModel
     {
         var items = await db.AccessRequestItems
             .Include(i => i.Reader!).ThenInclude(r => r.Room!).ThenInclude(room => room.Floor!).ThenInclude(f => f.Building)
+            .Include(i => i.ReaderGroup)
             .Include(i => i.Request!).ThenInclude(r => r.TargetEmployee)
             .Where(i => i.Request!.Kind == RequestKind.Grant
                         && (i.Status == RequestStatus.PushedToWinPak
                             || i.Status == RequestStatus.ManuallyConfirmed))
             .ToListAsync();
 
-        return items.Select(i => new AccessReportRow(
-                ReaderName: i.Reader!.Name,
-                Location: i.Reader.Room is null
-                    ? "—"
-                    : $"{i.Reader.Room.Floor?.Building?.Name} / {i.Reader.Room.Floor?.Name} / {i.Reader.Room.Name}",
-                EmployeeName: i.Request!.TargetEmployee!.FullName,
-                Department: i.Request.TargetEmployee.Department,
-                CardNumber: i.Request.TargetEmployee.CardNumber,
-                Since: i.PushedAt))
-            .ToList();
+        var rows = new List<AccessReportRow>();
+        foreach (var i in items)
+        {
+            if (i.Reader is not null)
+            {
+                rows.Add(Row(i, i.Reader));
+                continue;
+            }
+
+            // Skupinová položka → řádek za každou čtečku skupiny (rekurzivně).
+            var readerIds = await groups.ExpandReaderIdsAsync(i.ReaderGroupId!.Value);
+            var readers = await db.Readers
+                .Include(r => r.Room!).ThenInclude(room => room.Floor!).ThenInclude(f => f.Building)
+                .Where(r => readerIds.Contains(r.Id))
+                .ToListAsync();
+            rows.AddRange(readers.Select(r => Row(i, r)));
+        }
+
+        return rows;
+
+        static AccessReportRow Row(AccessRequestItem i, Reader reader) => new(
+            ReaderName: reader.Name,
+            Location: reader.Room is null
+                ? "—"
+                : $"{reader.Room.Floor?.Building?.Name} / {reader.Room.Floor?.Name} / {reader.Room.Name}",
+            EmployeeName: i.Request!.TargetEmployee!.FullName,
+            Department: i.Request.TargetEmployee.Department,
+            CardNumber: i.Request.TargetEmployee.CardNumber,
+            Since: i.PushedAt);
     }
 }

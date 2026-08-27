@@ -85,6 +85,7 @@ public class EmployeeSourceFactory(SettingsService settings, IHttpClientFactory 
     public virtual async Task<IEmployeeSource?> CreateAsync(CancellationToken ct = default)
         => (await settings.GetAsync(SettingKeys.EmployeeSourceMode, ct))?.ToLowerInvariant() switch
         {
+            "ad" => new LdapEmployeeSource(settings),
             "mssql" => new MssqlEmployeeSource(settings),
             "api" => new ApiEmployeeSource(httpClientFactory.CreateClient(nameof(ApiEmployeeSource)), settings),
             _ => null,

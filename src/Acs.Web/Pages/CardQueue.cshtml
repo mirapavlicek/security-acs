@@ -40,8 +40,8 @@
                 <td>@(item.Request?.Kind == RequestKind.Revoke ? Html.Raw("<span class=\"badge btn-danger\">odebrání</span>") : Html.Raw("<span class=\"badge\">udělení</span>"))</td>
                 <td>@item.Request?.TargetEmployee?.FullName</td>
                 <td class="muted">@(item.Request?.TargetEmployee?.CardNumber ?? "—") / @(item.Request?.TargetEmployee?.WinPakCardHolderId ?? "—")</td>
-                <td>@item.Reader?.Name</td>
-                <td class="muted">@(item.Reader?.AccessLevelExternalId ?? "nenamapován")</td>
+                <td>@(item.Reader?.Name ?? $"Skupina: {item.ReaderGroup?.Name}")</td>
+                <td class="muted">@(item.Reader is null ? "dle čteček skupiny" : item.Reader.AccessLevelExternalId ?? "nenamapován")</td>
                 <td class="muted">@item.DecidedAt?.ToString("yyyy-MM-dd HH:mm")</td>
                 <td style="white-space:nowrap">
                     <form method="post" asp-page-handler="Push" class="inline-form">

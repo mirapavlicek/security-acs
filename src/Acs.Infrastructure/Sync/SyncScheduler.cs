@@ -18,6 +18,7 @@ public class SyncScheduler(IServiceScopeFactory scopeFactory, ILogger<SyncSchedu
     private const string ReadersLastRunKey = "Sync:ReadersLastRunUtc";
     private const string EmployeesLastRunKey = "Sync:EmployeesLastRunUtc";
     private const string AccessLastRunKey = "Sync:AccessLastRunUtc";
+    private const string CardsLastRunKey = "Sync:CardsLastRunUtc";
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -47,8 +48,10 @@ public class SyncScheduler(IServiceScopeFactory scopeFactory, ILogger<SyncSchedu
             SettingKeys.EmployeeSyncIntervalMinutes, EmployeesLastRunKey, ct);
         var accessDue = await IsDueAsync(settings, SettingKeys.WinPakAccessSyncEnabled,
             SettingKeys.WinPakAccessSyncIntervalMinutes, AccessLastRunKey, ct);
+        var cardsDue = await IsDueAsync(settings, SettingKeys.CardsSyncEnabled,
+            SettingKeys.CardsSyncIntervalMinutes, CardsLastRunKey, ct);
 
-        if (!readersDue && !employeesDue && !accessDue)
+        if (!readersDue && !employeesDue && !accessDue && !cardsDue)
             return;
 
         await using var dbLock = await TryAcquireLockAsync(db, ct);
@@ -72,6 +75,20 @@ public class SyncScheduler(IServiceScopeFactory scopeFactory, ILogger<SyncSchedu
             var result = await sync.SyncAsync("system", ct);
             await settings.SetAsync(EmployeesLastRunKey, DateTime.UtcNow.ToString("O"), "system", ct);
             logger.LogInformation("Synchronizace zaměstnanců: {Result}", result);
+
+            // Po importu zaměstnanců rovnou automatické zařazení dle oddělení.
+            var autoAssign = scope.ServiceProvider.GetRequiredService<AutoAssignmentService>();
+            var assignResult = await autoAssign.RunAsync("system", ct);
+            if (assignResult.Created > 0)
+                logger.LogInformation("Automatické zařazení: {Result}", assignResult);
+        }
+
+        if (cardsDue)
+        {
+            var sync = scope.ServiceProvider.GetRequiredService<CardSyncService>();
+            var result = await sync.SyncAsync("system", ct);
+            await settings.SetAsync(CardsLastRunKey, DateTime.UtcNow.ToString("O"), "system", ct);
+            logger.LogInformation("Synchronizace karet: {Result}", result);
         }
 
         if (accessDue)

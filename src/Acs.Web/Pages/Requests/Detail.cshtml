@@ -40,7 +40,13 @@
 {
     <div class="card">
         <h2 style="margin-top:0">
-            @item.Reader?.Name
+            @(item.Reader?.Name ?? $"Skupina: {item.ReaderGroup?.Name}")
+            @if (item.Stages.Count > 1)
+            {
+                <span class="badge" title="Vnořené schvalování — položka prochází více maticemi">
+                    fáze @item.CurrentStageOrder/@item.Stages.Count
+                </span>
+            }
             @if (item.AutoAdded)
             {
                 <span class="badge" title="Doplněno automaticky z řetězce čteček">řetězec</span>

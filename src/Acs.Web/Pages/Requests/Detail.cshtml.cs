@@ -25,6 +25,8 @@ public class DetailModel(AcsDbContext db, RequestWorkflowService workflow) : Pag
             .Include(r => r.TargetEmployee)
             .Include(r => r.RequesterUser)
             .Include(r => r.Items).ThenInclude(i => i.Reader)
+            .Include(r => r.Items).ThenInclude(i => i.ReaderGroup)
+            .Include(r => r.Items).ThenInclude(i => i.Stages)
             .Include(r => r.Items).ThenInclude(i => i.Decisions).ThenInclude(d => d.ApproverUser)
             .FirstOrDefaultAsync(r => r.Id == id);
         if (request is null)

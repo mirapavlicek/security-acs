@@ -28,6 +28,7 @@ public class MyAccessModel(AcsDbContext db, RequestWorkflowService workflow) : P
 
         var items = await db.AccessRequestItems
             .Include(i => i.Reader).ThenInclude(r => r!.Room).ThenInclude(room => room!.Floor).ThenInclude(f => f!.Building)
+            .Include(i => i.ReaderGroup)
             .Where(i => i.Request!.TargetEmployeeId == Employee.Id && i.Request.Kind == RequestKind.Grant)
             .ToListAsync();
 
@@ -41,7 +42,7 @@ public class MyAccessModel(AcsDbContext db, RequestWorkflowService workflow) : P
             .ToList();
     }
 
-    public async Task<IActionResult> OnPostRevokeAsync(int readerId)
+    public async Task<IActionResult> OnPostRevokeAsync(int? readerId, int? groupId)
     {
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == CurrentUserId);
         if (user?.EmployeeId is null)
@@ -50,8 +51,10 @@ public class MyAccessModel(AcsDbContext db, RequestWorkflowService workflow) : P
         try
         {
             var request = await workflow.CreateRequestAsync(
-                CurrentUserId, user.EmployeeId.Value, [readerId],
-                "žádost o odebrání vlastního přístupu", RequestKind.Revoke);
+                CurrentUserId, user.EmployeeId.Value,
+                readerId is null ? [] : [readerId.Value],
+                "žádost o odebrání vlastního přístupu", RequestKind.Revoke,
+                groupIds: groupId is null ? [] : [groupId.Value]);
             Message = $"Žádost o odebrání podána (#{request.Id}).";
         }
         catch (InvalidOperationException ex)

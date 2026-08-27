@@ -33,16 +33,18 @@ else
             <tbody>
             @foreach (var item in Model.ActiveItems)
             {
+                var displayName = item.Reader?.Name ?? $"Skupina: {item.ReaderGroup?.Name}";
                 <tr>
-                    <td>@item.Reader?.Name</td>
+                    <td>@displayName</td>
                     <td class="muted">@(item.Reader?.Room is null ? "—" : $"{item.Reader.Room.Floor?.Building?.Name} / {item.Reader.Room.Floor?.Name} / {item.Reader.Room.Name}")</td>
                     <td><span class="badge badge-primary">@(item.Status == RequestStatus.PushedToWinPak ? "v systému (API)" : "v systému (ručně)")</span></td>
                     <td class="muted">@item.PushedAt?.ToString("yyyy-MM-dd")</td>
                     <td style="width:1%">
                         <form method="post" asp-page-handler="Revoke" class="inline-form">
                             <input type="hidden" name="readerId" value="@item.ReaderId" />
+                            <input type="hidden" name="groupId" value="@item.ReaderGroupId" />
                             <button class="btn btn-sm btn-ghost" type="submit"
-                                    onclick="return confirm('Požádat o odebrání přístupu @item.Reader?.Name?')">Požádat o odebrání</button>
+                                    onclick="return confirm('Požádat o odebrání přístupu @displayName?')">Požádat o odebrání</button>
                         </form>
                     </td>
                 </tr>
@@ -63,7 +65,7 @@ else
             @foreach (var item in Model.PendingItems)
             {
                 <tr>
-                    <td>@item.Reader?.Name</td>
+                    <td>@(item.Reader?.Name ?? $"Skupina: {item.ReaderGroup?.Name}")</td>
                     <td>@(item.Status == RequestStatus.Pending ? $"schvalování — úroveň {item.CurrentLevelOrder}" : "u správce karet")</td>
                     <td><a class="btn btn-sm btn-ghost" asp-page="/Requests/Detail" asp-route-id="@item.RequestId">#@item.RequestId</a></td>
                 </tr>

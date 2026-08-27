@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Acs.Web.Pages;
 
-public class PlansModel(AcsDbContext db) : PageModel
+public class PlansModel(AcsDbContext db, Acs.Infrastructure.Workflow.ReaderGroupService groups) : PageModel
 {
     public List<Floor> FloorsWithSchema { get; private set; } = [];
     public Floor? SelectedFloor { get; private set; }
@@ -37,13 +37,17 @@ public class PlansModel(AcsDbContext db) : PageModel
         if (employeeId is null)
             return;
 
-        MyReaderIds = (await db.AccessRequestItems
-                .Where(i => i.Request!.TargetEmployeeId == employeeId
-                            && i.Request.Kind == RequestKind.Grant
-                            && (i.Status == RequestStatus.PushedToWinPak
-                                || i.Status == RequestStatus.ManuallyConfirmed))
-                .Select(i => i.ReaderId)
-                .ToListAsync())
-            .ToHashSet();
+        var activeItems = await db.AccessRequestItems
+            .Where(i => i.Request!.TargetEmployeeId == employeeId
+                        && i.Request.Kind == RequestKind.Grant
+                        && (i.Status == RequestStatus.PushedToWinPak
+                            || i.Status == RequestStatus.ManuallyConfirmed))
+            .Select(i => new { i.ReaderId, i.ReaderGroupId })
+            .ToListAsync();
+
+        MyReaderIds = activeItems.Where(i => i.ReaderId != null).Select(i => i.ReaderId!.Value).ToHashSet();
+        var groupIds = activeItems.Where(i => i.ReaderGroupId != null).Select(i => i.ReaderGroupId!.Value).ToList();
+        if (groupIds.Count > 0)
+            MyReaderIds.UnionWith(await groups.ExpandReaderIdsAsync(groupIds));
     }
 }

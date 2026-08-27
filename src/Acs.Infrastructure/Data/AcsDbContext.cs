@@ -21,6 +21,10 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
     public DbSet<AccessRequest> AccessRequests => Set<AccessRequest>();
     public DbSet<AccessRequestItem> AccessRequestItems => Set<AccessRequestItem>();
     public DbSet<ApprovalDecision> ApprovalDecisions => Set<ApprovalDecision>();
+    public DbSet<ReaderGroup> ReaderGroups => Set<ReaderGroup>();
+    public DbSet<ReaderGroupMember> ReaderGroupMembers => Set<ReaderGroupMember>();
+    public DbSet<AutoAssignmentRule> AutoAssignmentRules => Set<AutoAssignmentRule>();
+    public DbSet<AccessRequestItemStage> AccessRequestItemStages => Set<AccessRequestItemStage>();
     public DbSet<Setting> Settings => Set<Setting>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
@@ -98,6 +102,38 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
                 .HasForeignKey(x => x.RequestId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Reader).WithMany()
                 .HasForeignKey(x => x.ReaderId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.ReaderGroup).WithMany()
+                .HasForeignKey(x => x.ReaderGroupId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<AccessRequestItemStage>(e =>
+        {
+            e.HasIndex(x => new { x.ItemId, x.Order }).IsUnique();
+            e.HasOne(x => x.Item).WithMany(i => i.Stages)
+                .HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Matrix).WithMany().OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ReaderGroup>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(256);
+            e.HasOne(x => x.ApprovalMatrix).WithMany().OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ReaderGroupMember>(e =>
+        {
+            e.HasOne(x => x.Group).WithMany(g => g.Members)
+                .HasForeignKey(x => x.GroupId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Reader).WithMany()
+                .HasForeignKey(x => x.ReaderId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.ChildGroup).WithMany()
+                .HasForeignKey(x => x.ChildGroupId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<AutoAssignmentRule>(e =>
+        {
+            e.Property(x => x.Department).HasMaxLength(256);
+            e.HasOne(x => x.ReaderGroup).WithMany().OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ApprovalDecision>(e =>
