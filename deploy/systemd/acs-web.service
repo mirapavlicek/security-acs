@@ -4,12 +4,13 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=notify
+Type=exec
 User=acs
 Group=acs
 WorkingDirectory=/opt/acs/current
 ExecStart=/opt/acs/current/Acs.Web
 EnvironmentFile=/etc/acs/acs.env
+Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
 Restart=always
 RestartSec=5
 KillSignal=SIGINT
