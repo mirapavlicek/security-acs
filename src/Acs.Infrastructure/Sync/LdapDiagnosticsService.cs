@@ -5,6 +5,19 @@ using Microsoft.Extensions.Logging;
 
 namespace Acs.Infrastructure.Sync;
 
+/// <summary>
+/// Parametry spojení pro výpis mimo nastavení aplikace — například když LDAP
+/// jde přes SSH tunel z jiné sítě a databáze ACS o tom nemá vědět.
+/// </summary>
+public record LdapConnectionOptions(
+    string Server,
+    int Port,
+    bool UseSsl,
+    string BaseDn,
+    string BindUser,
+    string BindPassword,
+    IReadOnlyList<string>? PersonalNumberAttributes = null);
+
 /// <summary>Jeden atribut jednoho účtu z AD.</summary>
 public record LdapAttributeDump(string Name, IReadOnlyList<string> Values, string? MapsTo)
 {
@@ -53,26 +66,24 @@ public class LdapDiagnosticsService(
     /// čísla i příjmení. Do jednoho z nich uživatel trefí, aniž by musel vědět,
     /// jak se který atribut jmenuje.
     /// </summary>
-    public async Task<LdapDumpResult> DumpAsync(string query, CancellationToken ct = default)
+    /// <param name="options">
+    /// Když je zadáno, použijí se tyto parametry místo nastavení aplikace. Slouží
+    /// k ověření proti doménovému řadiči, ke kterému se ACS ještě nenastavil.
+    /// </param>
+    public async Task<LdapDumpResult> DumpAsync(
+        string query, LdapConnectionOptions? options = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(query))
             throw new ArgumentException("Zadejte přihlašovací jméno, osobní číslo nebo příjmení.", nameof(query));
 
         query = query.Trim();
 
-        var server = await dcLocator.GetActiveServerAsync(ct);
-        var useSsl = await settings.GetBoolAsync(SettingKeys.LdapUseSsl, true, ct);
-        var port = await settings.GetIntAsync(SettingKeys.LdapPort, useSsl ? 636 : 389, ct);
-        var baseDn = await settings.GetAsync(SettingKeys.LdapBaseDn, ct)
-            ?? throw new InvalidOperationException("Není nastaveno Base DN (Nastavení → Active Directory).");
-        var bindUser = await settings.GetAsync(SettingKeys.LdapBindUser, ct)
-            ?? throw new InvalidOperationException("Není nastaven servisní účet pro LDAP bind (Nastavení → Active Directory).");
-        var bindPassword = await settings.GetAsync(SettingKeys.LdapBindPassword, ct)
-            ?? throw new InvalidOperationException("Není nastaveno heslo servisního účtu (Nastavení → Active Directory).");
-
-        var personalNumberAttributes = LdapAttributes.ParseAttributeList(
-            await settings.GetAsync(SettingKeys.EmployeePersonalNumberAttribute, ct),
-            LdapEmployeeSource.DefaultPersonalNumberAttributes);
+        var connectionOptions = options ?? await LoadOptionsAsync(ct);
+        var (server, port, useSsl, baseDn, bindUser, bindPassword, _) = connectionOptions;
+        var personalNumberAttributes = connectionOptions.PersonalNumberAttributes
+            ?? LdapAttributes.ParseAttributeList(
+                await settings.GetAsync(SettingKeys.EmployeePersonalNumberAttribute, ct),
+                LdapEmployeeSource.DefaultPersonalNumberAttributes);
 
         var filter = BuildFilter(query, personalNumberAttributes);
 
@@ -128,6 +139,22 @@ public class LdapDiagnosticsService(
 
         logger?.LogInformation("LDAP diagnostika „{Query}“: {Count} účtů.", query, entries.Count);
         return new LdapDumpResult(query, server, baseDn, filter, personalNumberAttributes, entries);
+    }
+
+    /// <summary>Parametry spojení z nastavení aplikace (Nastavení → Active Directory).</summary>
+    private async Task<LdapConnectionOptions> LoadOptionsAsync(CancellationToken ct)
+    {
+        var useSsl = await settings.GetBoolAsync(SettingKeys.LdapUseSsl, true, ct);
+        return new LdapConnectionOptions(
+            Server: await dcLocator.GetActiveServerAsync(ct),
+            Port: await settings.GetIntAsync(SettingKeys.LdapPort, useSsl ? 636 : 389, ct),
+            UseSsl: useSsl,
+            BaseDn: await settings.GetAsync(SettingKeys.LdapBaseDn, ct)
+                ?? throw new InvalidOperationException("Není nastaveno Base DN (Nastavení → Active Directory)."),
+            BindUser: await settings.GetAsync(SettingKeys.LdapBindUser, ct)
+                ?? throw new InvalidOperationException("Není nastaven servisní účet pro LDAP bind (Nastavení → Active Directory)."),
+            BindPassword: await settings.GetAsync(SettingKeys.LdapBindPassword, ct)
+                ?? throw new InvalidOperationException("Není nastaveno heslo servisního účtu (Nastavení → Active Directory)."));
     }
 
     /// <summary>

@@ -193,8 +193,18 @@ if (args.Contains("--import-plan"))
 
 // ---------- Výpis atributů účtu z AD (CLI) ----------
 // Použití: Acs.Web --ldap-dump <přihlašovací jméno | osobní číslo | příjmení>
+//          [--server dc01.domena.local] [--port 389] [--no-ssl]
+//          [--base-dn "DC=domena,DC=local"] [--bind-user ucet@domena.local]
+//          [--attribute employeeNumber]
+//
 // Vypíše, co o účtu vrací doménový řadič, a co z toho ACS sestaví. Slouží
 // k dohledání, ze kterého atributu brát osobní číslo.
+//
+// Bez --server se použije nastavení z databáze (Nastavení → Active Directory).
+// S --server se jde mimo nastavení — hodí se k ověření proti řadiči, na který
+// se ACS ještě nenastavil, nebo když LDAP vede přes SSH tunel z jiné sítě.
+// Heslo se bere z proměnné ACS_LDAP_BIND_PASSWORD; v argumentu by ho viděl
+// každý, kdo si vypíše běžící procesy.
 if (args.Contains("--ldap-dump"))
 {
     var idx = Array.IndexOf(args, "--ldap-dump");
@@ -209,9 +219,42 @@ if (args.Contains("--ldap-dump"))
     var diagnostics = ldapScope.ServiceProvider
         .GetRequiredService<Acs.Infrastructure.Sync.LdapDiagnosticsService>();
 
+    string? Arg(string name)
+    {
+        var at = Array.IndexOf(args, name);
+        return at >= 0 && at + 1 < args.Length ? args[at + 1] : null;
+    }
+
+    Acs.Infrastructure.Sync.LdapConnectionOptions? ldapOptions = null;
+    if (Arg("--server") is { } ldapServer)
+    {
+        var useSsl = !args.Contains("--no-ssl");
+        var password = Environment.GetEnvironmentVariable("ACS_LDAP_BIND_PASSWORD");
+        if (Arg("--base-dn") is not { } baseDn || Arg("--bind-user") is not { } bindUser
+            || string.IsNullOrEmpty(password))
+        {
+            Console.Error.WriteLine(
+                "Při zadaném --server je potřeba i --base-dn, --bind-user"
+                + " a heslo v proměnné ACS_LDAP_BIND_PASSWORD.");
+            return 2;
+        }
+
+        ldapOptions = new Acs.Infrastructure.Sync.LdapConnectionOptions(
+            Server: ldapServer,
+            Port: int.TryParse(Arg("--port"), out var ldapPort) ? ldapPort : useSsl ? 636 : 389,
+            UseSsl: useSsl,
+            BaseDn: baseDn,
+            BindUser: bindUser,
+            BindPassword: password,
+            PersonalNumberAttributes: Arg("--attribute") is { } attribute
+                ? Acs.Infrastructure.Sync.LdapAttributes.ParseAttributeList(attribute,
+                    Acs.Infrastructure.Sync.LdapEmployeeSource.DefaultPersonalNumberAttributes)
+                : null);
+    }
+
     try
     {
-        var dump = await diagnostics.DumpAsync(query);
+        var dump = await diagnostics.DumpAsync(query, ldapOptions);
         Console.WriteLine(dump);
         Console.WriteLine($"Base DN: {dump.BaseDn}");
         Console.WriteLine($"Filtr:   {dump.Filter}");
