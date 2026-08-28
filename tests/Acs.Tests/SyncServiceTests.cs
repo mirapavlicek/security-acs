@@ -131,6 +131,45 @@ public sealed class SyncServiceTests : IDisposable
         Assert.Equal("jnovak", e1.AdAccount);
     }
 
+    /// <summary>
+    /// Hodnoty s mezerami (AD, nebo CHAR sloupce z MSSQL doplněné na pevnou délku)
+    /// se musí ořezat — jinak osobní číslo nesedne na kartu a v seznamech vypadá divně.
+    /// </summary>
+    [Fact]
+    public async Task EmployeeSync_TrimsWhitespaceAndEmptyValues()
+    {
+        var source = new StubSource([
+            new EmployeeRecord(
+                ExternalId: " E1 ",
+                PersonalNumber: "  13483   ",
+                FirstName: " Miroslav ",
+                LastName: "Pavlíček ",
+                Email: "   ",
+                Department: " IT ",
+                AdAccount: " 13483 ",
+                CardNumber: null),
+        ]);
+
+        var sync = new EmployeeSyncService(_db, new StubSourceFactory(source, _settings), _audit);
+        await sync.SyncAsync("test");
+
+        var employee = await _db.Employees.SingleAsync();
+        Assert.Equal("E1", employee.ExternalId);
+        Assert.Equal("13483", employee.PersonalNumber);
+        Assert.Equal("Miroslav", employee.FirstName);
+        Assert.Equal("Pavlíček", employee.LastName);
+        Assert.Equal("IT", employee.Department);
+        Assert.Equal("13483", employee.AdAccount);
+        // Hodnota jen z mezer nemá zůstat jako prázdný text.
+        Assert.Null(employee.Email);
+    }
+
+    private sealed class StubSource(IReadOnlyList<EmployeeRecord> records) : IEmployeeSource
+    {
+        public Task<IReadOnlyList<EmployeeRecord>> FetchAsync(CancellationToken ct = default)
+            => Task.FromResult(records);
+    }
+
     private sealed class StubSourceFactory(IEmployeeSource source, SettingsService settings)
         : EmployeeSourceFactory(settings, null!, null!)
     {

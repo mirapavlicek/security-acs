@@ -120,6 +120,15 @@
         <label>LDAP filtr zaměstnanců (režim Ad; výchozí = aktivní uživatelé)</label>
         <input type="text" name="EmployeeLdapFilter" value="@Model.Values[SettingKeys.EmployeeLdapFilter]"
                placeholder="(&amp;(objectCategory=person)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))" />
+        <label>AD atribut s osobním číslem (víc oddělte čárkou — bere se první neprázdný)</label>
+        <input type="text" name="EmployeePersonalNumberAttribute"
+               value="@Model.Values[SettingKeys.EmployeePersonalNumberAttribute]"
+               placeholder="employeeID, employeeNumber" />
+        <p class="hint">
+            Každé AD má osobní číslo jinde. Čím ho vaše doména plní, zjistíte na stránce
+            <a asp-page="LdapDump">Co vrací AD o účtu</a> — vypíše všechny atributy jednoho
+            účtu i to, co z nich ACS uloží.
+        </p>
         <label>Velikost stránky LDAP dotazu (AD zvládá max 1000)</label>
         <input type="number" name="EmployeeLdapPageSize" value="@Model.Values[SettingKeys.EmployeeLdapPageSize]" placeholder="500" />
         <label>Timeout LDAP dotazu (minuty) — velké domény trvají déle</label>

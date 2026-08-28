@@ -45,6 +45,9 @@ public static class SettingKeys
     public const string EmployeeLdapFilter = "Employees:LdapFilter";
     /// <summary>Velikost stránky LDAP dotazu (AD zvládá max 1000).</summary>
     public const string EmployeeLdapPageSize = "Employees:LdapPageSize";
+
+    /// <summary>Ze kterého AD atributu brát osobní číslo (víc jich lze oddělit čárkou, bere se první neprázdný).</summary>
+    public const string EmployeePersonalNumberAttribute = "Employees:LdapPersonalNumberAttribute";
     /// <summary>Timeout LDAP dotazu v minutách (velké domény trvají déle).</summary>
     public const string EmployeeLdapTimeoutMinutes = "Employees:LdapTimeoutMinutes";
 

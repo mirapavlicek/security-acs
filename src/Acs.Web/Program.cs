@@ -69,6 +69,7 @@ builder.Services.AddScoped<Acs.Infrastructure.Automation.HealthCheckService>();
 builder.Services.AddScoped<Acs.Infrastructure.Import.PlanImportService>();
 builder.Services.AddScoped<Acs.Infrastructure.Plans.PlanGenerationService>();
 builder.Services.AddScoped<Acs.Infrastructure.Sync.EmployeeSourceFactory>();
+builder.Services.AddScoped<Acs.Infrastructure.Sync.LdapDiagnosticsService>();
 builder.Services.AddHttpClient(nameof(Acs.Infrastructure.Sync.ApiEmployeeSource));
 builder.Services.AddSingleton<Acs.Infrastructure.Sync.SyncJobRunner>();
 builder.Services.AddHostedService<Acs.Infrastructure.Sync.SyncScheduler>();
@@ -188,6 +189,107 @@ if (args.Contains("--import-plan"))
         userName: "cli");
     Console.WriteLine(importResult);
     return 0;
+}
+
+// ---------- Výpis atributů účtu z AD (CLI) ----------
+// Použití: Acs.Web --ldap-dump <přihlašovací jméno | osobní číslo | příjmení>
+//          [--server dc01.domena.local] [--port 389] [--no-ssl]
+//          [--base-dn "DC=domena,DC=local"] [--bind-user ucet@domena.local]
+//          [--attribute employeeNumber]
+//
+// Vypíše, co o účtu vrací doménový řadič, a co z toho ACS sestaví. Slouží
+// k dohledání, ze kterého atributu brát osobní číslo.
+//
+// Bez --server se použije nastavení z databáze (Nastavení → Active Directory).
+// S --server se jde mimo nastavení — hodí se k ověření proti řadiči, na který
+// se ACS ještě nenastavil, nebo když LDAP vede přes SSH tunel z jiné sítě.
+// Heslo se bere z proměnné ACS_LDAP_BIND_PASSWORD; v argumentu by ho viděl
+// každý, kdo si vypíše běžící procesy.
+if (args.Contains("--ldap-dump"))
+{
+    var idx = Array.IndexOf(args, "--ldap-dump");
+    var query = idx + 1 < args.Length ? args[idx + 1] : null;
+    if (string.IsNullOrWhiteSpace(query))
+    {
+        Console.Error.WriteLine("Zadejte přihlašovací jméno, osobní číslo nebo příjmení.");
+        return 2;
+    }
+
+    using var ldapScope = app.Services.CreateScope();
+    var diagnostics = ldapScope.ServiceProvider
+        .GetRequiredService<Acs.Infrastructure.Sync.LdapDiagnosticsService>();
+
+    string? Arg(string name)
+    {
+        var at = Array.IndexOf(args, name);
+        return at >= 0 && at + 1 < args.Length ? args[at + 1] : null;
+    }
+
+    Acs.Infrastructure.Sync.LdapConnectionOptions? ldapOptions = null;
+    if (Arg("--server") is { } ldapServer)
+    {
+        var useSsl = !args.Contains("--no-ssl");
+        var password = Environment.GetEnvironmentVariable("ACS_LDAP_BIND_PASSWORD");
+        if (Arg("--base-dn") is not { } baseDn || Arg("--bind-user") is not { } bindUser
+            || string.IsNullOrEmpty(password))
+        {
+            Console.Error.WriteLine(
+                "Při zadaném --server je potřeba i --base-dn, --bind-user"
+                + " a heslo v proměnné ACS_LDAP_BIND_PASSWORD.");
+            return 2;
+        }
+
+        ldapOptions = new Acs.Infrastructure.Sync.LdapConnectionOptions(
+            Server: ldapServer,
+            Port: int.TryParse(Arg("--port"), out var ldapPort) ? ldapPort : useSsl ? 636 : 389,
+            UseSsl: useSsl,
+            BaseDn: baseDn,
+            BindUser: bindUser,
+            BindPassword: password,
+            PersonalNumberAttributes: Arg("--attribute") is { } attribute
+                ? Acs.Infrastructure.Sync.LdapAttributes.ParseAttributeList(attribute,
+                    Acs.Infrastructure.Sync.LdapEmployeeSource.DefaultPersonalNumberAttributes)
+                : null);
+    }
+
+    try
+    {
+        var dump = await diagnostics.DumpAsync(query, ldapOptions);
+        Console.WriteLine(dump);
+        Console.WriteLine($"Base DN: {dump.BaseDn}");
+        Console.WriteLine($"Filtr:   {dump.Filter}");
+        Console.WriteLine($"Osobní číslo se bere z: {string.Join(" -> ", dump.PersonalNumberAttributes)}");
+
+        foreach (var entry in dump.Entries)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"=== {entry.Dn} ===");
+            if (entry.Mapped is { } mapped)
+            {
+                Console.WriteLine($"ACS uloží: osobní číslo „{mapped.PersonalNumber ?? "-"}“"
+                    + $" (z {entry.PersonalNumberFrom ?? "žádného atributu"}), účet {mapped.ExternalId},"
+                    + $" {mapped.FirstName} {mapped.LastName}, oddělení {mapped.Department ?? "-"}");
+            }
+            else
+            {
+                Console.WriteLine("ACS účet přeskočí — chybí sAMAccountName.");
+            }
+
+            Console.WriteLine("--- atributy z AD ---");
+            foreach (var attribute in entry.Attributes)
+            {
+                var use = attribute.MapsTo is null ? "" : $"   [{attribute.MapsTo}]";
+                Console.WriteLine($"{attribute.Name,-32} {attribute.Joined}{use}");
+            }
+        }
+
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Výpis z AD se nezdařil: {ex.Message}");
+        return 2;
+    }
 }
 
 app.UseForwardedHeaders();

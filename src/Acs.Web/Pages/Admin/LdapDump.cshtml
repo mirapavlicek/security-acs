@@ -1,0 +1,117 @@
+@page
+@model Acs.Web.Pages.Admin.LdapDumpModel
+@{
+    ViewData["Title"] = "Co vrací AD o účtu";
+}
+<h1>Co vrací Active Directory o účtu</h1>
+<p class="muted">
+    Vypíše <strong>všechny atributy</strong>, které o účtu vrátí doménový řadič,
+    a vedle nich to, co z nich ACS sestaví. Slouží k dohledání, odkud brát osobní
+    číslo — každé AD ho má jinde. Hledá se podle přihlašovacího jména, osobního
+    čísla, e-mailu i příjmení.
+</p>
+
+<div class="card" style="max-width:760px">
+    <form method="get">
+        <label>Přihlašovací jméno, osobní číslo nebo příjmení</label>
+        <input type="text" name="query" value="@Model.Query" placeholder="např. 13483 nebo Pavlíček"
+               required autofocus />
+        <button class="btn" type="submit" style="margin-top:0.6rem">Vypsat atributy</button>
+    </form>
+</div>
+
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error" style="white-space:pre-line">@Model.ErrorMessage</div>
+}
+
+@if (Model.Result is { } result)
+{
+    <div class="card">
+        <p style="margin-top:0">
+            Dotaz <strong>@result.Query</strong> — nalezeno účtů: <strong>@result.Entries.Count</strong>.
+            Řadič <code>@result.Server</code>, Base DN <code>@result.BaseDn</code>.
+        </p>
+        <p class="hint" style="margin-bottom:0">
+            Osobní číslo se teď bere z:
+            <strong>@string.Join(" → ", result.PersonalNumberAttributes)</strong>
+            (mění se v <a asp-page="Settings">Nastavení → Zdroj zaměstnanců</a>).
+            Použitý filtr: <code>@result.Filter</code>
+        </p>
+    </div>
+
+    @if (result.Entries.Count == 0)
+    {
+        <div class="card">
+            <p class="muted" style="margin:0">
+                Účet se nenašel. Zkuste přihlašovací jméno nebo příjmení bez diakritiky
+                a ověřte, že Base DN pokrývá organizační jednotku, kde účet leží.
+            </p>
+        </div>
+    }
+
+    @foreach (var entry in result.Entries)
+    {
+        <div class="card">
+            <h2 style="margin-top:0">@(entry.Mapped is null ? entry.Dn : $"{entry.Mapped.FirstName} {entry.Mapped.LastName}")</h2>
+            <p class="muted" style="margin-top:0"><code>@entry.Dn</code></p>
+
+            <h3>Co z toho ACS uloží</h3>
+            @if (entry.Mapped is { } mapped)
+            {
+                <table class="data" style="max-width:640px">
+                    <tbody>
+                        <tr><th style="width:220px">Osobní číslo</th>
+                            <td>
+                                <strong>@(mapped.PersonalNumber ?? "—")</strong>
+                                @if (entry.PersonalNumberFrom is { } from)
+                                {
+                                    <span class="muted">(z atributu <code>@from</code>)</span>
+                                }
+                                else
+                                {
+                                    <span class="muted">
+                                        (žádný z atributů @string.Join(", ", result.PersonalNumberAttributes)
+                                        nemá použitelnou hodnotu)
+                                    </span>
+                                }
+                            </td></tr>
+                        <tr><th>Účet AD / klíč párování</th><td>@mapped.ExternalId</td></tr>
+                        <tr><th>Jméno</th><td>@mapped.FirstName</td></tr>
+                        <tr><th>Příjmení</th><td>@mapped.LastName</td></tr>
+                        <tr><th>E-mail</th><td>@(mapped.Email ?? "—")</td></tr>
+                        <tr><th>Oddělení</th><td>@(mapped.Department ?? "—")</td></tr>
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p class="muted">
+                    Účet nemá <code>sAMAccountName</code>, takže se při importu přeskočí
+                    (typicky systémový nebo servisní objekt).
+                </p>
+            }
+
+            <h3>Všechny atributy z AD (@entry.Attributes.Count)</h3>
+            <p class="hint" style="margin-top:0">
+                Zvýrazněné řádky ACS používá. Pokud je osobní číslo v jiném atributu,
+                napište který — přepne se v nastavení bez zásahu do kódu.
+            </p>
+            <table class="data">
+                <thead>
+                    <tr><th style="width:280px">Atribut</th><th>Hodnota</th><th style="width:240px">Použití v ACS</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in entry.Attributes)
+                    {
+                        <tr style="@(row.MapsTo is null ? "" : "background:rgba(11,107,203,0.07)")">
+                            <td><code>@row.Name</code></td>
+                            <td style="word-break:break-word">@row.Joined</td>
+                            <td class="muted">@(row.MapsTo ?? "")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
