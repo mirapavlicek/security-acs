@@ -143,14 +143,21 @@ curl -H "X-Api-Key: <klic>" http://localhost:52001/api/v1/readers
 
 ## Instalace na WIN-PAK server (Windows)
 
-1. Publikace (na build stroji):
+1. Získejte hotový balík. Nejsnazší je stáhnout ho z GitHubu — workflow
+   **WinPak Connector** ho sestaví při každém pushnutí do `main` a u vydání
+   (tag `vX.Y.Z`) ho přiloží i k releasu jako
+   `AcsWinPakConnector-<verze>-win-x64.zip` se souborem `.sha256`.
+   Jde ho také spustit ručně (Actions → WinPak Connector → Run workflow).
+
+   Sestavit lokálně jde samozřejmě taky:
 
    ```bash
    dotnet publish src/Acs.WinPakConnector -c Release -r win-x64 --self-contained \
-     -o publish/winpak-connector
+     -p:Version=1.8.0 -o publish/winpak-connector
    ```
 
    Self-contained = na WIN-PAK server není potřeba instalovat .NET runtime.
+   `Version` se ukáže v administraci na Přehledu, ať je poznat, co běží.
 
 2. Zkopírujte obsah `publish/winpak-connector` např. do
    `C:\Program Files\AcsWinPakConnector`.
