@@ -91,6 +91,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="${GITHUB_REF_NAME}"
+
+          # actions/checkout tag nejdřív stáhne správně, ale pak ho druhým fetchem
+          # přepíše na ref ukazující na commit — anotace tím zmizí a %(contents:*)
+          # začne vracet zprávu merge commitu. Proto se tag musí dotáhnout znovu.
+          # Když se to nepovede, popis dohledá GitHub z PR a balík se přiloží tak jako tak.
+          git fetch --force origin "refs/tags/${tag}:refs/tags/${tag}" \
+            || echo "Anotaci tagu se nepodařilo dotáhnout, popis releasu vygeneruje GitHub."
+
           if ! gh release view "$tag" >/dev/null 2>&1; then
             # U anotovaného tagu je popis releasu jeho zpráva: první řádek jako
             # název, zbytek jako text. Bez toho by se do popisu dostala zpráva
@@ -98,9 +106,13 @@ jobs:
             if [ "$(git cat-file -t "$tag")" = "tag" ]; then
               title="$(git tag -l --format='%(contents:subject)' "$tag")"
               git tag -l --format='%(contents:body)' "$tag" > release-notes.md
+            fi
+
+            if [ -s release-notes.md ]; then
               gh release create "$tag" --title "${title:-$tag}" --notes-file release-notes.md
             else
-              gh release create "$tag" --title "$tag" --generate-notes
+              # Tag bez anotace (nebo jen s názvem) — popis dohledá GitHub z PR.
+              gh release create "$tag" --title "${title:-$tag}" --generate-notes
             fi
           fi
           gh release upload "$tag" \
