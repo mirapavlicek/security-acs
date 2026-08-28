@@ -75,18 +75,31 @@
 
     <div id="unplaced" style="margin-bottom:0.6rem"></div>
 
+    <div style="margin-bottom:0.4rem">
+        <button class="btn btn-sm btn-ghost" type="button" id="zoom-in" title="Přiblížit">+</button>
+        <button class="btn btn-sm btn-ghost" type="button" id="zoom-out" title="Oddálit">−</button>
+        <button class="btn btn-sm btn-ghost" type="button" id="zoom-reset">Celé patro</button>
+        <span class="muted" id="zoom-info"></span>
+    </div>
+
     <div style="border:1px solid var(--border);background:var(--surface)">
         <svg id="plan" viewBox="0 0 100 100" preserveAspectRatio="none"
              style="display:block;width:100%;aspect-ratio:4/3;touch-action:none">
-            @if (Model.HasUnderlay)
-            {
-                <image href="/floors/@Model.Floor.Id/schema" x="0" y="0" width="100" height="100"
-                       preserveAspectRatio="none" opacity="0.45" />
-            }
-            <g id="layer-rooms"></g>
-            <g id="layer-devices"></g>
+            <g id="plan-content">
+                @if (Model.HasUnderlay)
+                {
+                    <image href="/floors/@Model.Floor.Id/schema" x="0" y="0" width="100" height="100"
+                           preserveAspectRatio="none" opacity="0.45" data-plan-background="1" />
+                }
+                <g id="layer-rooms"></g>
+                <g id="layer-devices"></g>
+            </g>
         </svg>
     </div>
+    <p class="hint">
+        Kolečkem myši přiblížíte, tažením podkladu posunete plán. Ve hustých patrech
+        se popisky dopisují až po přiblížení — celý název je vždy v bublině.
+    </p>
     <p class="muted" style="margin-bottom:0">
         Legenda: <span style="color:#0b6bcb">■ místnost</span> ·
         <span style="color:#2e7d32">● čtečka</span> ·
@@ -101,10 +114,12 @@
 @Html.AntiForgeryToken()
 
 @section Scripts {
+<script src="~/js/plan-view.js"></script>
 <script>
 (() => {
     const layout = @Html.Raw(Model.LayoutJson);
     const svg = document.getElementById('plan');
+    const content = document.getElementById('plan-content');
     const roomsLayer = document.getElementById('layer-rooms');
     const devicesLayer = document.getElementById('layer-devices');
     const NS = 'http://www.w3.org/2000/svg';
@@ -113,15 +128,14 @@
     let dirty = false;
 
     function svgPoint(evt) {
-        const pt = svg.createSVGPoint();
-        pt.x = evt.clientX; pt.y = evt.clientY;
-        const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+        const p = plan.toPlan(evt.clientX, evt.clientY);
         return { x: Math.max(0, Math.min(100, p.x)), y: Math.max(0, Math.min(100, p.y)) };
     }
 
-    function el(tag, attrs) {
+    function el(tag, attrs, text) {
         const e = document.createElementNS(NS, tag);
         for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+        if (text) e.textContent = text;
         return e;
     }
 
@@ -145,6 +159,12 @@
         drag = { move, start: svgPoint(evt) };
     }
 
+    // Patro má i přes dvě stě místností — na plán se vejde jen číslo místnosti,
+    // celý název je v bublině. Do malých obdélníků se popisek nekreslí vůbec.
+    function shortLabel(name) {
+        return name.split('\u2014')[0].trim() || name;
+    }
+
     // --- vykreslení ---
     function render() {
         roomsLayer.replaceChildren();
@@ -152,17 +172,26 @@
 
         for (const room of layout.rooms.filter(r => r.x != null)) {
             const g = el('g', { cursor: 'move' });
+            const w = room.w ?? 12, h = room.h ?? 9;
             const rect = el('rect', {
-                x: room.x, y: room.y, width: room.w ?? 12, height: room.h ?? 9,
+                x: room.x, y: room.y, width: w, height: h,
                 fill: 'rgba(11,107,203,0.13)', stroke: '#0b6bcb', 'stroke-width': 0.35, rx: 0.6,
+                'vector-effect': 'non-scaling-stroke',
             });
+            rect.append(el('title', {}, room.name));
+            const text = shortLabel(room.name);
+            const size = Math.min(h * 0.5, w / Math.max(text.length, 1) * 1.7);
             const label = el('text', {
-                x: room.x + 1, y: room.y + 3, 'font-size': 2.4, fill: '#0b6bcb', 'pointer-events': 'none',
-            });
-            label.textContent = room.name;
+                x: room.x + w / 2, y: room.y + h / 2 + size * 0.35,
+                'font-size': size.toFixed(2), fill: '#0b6bcb',
+                'text-anchor': 'middle', 'pointer-events': 'none',
+                'data-plan-label': size.toFixed(2),
+            }, text);
+            // Úchyt pro změnu velikosti se nesmí vejít mimo malou místnost.
+            const grip = Math.min(1.6, w * 0.35, h * 0.35);
             const handle = el('rect', {
-                x: room.x + (room.w ?? 12) - 1.6, y: room.y + (room.h ?? 9) - 1.6,
-                width: 1.6, height: 1.6, fill: '#0b6bcb', cursor: 'nwse-resize',
+                x: room.x + w - grip, y: room.y + h - grip,
+                width: grip, height: grip, fill: '#0b6bcb', cursor: 'nwse-resize',
             });
             rect.addEventListener('pointerdown', e => startDrag(e, (dx, dy) => {
                 room.x = Math.max(0, Math.min(100 - (room.w ?? 12), room.x + dx));
@@ -171,8 +200,8 @@
             handle.addEventListener('pointerdown', e => {
                 e.stopPropagation();
                 startDrag(e, (dx, dy) => {
-                    room.w = Math.max(3, Math.min(100 - room.x, (room.w ?? 12) + dx));
-                    room.h = Math.max(3, Math.min(100 - room.y, (room.h ?? 9) + dy));
+                    room.w = Math.max(1.5, Math.min(100 - room.x, (room.w ?? 12) + dx));
+                    room.h = Math.max(1.5, Math.min(100 - room.y, (room.h ?? 9) + dy));
                 });
             });
             g.append(rect, label, handle);
@@ -180,10 +209,14 @@
         }
 
         for (const reader of layout.readers.filter(r => r.x != null)) {
-            const g = el('g', { cursor: 'move' });
-            const dot = el('circle', { cx: reader.x, cy: reader.y, r: 1.1, fill: '#2e7d32', stroke: '#fff', 'stroke-width': 0.25 });
-            const label = el('text', { x: reader.x + 1.5, y: reader.y + 0.7, 'font-size': 1.9, fill: '#2e7d32', 'pointer-events': 'none' });
-            label.textContent = reader.name;
+            const g = el('g', { cursor: 'move', 'data-plan-marker': `${reader.x},${reader.y}` });
+            const dot = el('circle', { r: 1.1, fill: '#2e7d32', stroke: '#fff', 'stroke-width': 0.25 });
+            dot.append(el('title', {}, reader.name));
+            // Název čtečky obsahuje i místnost, takže na plánu stačí kód před pomlčkou.
+            const label = el('text', {
+                x: 1.5, y: 0.7, 'font-size': 1.6, fill: '#2e7d32', 'pointer-events': 'none',
+                'data-plan-label': '1.6', 'data-plan-marker-label': '1', 'data-plan-min-zoom': '2.5',
+            }, shortLabel(reader.name));
             dot.addEventListener('pointerdown', e => startDrag(e, (dx, dy) => {
                 reader.x = Math.max(0, Math.min(100, reader.x + dx));
                 reader.y = Math.max(0, Math.min(100, reader.y + dy));
@@ -194,18 +227,19 @@
 
         layout.devices.forEach((device, index) => {
             const color = deviceColors[device.type] ?? '#555';
-            const g = el('g', { cursor: 'move' });
+            const g = el('g', { cursor: 'move', 'data-plan-marker': `${device.x},${device.y}` });
             const icon = el('rect', {
-                x: device.x - 1.1, y: device.y - 1.1, width: 2.2, height: 2.2,
-                fill: color, stroke: '#fff', 'stroke-width': 0.25, transform: `rotate(45 ${device.x} ${device.y})`,
+                x: -1.1, y: -1.1, width: 2.2, height: 2.2,
+                fill: color, stroke: '#fff', 'stroke-width': 0.25, transform: 'rotate(45)',
             });
             const mark = el('text', {
-                x: device.x, y: device.y + 0.55, 'font-size': 1.3, fill: '#fff',
+                y: 0.55, 'font-size': 1.3, fill: '#fff',
                 'text-anchor': 'middle', 'pointer-events': 'none',
-            });
-            mark.textContent = deviceLabels[device.type] ?? '?';
-            const label = el('text', { x: device.x + 2, y: device.y + 0.7, 'font-size': 1.9, fill: color, 'pointer-events': 'none' });
-            label.textContent = device.name;
+            }, deviceLabels[device.type] ?? '?');
+            const label = el('text', {
+                x: 2, y: 0.7, 'font-size': 1.6, fill: color, 'pointer-events': 'none',
+                'data-plan-label': '1.6', 'data-plan-marker-label': '1', 'data-plan-min-zoom': '2',
+            }, device.name);
             icon.addEventListener('pointerdown', e => startDrag(e, (dx, dy) => {
                 device.x = Math.max(0, Math.min(100, device.x + dx));
                 device.y = Math.max(0, Math.min(100, device.y + dy));
@@ -221,6 +255,8 @@
             g.append(icon, mark, label);
             devicesLayer.append(g);
         });
+
+        plan.refresh();
     }
 
     // --- neumístěné prvky ---
@@ -271,6 +307,16 @@
     });
 
     window.addEventListener('beforeunload', e => { if (dirty) e.preventDefault(); });
+
+    const zoomInfo = document.getElementById('zoom-info');
+    const plan = createPlanView(svg, content, {
+        onChange: k => zoomInfo.textContent = k > 1.05 ? `přiblíženo ${k.toFixed(1)}×` : '',
+    });
+
+    document.getElementById('zoom-in').addEventListener('click', () => plan.zoomBy(1.5));
+    document.getElementById('zoom-out').addEventListener('click', () => plan.zoomBy(1 / 1.5));
+    document.getElementById('zoom-reset').addEventListener('click', () => plan.reset());
+    window.addEventListener('resize', () => plan.refresh());
 
     render();
     renderUnplaced();

@@ -44,7 +44,7 @@ public class PlansModel(AcsDbContext db, Acs.Infrastructure.Workflow.ReaderGroup
             .Where(r => ((r.Room != null && r.Room.FloorId == SelectedFloor.Id)
                          || (r.Corridor != null && r.Corridor.FloorId == SelectedFloor.Id))
                         && r.SchemaX != null)
-            .Select(r => new { r.Id, r.Name, x = r.SchemaX, y = r.SchemaY })
+            .Select(r => new { r.Id, r.Name, x = r.SchemaX, y = r.SchemaY, r.RoomId })
             .ToListAsync();
         var devices = await db.PlanDevices
             .Where(d => d.FloorId == SelectedFloor.Id)
@@ -71,9 +71,16 @@ public class PlansModel(AcsDbContext db, Acs.Infrastructure.Workflow.ReaderGroup
                 myReaderIds.UnionWith(await groups.ExpandReaderIdsAsync(groupIds));
         }
 
+        // Do místnosti se člověk dostane, když má přístup na některou její čtečku —
+        // na plánu se pak rovnou zvýrazní, takže je vidět, kam smí, bez klikání.
+        var myRoomIds = readers
+            .Where(r => r.RoomId != null && myReaderIds.Contains(r.Id))
+            .Select(r => r.RoomId!.Value)
+            .ToHashSet();
+
         LayoutJson = JsonSerializer.Serialize(new
         {
-            rooms,
+            rooms = rooms.Select(r => new { r.Id, r.Name, r.x, r.y, r.w, r.h, mine = myRoomIds.Contains(r.Id) }),
             readers = readers.Select(r => new { r.Id, r.Name, r.x, r.y, mine = myReaderIds.Contains(r.Id) }),
             devices,
         }, JsonOpts);

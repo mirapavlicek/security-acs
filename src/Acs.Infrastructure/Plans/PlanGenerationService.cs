@@ -68,8 +68,13 @@ public class PlanGenerationService(AcsDbContext db, AuditService audit)
     /// <summary>Okraj plánu v procentech, ať prvky nelepí na hranu.</summary>
     private const double Margin = 4;
 
-    /// <summary>Mez, pod kterou se rozměr místnosti nesmí zmenšit (procenta plochy).</summary>
-    private const double MinRoomSize = 3;
+    /// <summary>
+    /// Mez, pod kterou se rozměr místnosti nesmí zmenšit (procenta plochy).
+    /// Musí být malá — patra mají i přes dvě stě místností nahloučených v křídlech,
+    /// větší box by se v nich nutně překrýval. Popisek se u malých boxů skryje
+    /// a název zůstane v bublině.
+    /// </summary>
+    private const double MinRoomSize = 1.5;
 
     private const double MaxRoomSize = 14;
 
@@ -211,20 +216,55 @@ public class PlanGenerationService(AcsDbContext db, AuditService audit)
         }
     }
 
+    /// <summary>
+    /// Obdélníky se dimenzují podle skutečných rozestupů popisků ve výkresu
+    /// (medián vzdálenosti k nejbližšímu sousedovi). Průměrná hustota by nestačila —
+    /// patra mají místnosti nahloučené v křídlech a jinde volnou plochu, takže box
+    /// spočítaný z průměru by se v hustých místech překrýval.
+    /// </summary>
     private static (double Width, double Height) RoomSizeFor(List<Room> rooms, double spanX, double spanY)
     {
-        var placed = rooms.Count(r => r.SourceX is not null);
-        if (placed <= 1 || spanX <= 0 || spanY <= 0)
+        var points = rooms
+            .Where(r => r.SourceX is not null && r.SourceY is not null)
+            .Select(r => (X: r.SourceX!.Value, Y: r.SourceY!.Value))
+            .ToList();
+
+        if (points.Count <= 1 || spanX <= 0 || spanY <= 0)
             return (MaxRoomSize * 0.7, MaxRoomSize * 0.55);
 
-        // Kolik prvků se vejde do řady, kdyby byly rozprostřené rovnoměrně.
-        var perRow = Math.Max(1, Math.Sqrt(placed * spanX / spanY));
-        var perColumn = Math.Max(1, placed / perRow);
+        // Vzdálenosti se počítají v poměru k rozpětí patra, aby nezáleželo na
+        // měřítku výkresu a na tom, že osy se na plán škálují každá zvlášť.
+        var spacings = new List<double>(points.Count);
+        for (var i = 0; i < points.Count; i++)
+        {
+            var point = points[i];
+            var nearest = double.MaxValue;
+            for (var j = 0; j < points.Count; j++)
+            {
+                if (i == j)
+                    continue;
+
+                var dx = (points[j].X - point.X) / spanX;
+                var dy = (points[j].Y - point.Y) / spanY;
+                var distance = dx * dx + dy * dy;
+                if (distance > 0 && distance < nearest)
+                    nearest = distance;
+            }
+
+            if (nearest < double.MaxValue)
+                spacings.Add(Math.Sqrt(nearest));
+        }
+
+        if (spacings.Count == 0)
+            return (MinRoomSize, MinRoomSize);
+
+        spacings.Sort();
+        var median = spacings[spacings.Count / 2];
         var usable = 100 - 2 * Margin;
 
-        return (
-            Math.Clamp(usable / perRow * 0.8, MinRoomSize, MaxRoomSize),
-            Math.Clamp(usable / perColumn * 0.8, MinRoomSize, MaxRoomSize));
+        // 0,8 × typický rozestup nechá mezi místnostmi vidět mezeru.
+        var size = Math.Clamp(median * usable * 0.8, MinRoomSize, MaxRoomSize);
+        return (size, size);
     }
 
     /// <summary>Lineární přepočet souřadnice výkresu na procenta plochy včetně okrajů.</summary>
