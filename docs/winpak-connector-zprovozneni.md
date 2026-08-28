@@ -74,17 +74,32 @@ použije `InitServer2`.
 z kroku 1. Nejjednodušší je nechat službu běžet pod `LocalSystem` na WIN-PAK
 serveru; při vzdáleném nasazení použijte doménový účet s právy na DCOM.
 
-## Krok 3 — sestavit a zkopírovat
+## Krok 3 — získat balík a zkopírovat
 
-Na build stroji (může být i vývojářský Linux):
+**Nejsnazší cesta — stáhnout z GitHubu.** Workflow **WinPak Connector** sestaví
+hotový balík pro Windows při každém pushnutí do `main` a u vydání ho přiloží
+k releasu:
+
+- u vydání: *Releases → `vX.Y.Z` → `AcsWinPakConnector-<verze>-win-x64.zip`*,
+- jinak: *Actions → WinPak Connector → poslední běh → Artifacts*,
+- nebo si běh spusťte ručně (*Run workflow*) a zadejte verzi.
+
+U balíku je i soubor `.sha256`; na serveru si kopii ověřte:
+
+```powershell
+Get-FileHash AcsWinPakConnector-1.8.0-win-x64.zip -Algorithm SHA256
+```
+
+**Sestavení lokálně** (když nechcete GitHub):
 
 ```bash
 dotnet publish src/Acs.WinPakConnector -c Release -r win-x64 --self-contained \
-  -o publish/winpak-connector
+  -p:Version=1.8.0 -o publish/winpak-connector
 ```
 
-Obsah `publish/winpak-connector` zkopírujte na WIN-PAK server, doporučeně do
-`C:\Program Files\AcsWinPakConnector`.
+Balík rozbalte (nebo obsah `publish/winpak-connector` zkopírujte) na WIN-PAK
+server, doporučeně do `C:\Program Files\AcsWinPakConnector`. Verzi si pak
+ověříte v administraci na Přehledu.
 
 ## Krok 4 — první konfigurace, služba a firewall
 
@@ -232,7 +247,7 @@ Logy služby: Prohlížeč událostí → Windows Logs → Application, zdroj
 
 ## Aktualizace konektoru
 
-1. Publikujte novou verzi (krok 3).
+1. Stáhněte (nebo publikujte) novou verzi — viz krok 3.
 2. `Stop-Service AcsWinPakConnector`.
 3. Přepište soubory programu. **`appsettings.Local.json` nechte** — je v něm
    nastavení včetně hesel.

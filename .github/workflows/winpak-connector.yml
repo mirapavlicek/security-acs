@@ -1,0 +1,96 @@
+name: WinPak Connector
+
+# Konektor je samostatný artefakt: běží jako Windows služba na WIN-PAK serveru
+# a auto-update ACS ho nenasazuje. Tenhle workflow z něj udělá hotový balík
+# ke stažení, aby se nemusel sestavovat ručně na build stroji.
+#
+# Pozor na filtr paths: u pushnutého tagu neobsahuje push žádné nové commity,
+# takže by se cesty nikdy neshodly a vydání by se nesestavilo. Proto je filtr
+# jen u pull requestů.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    paths:
+      - 'src/Acs.WinPakConnector/**'
+      - 'tests/Acs.WinPakConnector.Tests/**'
+      - '.github/workflows/winpak-connector.yml'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Verze do názvu balíku a do assembly (např. 1.8.0)'
+        required: false
+
+permissions:
+  contents: write   # nahrání balíku k releasu při vydání tagu
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # Verze se ukáže v administraci konektoru (Přehled → Verze), ať je poznat,
+      # co na serveru vlastně běží. Z tagu se bere bez úvodního „v“.
+      - name: Určit verzi
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            version="${{ inputs.version }}"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="0.0.0-build.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Verze balíku: ${version}"
+
+      - name: Testy konektoru
+        run: dotnet test tests/Acs.WinPakConnector.Tests -c Release --logger "trx"
+
+      # Self-contained: na WIN-PAK server se nemusí instalovat .NET runtime.
+      # Publikace pro win-x64 jde i z Linuxu.
+      - name: Publikovat pro Windows
+        run: |
+          dotnet publish src/Acs.WinPakConnector -c Release -r win-x64 --self-contained \
+            -p:Version=${{ steps.version.outputs.version }} \
+            -o publish/winpak-connector
+
+      - name: Zabalit
+        id: package
+        run: |
+          name="AcsWinPakConnector-${{ steps.version.outputs.version }}-win-x64"
+          (cd publish && zip -qr "../${name}.zip" winpak-connector)
+          sha256sum "${name}.zip" | tee "${name}.zip.sha256"
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+          ls -lh "${name}.zip"
+
+      - name: Uložit jako artefakt
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: |
+            ${{ steps.package.outputs.name }}.zip
+            ${{ steps.package.outputs.name }}.zip.sha256
+          retention-days: 90
+
+      # Při vydání tagu se balík přiloží k releasu, ať je u verze i ke stažení.
+      - name: Přiložit k releasu
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --title "$tag" --notes-from-tag \
+              || gh release create "$tag" --title "$tag" --generate-notes
+          fi
+          gh release upload "$tag" \
+            "${{ steps.package.outputs.name }}.zip" \
+            "${{ steps.package.outputs.name }}.zip.sha256" --clobber
