@@ -1,0 +1,969 @@
+openapi: 3.1.0
+
+info:
+  title: Univerzální integrační API ACS
+  version: 1.0.0-draft
+  summary: Osoby, identifikátory, skupiny a oprávnění pro navázané systémy.
+  description: |
+    API, kterým ACS poskytuje navázaným systémům (vjezdové a parkovací systémy,
+    systém pro stravování, docházka, rezervace) odpovědi na tři otázky:
+
+    * **kdo je ta osoba** a jakými identifikátory se prokazuje (karta, SPZ, PIN…),
+    * **do jakých skupin patří** (skupina čteček, skupina strávníků, parkovací skupina),
+    * **co smí a do kdy** — oprávnění vzniklá schválenou žádostí.
+
+    ACS je zdrojem pravdy pro identitu a oprávnění, protože v něm probíhá
+    schvalování. Navázaný systém si data buď stahuje (tento dokument), nebo mu je
+    ACS zapisuje přes kontrakt konektoru (`connector-api.yaml`), nebo se ACS ptá
+    na rozhodnutí v okamžiku události (`POST /authorization-checks`).
+
+    Terminologie a provozní požadavky: `docs/integrace/README.md`.
+  contact:
+    name: Správce ACS
+    url: https://acs.fnmh.network
+  license:
+    name: Interní dokument
+
+servers:
+  - url: https://acs.fnmh.network/api/v1
+    description: Produkce
+  - url: https://acs-test.fnmh.network/api/v1
+    description: Testovací prostředí
+
+tags:
+  - name: Zjištění možností
+    description: Co daná instance API umí a jaké má limity.
+  - name: Osoby
+    description: Osoby a jejich identifikátory.
+  - name: Skupiny
+    description: Skupiny osob a přístupových bodů podle druhu.
+  - name: Oprávnění
+    description: Co osoba smí, od kdy do kdy a odkud to oprávnění vzniklo.
+  - name: Online autorizace
+    description: Rozhodnutí povolit/zamítnout v okamžiku události.
+  - name: Události
+    description: Průchody, vjezdy a odebrané stravování hlášené do ACS.
+  - name: Změny
+    description: Přírůstkový odběr změn místo opakovaného stahování všeho.
+
+security:
+  - oauth2ClientCredentials: []
+  - apiKey: []
+
+paths:
+  /capabilities:
+    get:
+      tags: [Zjištění možností]
+      summary: Možnosti a limity API
+      description: |
+        Volá se před prvním použitím a po každé aktualizaci ACS. Klient se podle
+        odpovědi rozhodne, které vzory použije — nesmí předpokládat, že instance
+        umí vše.
+      operationId: getCapabilities
+      responses:
+        '200':
+          description: Popis možností
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Capabilities' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /persons:
+    get:
+      tags: [Osoby]
+      summary: Seznam osob
+      description: |
+        Vrací osoby, ke kterým má klient podle svého rozsahu (scope) přístup.
+        Pro první naplnění se prochází stránkováním, dál se používá
+        `changedSince` nebo `/changes`.
+      operationId: listPersons
+      parameters:
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/changedSince'
+        - name: groupId
+          in: query
+          description: Jen osoby v dané skupině (například skupině strávníků).
+          schema: { type: string }
+        - name: includeInactive
+          in: query
+          description: Zahrnout i ukončené osoby, aby je systém mohl zneplatnit.
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Stránka osob
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Person' }
+                  nextCursor:
+                    type: [string, 'null']
+                    description: Kurzor další stránky; null u poslední.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /persons/{personId}:
+    get:
+      tags: [Osoby]
+      summary: Jedna osoba
+      operationId: getPerson
+      parameters:
+        - $ref: '#/components/parameters/personId'
+      responses:
+        '200':
+          description: Osoba
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Person' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /credential-lookup:
+    get:
+      tags: [Osoby]
+      summary: Dohledání osoby podle identifikátoru
+      description: |
+        Přeloží načtený identifikátor (SPZ z kamery, číslo karty z terminálu) na
+        osobu. Hodnota se porovnává **normalizovaně** — bez mezer a pomlček, velkými
+        písmeny, takže `1AB 2345` i `1ab-2345` najdou totéž.
+
+        Neslouží k autorizaci. K rozhodnutí, jestli osobu pustit, je
+        `POST /authorization-checks`, které zohlední i platnost oprávnění.
+      operationId: lookupPerson
+      parameters:
+        - name: credentialType
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/CredentialType' }
+        - name: credentialValue
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+          example: 1AB2345
+      responses:
+        '200':
+          description: Nalezená osoba včetně použitého identifikátoru
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [person, credential]
+                properties:
+                  person: { $ref: '#/components/schemas/Person' }
+                  credential: { $ref: '#/components/schemas/Credential' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /persons/{personId}/credentials:
+    get:
+      tags: [Osoby]
+      summary: Identifikátory osoby
+      operationId: listCredentials
+      parameters:
+        - $ref: '#/components/parameters/personId'
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/CredentialType' }
+        - name: validOnly
+          in: query
+          description: Jen identifikátory platné k okamžiku dotazu.
+          schema: { type: boolean, default: true }
+      responses:
+        '200':
+          description: Identifikátory
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Credential' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /groups:
+    get:
+      tags: [Skupiny]
+      summary: Seznam skupin
+      description: |
+        Skupina je pojmenovaná množina se **druhem** (`kind`). Tím je API
+        univerzální: skupina strávníků, parkovací skupina i skupina čteček jsou
+        stejný objekt s jiným druhem a jinými atributy.
+      operationId: listGroups
+      parameters:
+        - name: kind
+          in: query
+          schema: { $ref: '#/components/schemas/GroupKind' }
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/changedSince'
+      responses:
+        '200':
+          description: Stránka skupin
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Group' }
+                  nextCursor: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /groups/{groupId}/members:
+    get:
+      tags: [Skupiny]
+      summary: Členové skupiny
+      description: |
+        U vnořených skupin vrací API **rozbalené** členství, aby si klient nemusel
+        skládat hierarchii sám. Původ členství je v `via`.
+      operationId: listGroupMembers
+      parameters:
+        - $ref: '#/components/parameters/groupId'
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/limit'
+      responses:
+        '200':
+          description: Stránka členů
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/GroupMember' }
+                  nextCursor: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /access-points:
+    get:
+      tags: [Skupiny]
+      summary: Přístupové body
+      description: |
+        Místa, kde se osoba prokazuje: dveřní čtečka, vjezdová brána, terminál
+        výdeje stravy. Klient si sem mapuje svá zařízení přes `externalIds`.
+      operationId: listAccessPoints
+      parameters:
+        - name: kind
+          in: query
+          schema: { $ref: '#/components/schemas/AccessPointKind' }
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/limit'
+      responses:
+        '200':
+          description: Stránka přístupových bodů
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/AccessPoint' }
+                  nextCursor: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /entitlements:
+    get:
+      tags: [Oprávnění]
+      summary: Oprávnění osob
+      description: |
+        Oprávnění je výsledek schválené žádosti: osoba × cíl × platnost.
+        Cílem je přístupový bod nebo skupina. Odebrané oprávnění se vrací se
+        stavem `revoked`, aby si systém mohl zneplatnit svůj záznam — proto se
+        při přírůstkovém odběru nesmí filtrovat jen na aktivní.
+      operationId: listEntitlements
+      parameters:
+        - name: personId
+          in: query
+          schema: { type: string }
+        - name: groupId
+          in: query
+          schema: { type: string }
+        - name: accessPointId
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/EntitlementStatus' }
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/changedSince'
+      responses:
+        '200':
+          description: Stránka oprávnění
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Entitlement' }
+                  nextCursor: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /authorization-checks:
+    post:
+      tags: [Online autorizace]
+      summary: Rozhodnutí povolit/zamítnout
+      description: |
+        Pro systémy, které nedrží vlastní kopii oprávnění — typicky vjezdová
+        brána s kamerou. Systém pošle, co načetl a kde, a dostane rozhodnutí
+        s důvodem.
+
+        Klient **musí** mít nastavený timeout (doporučeno 1 s) a chování při
+        nedostupnosti ACS: u vjezdu do chráněného areálu zamítnout, u výjezdu
+        povolit. Zamítnutí i chyba se hlásí zpět jako událost, ať je v ACS
+        dohledatelné, proč někoho brána nepustila.
+      operationId: checkAuthorization
+      parameters:
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthorizationRequest' }
+      responses:
+        '200':
+          description: Rozhodnutí (i zamítavé — zamítnutí není chyba volání)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthorizationDecision' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /events:
+    post:
+      tags: [Události]
+      summary: Nahlášení událostí do ACS
+      description: |
+        Průchody, vjezdy, výjezdy a odebrané stravování. ACS je používá pro
+        dohledatelnost a reporty, ne pro rozhodování.
+
+        Dávka může mít až 500 událostí. Zpracování je po jednotlivých událostech:
+        odpověď říká u každé, jestli byla přijata, takže jedna vadná událost
+        nezahodí celou dávku.
+      operationId: reportEvents
+      parameters:
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [events]
+              properties:
+                events:
+                  type: array
+                  minItems: 1
+                  maxItems: 500
+                  items: { $ref: '#/components/schemas/Event' }
+      responses:
+        '202':
+          description: Výsledek po jednotlivých událostech
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  accepted: { type: integer, description: Počet přijatých událostí. }
+                  rejected: { type: integer }
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/EventResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413':
+          description: Dávka je nad povolený limit.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /changes:
+    get:
+      tags: [Změny]
+      summary: Přírůstkový odběr změn
+      description: |
+        Jediný chronologický proud změn osob, identifikátorů, členství a
+        oprávnění. Klient si drží `cursor` a vrací se k němu — nemusí porovnávat
+        stavy ani stahovat vše.
+
+        Kurzor platí nejméně 30 dní. Po `410` se musí provést plné načtení.
+        Alternativou k pravidelnému dotazování jsou webhooky.
+      operationId: listChanges
+      parameters:
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/limit'
+        - name: types
+          in: query
+          description: Filtr druhů změn, oddělený čárkou.
+          schema: { type: string }
+          example: person.changed,entitlement.changed
+      responses:
+        '200':
+          description: Stránka změn
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Change' }
+                  nextCursor:
+                    type: string
+                    description: |
+                      Kurzor pro další dotaz. Vrací se i u prázdné stránky —
+                      klient ho vždy uloží.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '410':
+          description: Kurzor je příliš starý, je potřeba plné načtení.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+webhooks:
+  notification:
+    post:
+      summary: Oznámení změny do navázaného systému
+      description: |
+        ACS volá URL nastavenou u integrace. Tělo je stejný objekt jako položka
+        v `/changes`, takže se dá zpracovat jedním kódem.
+
+        Podpis: hlavička `X-Acs-Signature` obsahuje
+        `sha256=HMAC(tělo, tajemství integrace)` a `X-Acs-Timestamp` čas odeslání.
+        Příjemce **musí** podpis ověřit a odmítnout zprávy starší než 5 minut.
+
+        Doručení je „nejméně jednou“ — příjemce musí být idempotentní podle
+        `id`. Při odpovědi mimo 2xx opakuje ACS pokus s narůstající prodlevou
+        (1 min, 5 min, 30 min, 2 h, 12 h) a pak oznámení zahodí; změna zůstává
+        dostupná v `/changes`.
+      operationId: receiveNotification
+      parameters:
+        - name: X-Acs-Signature
+          in: header
+          required: true
+          schema: { type: string }
+          example: sha256=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+        - name: X-Acs-Timestamp
+          in: header
+          required: true
+          schema: { type: string, format: date-time }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Change' }
+      responses:
+        '204':
+          description: Přijato. Jakákoli jiná odpověď znamená opakování pokusu.
+
+components:
+  securitySchemes:
+    oauth2ClientCredentials:
+      type: oauth2
+      description: |
+        Doporučený způsob. Každá integrace má vlastního klienta s rozsahem
+        omezeným na to, co potřebuje — systém pro stravování nemá vidět
+        oprávnění ke dveřím.
+      flows:
+        clientCredentials:
+          tokenUrl: https://acs.fnmh.network/connect/token
+          scopes:
+            persons.read: Čtení osob a identifikátorů
+            groups.read: Čtení skupin a členství
+            entitlements.read: Čtení oprávnění
+            authorization.check: Online autorizace
+            events.write: Hlášení událostí
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: |
+        Připouští se jen pro systémy, které OAuth2 neumí, a jen ve vnitřní síti
+        po TLS. Klíč je vázaný na integraci a její rozsah.
+
+  parameters:
+    personId:
+      name: personId
+      in: path
+      required: true
+      description: Identifikátor osoby v ACS.
+      schema: { type: string }
+    groupId:
+      name: groupId
+      in: path
+      required: true
+      schema: { type: string }
+    cursor:
+      name: cursor
+      in: query
+      description: Kurzor z předchozí odpovědi. Bez něj se začíná od začátku.
+      schema: { type: string }
+    limit:
+      name: limit
+      in: query
+      description: Počet položek na stránku.
+      schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+    changedSince:
+      name: changedSince
+      in: query
+      description: |
+        Jen záznamy změněné od daného času (UTC). Hrubší nástroj než `/changes` —
+        nezachytí smazání, proto se u oprávnění vrací i stav `revoked`.
+      schema: { type: string, format: date-time }
+    idempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Klíč požadavku (doporučeno UUID v4). Opakované volání se stejným klíčem
+        do 24 hodin vrátí původní odpověď a nezaloží nic podruhé. Nutné, aby
+        opakování po timeoutu nezdvojilo události.
+      schema: { type: string, maxLength: 128 }
+
+  headers:
+    ETag:
+      description: Verze odpovědi pro podmíněné dotazy (`If-None-Match`).
+      schema: { type: string }
+
+  responses:
+    BadRequest:
+      description: Požadavek je vadný.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthorized:
+      description: Chybí nebo neplatí přihlášení.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Integrace nemá k datům rozsah.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Záznam neexistuje nebo je mimo rozsah integrace.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TooManyRequests:
+      description: Překročený limit volání; v `Retry-After` je doporučená prodleva.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      description: Chyba podle RFC 9457 (`application/problem+json`).
+      required: [title, status]
+      properties:
+        type: { type: string, format: uri, default: about:blank }
+        title: { type: string, example: Osoba nenalezena }
+        status: { type: integer, example: 404 }
+        detail: { type: string }
+        instance: { type: string, format: uri }
+        traceId:
+          type: string
+          description: Identifikátor volání pro dohledání v logu ACS.
+      examples:
+        - type: https://acs.fnmh.network/problems/credential-not-found
+          title: Identifikátor nenalezen
+          status: 404
+          detail: SPZ 1AB2345 není evidována u žádné osoby.
+          traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+
+    Capabilities:
+      type: object
+      required: [apiVersion, patterns]
+      properties:
+        apiVersion: { type: string, example: '1.0' }
+        acsVersion: { type: string, example: 1.9.0 }
+        patterns:
+          type: array
+          description: Podporované interakční vzory.
+          items:
+            type: string
+            enum: [pull, webhooks, authorizationCheck, events]
+        credentialTypes:
+          type: array
+          items: { $ref: '#/components/schemas/CredentialType' }
+        groupKinds:
+          type: array
+          items: { $ref: '#/components/schemas/GroupKind' }
+        limits:
+          type: object
+          properties:
+            maxPageSize: { type: integer, example: 500 }
+            maxEventBatch: { type: integer, example: 500 }
+            requestsPerMinute: { type: integer, example: 600 }
+            cursorRetentionDays: { type: integer, example: 30 }
+
+    Person:
+      type: object
+      required: [id, firstName, lastName, status]
+      properties:
+        id:
+          type: string
+          description: Neměnný identifikátor osoby v ACS.
+          example: prs_10a4
+        personalNumber:
+          type: [string, 'null']
+          description: |
+            Osobní číslo z personálního systému. Obvyklý spojovací klíč mezi
+            systémy — je ale nepovinné, takže se na něj nesmí spoléhat jako na
+            jediný. Pro trvalé párování slouží `id`.
+          example: '13483'
+        firstName: { type: string, example: Miroslav }
+        lastName: { type: string, example: Pavlíček }
+        email: { type: [string, 'null'], format: email }
+        department: { type: [string, 'null'], example: Oddělení IT }
+        status: { $ref: '#/components/schemas/PersonStatus' }
+        validFrom: { type: [string, 'null'], format: date-time }
+        validTo:
+          type: [string, 'null']
+          format: date-time
+          description: Konec pracovního vztahu; po něm musí systém osobu zneplatnit.
+        externalIds:
+          type: object
+          description: |
+            Identifikátory téže osoby v navázaných systémech. Klíč je kód
+            systému. Umožní párování bez osobního čísla.
+          additionalProperties: { type: string }
+          example:
+            winpak: '4711'
+            stravovani: 'STR-889'
+        credentials:
+          type: array
+          description: Vloženo jen u dotazu na jednu osobu.
+          items: { $ref: '#/components/schemas/Credential' }
+        updatedAt: { type: string, format: date-time }
+
+    PersonStatus:
+      type: string
+      description: |
+        `active` — platný pracovní vztah. `suspended` — dočasně pozastaveno
+        (dlouhá nemoc, rodičovská), oprávnění se nemají mazat. `ended` — ukončeno,
+        systém musí odebrat vše.
+      enum: [active, suspended, ended]
+
+    CredentialType:
+      type: string
+      description: |
+        Druh identifikátoru. `licensePlate` je SPZ pro vjezd, `mealAccount` je
+        stravovací konto, když se neprokazuje kartou.
+      enum: [card, licensePlate, pin, tag, biometric, mealAccount, other]
+
+    Credential:
+      type: object
+      required: [type, value, isActive]
+      properties:
+        type: { $ref: '#/components/schemas/CredentialType' }
+        value:
+          type: string
+          description: |
+            Normalizovaná hodnota: velkými písmeny, bez mezer a pomlček. SPZ
+            `1AB 2345` je uložena jako `1AB2345`. Systém, který porovnává, musí
+            normalizovat stejně.
+          example: 1AB2345
+        displayValue:
+          type: [string, 'null']
+          description: Hodnota v podobě čitelné pro člověka, pokud se liší.
+          example: 1AB 2345
+        isActive: { type: boolean }
+        validFrom: { type: [string, 'null'], format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+        note: { type: [string, 'null'] }
+
+    GroupKind:
+      type: string
+      description: |
+        Druh skupiny. `readers` je skupina čteček (stávající model ACS), `diners`
+        skupina strávníků, `parking` parkovací skupina, `zone` logická zóna
+        areálu.
+      enum: [readers, diners, parking, zone, other]
+
+    Group:
+      type: object
+      required: [id, kind, name]
+      properties:
+        id: { type: string, example: grp_diners_a }
+        kind: { $ref: '#/components/schemas/GroupKind' }
+        name: { type: string, example: Strávníci — zaměstnanecká cena }
+        description: { type: [string, 'null'] }
+        parentGroupId:
+          type: [string, 'null']
+          description: Nadřazená skupina; členství se dědí směrem dolů.
+        attributes:
+          type: object
+          description: |
+            Údaje, které má smysl jen u daného druhu — u strávníků kód cenové
+            hladiny a výše příspěvku, u parkování číslo parkoviště. Klíče se
+            dohodnou při zprovoznění integrace a jsou součástí předávacího
+            protokolu.
+          additionalProperties: { type: string }
+          example:
+            priceList: 'ZAM'
+            subsidyCzk: '35'
+        isActive: { type: boolean }
+        updatedAt: { type: string, format: date-time }
+
+    GroupMember:
+      type: object
+      required: [groupId, memberType]
+      properties:
+        groupId: { type: string }
+        memberType:
+          type: string
+          enum: [person, accessPoint, group]
+        personId: { type: [string, 'null'] }
+        accessPointId: { type: [string, 'null'] }
+        childGroupId: { type: [string, 'null'] }
+        via:
+          type: [string, 'null']
+          description: |
+            Přes kterou vnořenou skupinu členství vzniklo. Prázdné u přímého
+            členství.
+        validFrom: { type: [string, 'null'], format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+
+    AccessPointKind:
+      type: string
+      enum: [door, gate, barrier, turnstile, mealTerminal, other]
+
+    AccessPoint:
+      type: object
+      required: [id, kind, name]
+      properties:
+        id: { type: string, example: ap_2211 }
+        kind: { $ref: '#/components/schemas/AccessPointKind' }
+        name: { type: string, example: Vjezd areál — sever }
+        location:
+          type: [string, 'null']
+          description: Umístění v podobě „Budova / část / patro / chodba / místnost“.
+          example: MOC / A / 1NP / A100 / 23-10115
+        direction:
+          type: [string, 'null']
+          description: |
+            U vjezdů rozlišení směru (`in`, `out`). Na výjezdu se obvykle povoluje
+            i bez oprávnění, aby vozidlo nezůstalo uvnitř areálu.
+        externalIds:
+          type: object
+          additionalProperties: { type: string }
+          example:
+            winpak: '1024'
+        isActive: { type: boolean }
+
+    EntitlementStatus:
+      type: string
+      description: |
+        `active` platné, `pending` schválené a čeká na zápis do cílového systému,
+        `revoked` odebrané (posílá se, aby si systém záznam zneplatnil),
+        `expired` prošlá platnost.
+      enum: [active, pending, revoked, expired]
+
+    Entitlement:
+      type: object
+      required: [id, personId, status, target]
+      properties:
+        id: { type: string, example: ent_88f1 }
+        personId: { type: string }
+        target:
+          type: object
+          description: Cíl oprávnění — přístupový bod, nebo skupina.
+          properties:
+            accessPointId: { type: [string, 'null'] }
+            groupId: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/EntitlementStatus' }
+        validFrom: { type: [string, 'null'], format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+        source:
+          type: object
+          description: Odkud oprávnění vzniklo — pro dohledatelnost a reklamace.
+          properties:
+            requestId: { type: [string, 'null'], example: req_5521 }
+            approvedAt: { type: [string, 'null'], format: date-time }
+            reason:
+              type: [string, 'null']
+              enum: [approvedRequest, autoAssignment, manual, imported, null]
+        updatedAt: { type: string, format: date-time }
+
+    AuthorizationRequest:
+      type: object
+      required: [accessPointId, credential]
+      properties:
+        accessPointId:
+          type: string
+          description: |
+            Přístupový bod v ACS, nebo hodnota z `externalIds` daného systému —
+            ACS přijme obojí.
+          example: ap_2211
+        credential:
+          type: object
+          required: [type, value]
+          properties:
+            type: { $ref: '#/components/schemas/CredentialType' }
+            value: { type: string, example: 1AB2345 }
+        direction:
+          type: string
+          enum: [in, out]
+          default: in
+        occurredAt:
+          type: string
+          format: date-time
+          description: Čas načtení identifikátoru. Bez něj se bere čas přijetí.
+        confidence:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 1
+          description: |
+            Spolehlivost načtení u kamerového čtení SPZ. ACS ji nepoužívá
+            k rozhodnutí, ale ukládá k události — slouží k dohledání sporů, kdy
+            kamera přečte značku špatně.
+
+    AuthorizationDecision:
+      type: object
+      required: [decision, decidedAt]
+      properties:
+        decision:
+          type: string
+          enum: [allow, deny]
+        reason:
+          type: string
+          description: Důvod rozhodnutí; u zamítnutí se zobrazí obsluze.
+          enum:
+            - allowed
+            - credentialUnknown
+            - credentialExpired
+            - personEnded
+            - personSuspended
+            - noEntitlement
+            - entitlementExpired
+            - outsideTimeSchedule
+            - accessPointUnknown
+        personId: { type: [string, 'null'] }
+        personName:
+          type: [string, 'null']
+          description: Pro zobrazení obsluze u brány; posílá se jen u povolení.
+        entitlementId: { type: [string, 'null'] }
+        validTo: { type: [string, 'null'], format: date-time }
+        cacheTtlSeconds:
+          type: [integer, 'null']
+          description: |
+            Jak dlouho smí systém rozhodnutí použít z vlastní paměti při
+            nedostupnosti ACS. Nula znamená nekešovat.
+        decidedAt: { type: string, format: date-time }
+        traceId: { type: string }
+
+    EventType:
+      type: string
+      description: |
+        `denied` se hlásí vždy včetně důvodu — bez toho se nedá dohledat, proč
+        někoho brána nepustila. `mealTaken` nese ve `details` kód jídla a cenovou
+        hladinu.
+      enum:
+        - passed
+        - denied
+        - vehicleIn
+        - vehicleOut
+        - mealTaken
+        - mealCancelled
+        - deviceOffline
+        - other
+
+    Event:
+      type: object
+      required: [id, type, occurredAt]
+      properties:
+        id:
+          type: string
+          description: |
+            Identifikátor události v odesílajícím systému. ACS podle něj rozpozná
+            duplicitu, takže se dávka smí poslat znovu.
+          example: gate-north-99182
+        type: { $ref: '#/components/schemas/EventType' }
+        occurredAt: { type: string, format: date-time }
+        accessPointId: { type: [string, 'null'] }
+        personId: { type: [string, 'null'] }
+        credential:
+          type: [object, 'null']
+          properties:
+            type: { $ref: '#/components/schemas/CredentialType' }
+            value: { type: string }
+        decisionReason:
+          type: [string, 'null']
+          description: U zamítnutí důvod ze `AuthorizationDecision.reason`.
+        details:
+          type: object
+          additionalProperties: { type: string }
+          example:
+            mealCode: OBED2
+            priceList: ZAM
+
+    EventResult:
+      type: object
+      required: [id, status]
+      properties:
+        id: { type: string }
+        status:
+          type: string
+          enum: [accepted, duplicate, rejected]
+        problem:
+          description: Důvod odmítnutí, u přijatých se nevyplňuje.
+          oneOf:
+            - $ref: '#/components/schemas/Problem'
+            - type: 'null'
+
+    Change:
+      type: object
+      required: [id, type, occurredAt]
+      properties:
+        id:
+          type: string
+          description: Identifikátor změny; slouží k rozpoznání duplicity u webhooků.
+          example: chg_01J8Z2
+        type:
+          type: string
+          enum:
+            - person.changed
+            - credential.changed
+            - group.changed
+            - group.membership.changed
+            - entitlement.changed
+            - accessPoint.changed
+        occurredAt: { type: string, format: date-time }
+        personId: { type: [string, 'null'] }
+        groupId: { type: [string, 'null'] }
+        entitlementId: { type: [string, 'null'] }
+        accessPointId: { type: [string, 'null'] }
+        payload:
+          description: |
+            Stav záznamu po změně, aby si příjemce nemusel dělat další dotaz.
+            U smazání chybí a stav je patrný z `status` v předchozím stavu.
+          oneOf:
+            - $ref: '#/components/schemas/Person'
+            - $ref: '#/components/schemas/Credential'
+            - $ref: '#/components/schemas/Group'
+            - $ref: '#/components/schemas/GroupMember'
+            - $ref: '#/components/schemas/Entitlement'
+            - $ref: '#/components/schemas/AccessPoint'
+            - type: 'null'

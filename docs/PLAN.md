@@ -267,6 +267,7 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
 | 3 | Schvalovací matice, zástupy, řetězce čteček, workflow žádostí, notifikace | funkční schvalování end-to-end |
 | 4 | Fronta správce karet, WinPak Connector (zápis), „Moje přístupy“, reporty | uzavřená smyčka do WIN-PAK |
 | 5 | Grafická schémata, témata GUI, ladění UX, zátěžové a failover testy | produkční verze 1.0 |
+| 6 | Napojení dalších systémů (vjezdy na SPZ, stravování) přes univerzální integrační API — [podklad do zadávačky](integrace/README.md) | jeden kontrakt, N konektorů místo integrace na míru |
 
 ---
 
