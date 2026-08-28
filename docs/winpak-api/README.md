@@ -230,6 +230,10 @@ Konektor tyto zprávy parsuje v `Providers/Com/NlzMessage.cs`.
 
 ## Instalace na WIN-PAK serveru
 
+Postup krok za krokem včetně napojení ACS a řešení problémů je v
+[`docs/winpak-connector-zprovozneni.md`](../winpak-connector-zprovozneni.md).
+Tady jsou jen předpoklady na straně WIN-PAKu.
+
 1. WIN-PAK musí být nainstalovaný s volbou **Web** — pak se automaticky nasadí
    `DatabaseAPIServer`. API je součástí edic SE/PE (licence `SRVWPPAPI`), v XE není.
 2. V `dcomcnfg` → Component Services → COM+ Applications ověřte, že existují

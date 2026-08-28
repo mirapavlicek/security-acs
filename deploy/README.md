@@ -73,5 +73,10 @@ curl http://127.0.0.1:52000/health   # healthcheck
 
 ## WinPak Connector
 
-Instalace na WIN-PAK (Windows) server je popsaná v
-[`src/Acs.WinPakConnector/README.md`](../src/Acs.WinPakConnector/README.md).
+Konektor je samostatná Windows služba na WIN-PAK serveru — **auto-update ACS ho
+nenasazuje**, publikuje a instaluje se zvlášť.
+
+- Postup zprovoznění krok za krokem:
+  [`docs/winpak-connector-zprovozneni.md`](../docs/winpak-connector-zprovozneni.md)
+- Referenční popis a nastavení:
+  [`src/Acs.WinPakConnector/README.md`](../src/Acs.WinPakConnector/README.md)

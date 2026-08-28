@@ -10,6 +10,10 @@ jsou COM objekty vystavené přes COM+/DCOM, tedy Windows-only. Konektor je
 jediné místo v systému, které mluví COM; všechno ostatní jede po REST.
 Podrobný rozbor API i mapování na endpointy je v `docs/winpak-api/README.md`.
 
+> **Zprovozňujete konektor poprvé?** Použijte postup krok za krokem v
+> [`docs/winpak-connector-zprovozneni.md`](../../docs/winpak-connector-zprovozneni.md).
+> Tento dokument je referenční popis.
+
 ## Administrační GUI
 
 Konektor má vlastní webovou administraci na `http://<winpak-server>:52001/ui`.
