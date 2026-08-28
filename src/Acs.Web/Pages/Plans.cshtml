@@ -84,14 +84,14 @@
             // vidět, kam smí, i když jsou popisky při oddálení skryté.
             const rect = el('rect', { x: room.x, y: room.y, width: w, height: h,
                 fill: room.mine ? 'rgba(46,125,50,0.22)' : 'rgba(11,107,203,0.10)',
-                stroke: room.mine ? '#2e7d32' : '#0b6bcb', 'stroke-width': 0.3, rx: 0.6,
-                'vector-effect': 'non-scaling-stroke' });
+                stroke: room.mine ? '#2e7d32' : '#0b6bcb', 'stroke-width': 0.3,
+                rx: Math.min(0.6, w * 0.12, h * 0.12), 'vector-effect': 'non-scaling-stroke' });
             rect.append(el('title', {}, room.name + (room.mine ? ' — máte přístup' : '')));
             host.append(rect);
 
             // Popisek se vejde do obdélníku; jestli je čitelný, rozhodne přiblížení.
             const text = planShortLabel(room.name);
-            const size = Math.min(h * 0.5, w / Math.max(text.length, 1) * 1.7);
+            const size = Math.min(h * 0.5, w / Math.max(text.length, 1) * 1.4);
             host.append(el('text', {
                 x: room.x + w / 2, y: room.y + h / 2 + size * 0.35,
                 'font-size': size.toFixed(2), fill: room.mine ? '#2e7d32' : '#0b6bcb', 'text-anchor': 'middle',

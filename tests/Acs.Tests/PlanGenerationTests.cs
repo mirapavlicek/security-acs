@@ -320,6 +320,22 @@ public sealed class PlanGenerationTests : IDisposable
     }
 
     [Fact]
+    public async Task Uz_hotovy_plan_hlasi_ze_neni_co_doplnit()
+    {
+        var room = AddRoom("M2001", sourceX: 200, sourceY: 200);
+        room.PlanX = 10;
+        room.PlanY = 10;
+        _db.SaveChanges();
+
+        var result = await _generator.GenerateFloorAsync(_floor.Id, onlyEmpty: true, "test");
+
+        // Prázdné patro a hotový plán se nesmí hlásit stejně.
+        Assert.Equal(PlanGenerationMode.AlreadyPlaced, result.Mode);
+        Assert.Equal(0, result.RoomsPlaced);
+        Assert.Contains("hotový", result.ToString());
+    }
+
+    [Fact]
     public async Task Neznamé_patro_vyhodi_srozumitelnou_chybu()
         => await Assert.ThrowsAsync<KeyNotFoundException>(
             () => _generator.GenerateFloorAsync(9999, onlyEmpty: false, "test"));
@@ -345,6 +361,7 @@ public sealed class PlanGenerationTests : IDisposable
 
         Assert.Equal(2, result.Floors.Count);
         Assert.Equal(3, result.RoomsPlaced);
+        Assert.False(result.NothingToDo);
         // Jedno patro má výkresy, druhé jen strukturu.
         Assert.Equal(1, result.FromDrawing);
         Assert.Contains(result.Floors, f => f.Mode == PlanGenerationMode.Schematic);

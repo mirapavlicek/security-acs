@@ -175,12 +175,12 @@
             const w = room.w ?? 12, h = room.h ?? 9;
             const rect = el('rect', {
                 x: room.x, y: room.y, width: w, height: h,
-                fill: 'rgba(11,107,203,0.13)', stroke: '#0b6bcb', 'stroke-width': 0.35, rx: 0.6,
-                'vector-effect': 'non-scaling-stroke',
+                fill: 'rgba(11,107,203,0.13)', stroke: '#0b6bcb', 'stroke-width': 0.35,
+                rx: Math.min(0.6, w * 0.12, h * 0.12), 'vector-effect': 'non-scaling-stroke',
             });
             rect.append(el('title', {}, room.name));
             const text = shortLabel(room.name);
-            const size = Math.min(h * 0.5, w / Math.max(text.length, 1) * 1.7);
+            const size = Math.min(h * 0.5, w / Math.max(text.length, 1) * 1.4);
             const label = el('text', {
                 x: room.x + w / 2, y: room.y + h / 2 + size * 0.35,
                 'font-size': size.toFixed(2), fill: '#0b6bcb',

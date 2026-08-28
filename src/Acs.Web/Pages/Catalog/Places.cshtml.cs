@@ -178,9 +178,13 @@ public class PlacesModel(AcsDbContext db, AuditService audit, PlanGenerationServ
         try
         {
             var result = await planGenerator.GenerateBuildingAsync(buildingId, onlyEmpty, User.Identity?.Name);
-            Message = result.Floors.Count == 0
-                ? "Budova nemá žádná patra, plány není z čeho sestavit."
-                : $"Plány vygenerovány — {result}.";
+            Message = result.Floors.Count switch
+            {
+                0 => "Budova nemá žádná patra, plány není z čeho sestavit.",
+                _ when result.NothingToDo =>
+                    $"Doplňovat nebylo co — {result}. Přerovnat plány jde tlačítkem „Generuj všechny znovu“.",
+                _ => $"Plány vygenerovány — {result}.",
+            };
         }
         catch (Exception ex)
         {

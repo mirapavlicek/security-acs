@@ -11,6 +11,9 @@ public enum PlanGenerationMode
     /// <summary>Nebylo z čeho generovat (patro nemá místnosti ani čtečky).</summary>
     Empty,
 
+    /// <summary>Patro už má všechny prvky umístěné, doplňovat nebylo co.</summary>
+    AlreadyPlaced,
+
     /// <summary>Z poloh ve výkresech DPS — plán odpovídá skutečnému rozložení budovy.</summary>
     FromDrawing,
 
@@ -32,6 +35,7 @@ public record PlanGenerationResult(
         {
             PlanGenerationMode.FromDrawing => "z výkresů",
             PlanGenerationMode.Schematic => "schéma podle chodeb",
+            PlanGenerationMode.AlreadyPlaced => "plán už je hotový",
             _ => "nebylo z čeho generovat",
         };
 
@@ -48,9 +52,14 @@ public record BuildingPlanGenerationResult(string BuildingName, IReadOnlyList<Pl
     public int ReadersPlaced => Floors.Sum(f => f.ReadersPlaced);
     public int FromDrawing => Floors.Count(f => f.Mode == PlanGenerationMode.FromDrawing);
 
+    /// <summary>Nebylo co doplnit — všechna patra už plán měla.</summary>
+    public bool NothingToDo => RoomsPlaced == 0 && ReadersPlaced == 0;
+
     public override string ToString()
-        => $"{BuildingName}: pater {Floors.Count} (z výkresů {FromDrawing}), "
-           + $"místností {RoomsPlaced}, čteček {ReadersPlaced}";
+        => NothingToDo
+            ? $"{BuildingName}: všechna patra ({Floors.Count}) už plán mají, doplňovat nebylo co"
+            : $"{BuildingName}: pater {Floors.Count} (z výkresů {FromDrawing}), "
+              + $"místností {RoomsPlaced}, čteček {ReadersPlaced}";
 }
 
 /// <summary>
@@ -139,7 +148,13 @@ public class PlanGenerationService(AcsDbContext db, AuditService audit)
         var skipped = rooms.Count - targetRooms.Count + (readers.Count - targetReaders.Count);
 
         if (targetRooms.Count == 0 && targetReaders.Count == 0)
-            return new PlanGenerationResult(floor.Id, floor.Name, PlanGenerationMode.Empty, 0, 0, skipped);
+        {
+            // Rozlišit „patro je prázdné“ od „všechno už má pozici“ — pro hlášku uživateli.
+            var nothing = rooms.Count + readers.Count > 0
+                ? PlanGenerationMode.AlreadyPlaced
+                : PlanGenerationMode.Empty;
+            return new PlanGenerationResult(floor.Id, floor.Name, nothing, 0, 0, skipped);
+        }
 
         // Výkresy dávají skutečné rozložení; bez nich se kreslí schéma podle chodeb.
         var mode = HasDrawing(targetRooms, targetReaders)

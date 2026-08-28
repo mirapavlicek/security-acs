@@ -138,9 +138,14 @@ public class FloorPlanModel(AcsDbContext db, AuditService audit, PlanGenerationS
         try
         {
             var result = await planGenerator.GenerateFloorAsync(id, onlyEmpty, User.Identity?.Name);
-            Message = result.Mode == Acs.Infrastructure.Plans.PlanGenerationMode.Empty
-                ? "Patro nemá místnosti ani čtečky, plán není z čeho sestavit."
-                : $"Plán vygenerován — {result}.";
+            Message = result.Mode switch
+            {
+                PlanGenerationMode.Empty => "Patro nemá místnosti ani čtečky, plán není z čeho sestavit.",
+                PlanGenerationMode.AlreadyPlaced =>
+                    "Všechny místnosti i čtečky už mají pozici, doplňovat nebylo co. "
+                    + "Přerovnat plán jde tlačítkem „Generuj celé patro“.",
+                _ => $"Plán vygenerován — {result}.",
+            };
         }
         catch (Exception ex)
         {
