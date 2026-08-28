@@ -25,6 +25,7 @@ Webová aplikace pro schvalování přístupů k místnostem (`acs.fnmh.network`
 
 - [Návrhový plán a otevřené otázky](docs/PLAN.md)
 - [Generování plánů pater](docs/plany-generovani.md)
+- [Osobní čísla z Active Directory](docs/ad-osobni-cisla.md)
 - [Bezpečnost — review a opatření](docs/SECURITY.md)
 - [Rešerše WIN-PAK API](docs/winpak-api/README.md)
 

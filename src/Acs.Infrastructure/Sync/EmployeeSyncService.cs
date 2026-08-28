@@ -33,8 +33,13 @@ public class EmployeeSyncService(
         int added = 0, updated = 0, deactivated = 0, processed = 0;
         var now = DateTime.UtcNow;
 
-        foreach (var r in remote)
+        foreach (var raw in remote)
         {
+            // Ořezání platí pro všechny zdroje: AD vrací hodnoty s mezerami a MSSQL
+            // u CHAR sloupců doplněné na pevnou délku. Osobní číslo se pak nespáruje
+            // s kartou a v seznamech vypadá „divně“.
+            var r = Trim(raw);
+
             if (++processed % BatchSize == 0)
             {
                 await db.SaveChangesAsync(ct);
@@ -116,4 +121,20 @@ public class EmployeeSyncService(
         await audit.LogAsync(userName, "employees-synced", "Employee", null, result.ToString(), ct);
         return result;
     }
+
+    /// <summary>Ořeže mezery a prázdné texty převede na null, ať se hodnoty párují.</summary>
+    private static EmployeeRecord Trim(EmployeeRecord r) => r with
+    {
+        ExternalId = r.ExternalId.Trim(),
+        PersonalNumber = Clean(r.PersonalNumber),
+        FirstName = r.FirstName.Trim(),
+        LastName = r.LastName.Trim(),
+        Email = Clean(r.Email),
+        Department = Clean(r.Department),
+        AdAccount = Clean(r.AdAccount),
+        CardNumber = Clean(r.CardNumber),
+    };
+
+    private static string? Clean(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
