@@ -69,6 +69,7 @@ builder.Services.AddScoped<Acs.Infrastructure.Automation.HealthCheckService>();
 builder.Services.AddScoped<Acs.Infrastructure.Import.PlanImportService>();
 builder.Services.AddScoped<Acs.Infrastructure.Plans.PlanGenerationService>();
 builder.Services.AddScoped<Acs.Infrastructure.Sync.EmployeeSourceFactory>();
+builder.Services.AddScoped<Acs.Infrastructure.Sync.LdapDiagnosticsService>();
 builder.Services.AddHttpClient(nameof(Acs.Infrastructure.Sync.ApiEmployeeSource));
 builder.Services.AddSingleton<Acs.Infrastructure.Sync.SyncJobRunner>();
 builder.Services.AddHostedService<Acs.Infrastructure.Sync.SyncScheduler>();
@@ -188,6 +189,64 @@ if (args.Contains("--import-plan"))
         userName: "cli");
     Console.WriteLine(importResult);
     return 0;
+}
+
+// ---------- Výpis atributů účtu z AD (CLI) ----------
+// Použití: Acs.Web --ldap-dump <přihlašovací jméno | osobní číslo | příjmení>
+// Vypíše, co o účtu vrací doménový řadič, a co z toho ACS sestaví. Slouží
+// k dohledání, ze kterého atributu brát osobní číslo.
+if (args.Contains("--ldap-dump"))
+{
+    var idx = Array.IndexOf(args, "--ldap-dump");
+    var query = idx + 1 < args.Length ? args[idx + 1] : null;
+    if (string.IsNullOrWhiteSpace(query))
+    {
+        Console.Error.WriteLine("Zadejte přihlašovací jméno, osobní číslo nebo příjmení.");
+        return 2;
+    }
+
+    using var ldapScope = app.Services.CreateScope();
+    var diagnostics = ldapScope.ServiceProvider
+        .GetRequiredService<Acs.Infrastructure.Sync.LdapDiagnosticsService>();
+
+    try
+    {
+        var dump = await diagnostics.DumpAsync(query);
+        Console.WriteLine(dump);
+        Console.WriteLine($"Base DN: {dump.BaseDn}");
+        Console.WriteLine($"Filtr:   {dump.Filter}");
+        Console.WriteLine($"Osobní číslo se bere z: {string.Join(" -> ", dump.PersonalNumberAttributes)}");
+
+        foreach (var entry in dump.Entries)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"=== {entry.Dn} ===");
+            if (entry.Mapped is { } mapped)
+            {
+                Console.WriteLine($"ACS uloží: osobní číslo „{mapped.PersonalNumber ?? "-"}“"
+                    + $" (z {entry.PersonalNumberFrom ?? "žádného atributu"}), účet {mapped.ExternalId},"
+                    + $" {mapped.FirstName} {mapped.LastName}, oddělení {mapped.Department ?? "-"}");
+            }
+            else
+            {
+                Console.WriteLine("ACS účet přeskočí — chybí sAMAccountName.");
+            }
+
+            Console.WriteLine("--- atributy z AD ---");
+            foreach (var attribute in entry.Attributes)
+            {
+                var use = attribute.MapsTo is null ? "" : $"   [{attribute.MapsTo}]";
+                Console.WriteLine($"{attribute.Name,-32} {attribute.Joined}{use}");
+            }
+        }
+
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Výpis z AD se nezdařil: {ex.Message}");
+        return 2;
+    }
 }
 
 app.UseForwardedHeaders();

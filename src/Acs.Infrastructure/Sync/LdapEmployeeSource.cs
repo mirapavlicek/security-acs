@@ -25,6 +25,13 @@ public class LdapEmployeeSource(
     private const string DefaultFilter =
         "(&(objectCategory=person)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))";
 
+    /// <summary>
+    /// Odkud brát osobní číslo, v tomto pořadí. Výchozí pořadí drží dosavadní
+    /// chování, ale každé AD má osobní číslo jinde — proto jde přenastavit
+    /// v Nastavení → Zdroj zaměstnanců.
+    /// </summary>
+    public static readonly string[] DefaultPersonalNumberAttributes = ["employeeID", "employeeNumber"];
+
     public async Task<IReadOnlyList<EmployeeRecord>> FetchAsync(CancellationToken ct = default)
     {
         try
@@ -53,6 +60,9 @@ public class LdapEmployeeSource(
         var filter = await settings.GetAsync(SettingKeys.EmployeeLdapFilter, ct) ?? DefaultFilter;
         var pageSize = Math.Clamp(await settings.GetIntAsync(SettingKeys.EmployeeLdapPageSize, 500, ct), 50, 1000);
         var timeoutMinutes = Math.Clamp(await settings.GetIntAsync(SettingKeys.EmployeeLdapTimeoutMinutes, 10, ct), 1, 120);
+        var personalNumberAttributes = LdapAttributes.ParseAttributeList(
+            await settings.GetAsync(SettingKeys.EmployeePersonalNumberAttribute, ct),
+            DefaultPersonalNumberAttributes);
 
         using var connection = LdapAuthenticator.CreateConnection(server, port, useSsl, bindUser, bindPassword);
         connection.Timeout = TimeSpan.FromMinutes(timeoutMinutes);
@@ -70,8 +80,7 @@ public class LdapEmployeeSource(
             ct.ThrowIfCancellationRequested();
 
             var request = new SearchRequest(baseDn, filter, SearchScope.Subtree,
-                "sAMAccountName", "givenName", "sn", "displayName", "mail", "department",
-                "employeeID", "employeeNumber", "title", "physicalDeliveryOfficeName");
+                LdapAttributes.RequestedAttributes(personalNumberAttributes));
             request.SizeLimit = 0;            // limit řídí stránkování, ne server-side cap
             request.TimeLimit = TimeSpan.FromMinutes(timeoutMinutes);
             request.Controls.Add(pageControl);
@@ -90,11 +99,11 @@ public class LdapEmployeeSource(
                 logger?.LogWarning(ex,
                     "LDAP: dotaz ukončen serverem ({Result}), pokračuji s dílčím výsledkem ({Count} záznamů).",
                     partial.ResultCode, result.Count);
-                Collect(partial, result, seen);
+                Collect(partial, result, seen, personalNumberAttributes);
                 break;
             }
 
-            Collect(response, result, seen);
+            Collect(response, result, seen, personalNumberAttributes);
             page++;
             logger?.LogInformation("LDAP: načtena stránka {Page} ({Total} zaměstnanců celkem).", page, result.Count);
 
@@ -108,36 +117,17 @@ public class LdapEmployeeSource(
         return result;
     }
 
-    private static void Collect(SearchResponse response, List<EmployeeRecord> result, HashSet<string> seen)
+    private static void Collect(SearchResponse response, List<EmployeeRecord> result,
+        HashSet<string> seen, IReadOnlyList<string> personalNumberAttributes)
     {
         foreach (SearchResultEntry entry in response.Entries)
         {
-            var sam = GetAttr(entry, "sAMAccountName");
-            if (string.IsNullOrWhiteSpace(sam) || !seen.Add(sam))
-                continue;   // servisní účty bez sAMAccountName a duplicity ze stránkování
+            var record = LdapAttributes.MapEmployee(LdapAttributes.TextLookup(entry), personalNumberAttributes);
+            // Bez sAMAccountName (servisní objekty) a duplicity ze stránkování se přeskakují.
+            if (record is null || !seen.Add(record.ExternalId))
+                continue;
 
-            var firstName = GetAttr(entry, "givenName");
-            var lastName = GetAttr(entry, "sn");
-            if (firstName is null && lastName is null)
-            {
-                var display = GetAttr(entry, "displayName") ?? sam;
-                var parts = display.Split(' ', 2);
-                firstName = parts.Length > 1 ? parts[0] : "";
-                lastName = parts.Length > 1 ? parts[1] : display;
-            }
-
-            result.Add(new EmployeeRecord(
-                ExternalId: sam,
-                PersonalNumber: GetAttr(entry, "employeeID") ?? GetAttr(entry, "employeeNumber"),
-                FirstName: firstName ?? "",
-                LastName: lastName ?? "",
-                Email: GetAttr(entry, "mail"),
-                Department: GetAttr(entry, "department") ?? GetAttr(entry, "physicalDeliveryOfficeName"),
-                AdAccount: sam,
-                CardNumber: null));   // karty se dotahují samostatně ze SQL
+            result.Add(record);
         }
     }
-
-    private static string? GetAttr(SearchResultEntry entry, string name)
-        => entry.Attributes[name] is { Count: > 0 } attr ? attr[0]?.ToString() : null;
 }
