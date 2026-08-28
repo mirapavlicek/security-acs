@@ -1,0 +1,554 @@
+openapi: 3.1.0
+
+info:
+  title: Kontrakt konektoru ACS
+  version: 1.0.0-draft
+  summary: REST rozhraní, které implementuje navázaný systém, aby do něj ACS zapisoval osoby a oprávnění.
+  description: |
+    **Tohle je požadavek na dodavatele.** Kdo chce svůj systém napojit na ACS,
+    postaví (nebo doloží) službu, která odpovídá na tyto cesty. ACS pak systém
+    obsluhuje stejným kódem jako všechny ostatní — nepíše se pro každý produkt
+    zvláštní integrace.
+
+    Vzorem je stávající konektor k Honeywell WIN-PAK
+    (`src/Acs.WinPakConnector`), který tímto způsobem už běží: obaluje
+    proprietární COM API do REST a ACS s ním mluví přes HTTP.
+
+    Konektor je **tenká převodní vrstva**, ne druhá evidence. Nerozhoduje, kdo má
+    mít přístup — to je věc schvalování v ACS. Jeho úkolem je požadovaný stav
+    zapsat do cílového systému a nahlásit, jak to skončilo.
+
+    Zásadní vlastnost: konektor v `GET /capabilities` přizná, co neumí,
+    a nepodporované operace odmítá stavem `501`. ACS se podle toho zařídí, takže
+    se dá začít se čtením a doplňovat zápis později.
+
+    Terminologie, provozní požadavky a akceptační kritéria:
+    `docs/integrace/README.md`.
+
+servers:
+  - url: https://{host}:{port}/api/v1
+    description: Konektor běží ve vnitřní síti u cílového systému.
+    variables:
+      host:
+        default: connector.example.local
+      port:
+        default: '8443'
+
+tags:
+  - name: Stav
+    description: Dostupnost a přiznané možnosti. Povinné pro všechny konektory.
+  - name: Osoby
+    description: Zápis osob a jejich identifikátorů do cílového systému.
+  - name: Oprávnění
+    description: Zápis a odebrání oprávnění.
+  - name: Skupiny
+    description: Členství ve skupinách, pokud je jimi systém řízen (například strávníci).
+  - name: Události
+    description: Vyzvednutí událostí z cílového systému, když je neumí posílat sám.
+
+security:
+  - apiKey: []
+
+paths:
+  /health:
+    get:
+      tags: [Stav]
+      summary: Dostupnost konektoru a cílového systému
+      description: |
+        Volá se pravidelně pro sledování. Odpovídá **bez ověření**, aby se dala
+        použít i v load balanceru, a proto nesmí vracet nic citlivého.
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: Konektor běží; `targetReachable` říká, jestli odpovídá i cílový systém.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [ok, degraded] }
+                  targetReachable: { type: boolean }
+                  message: { type: [string, 'null'] }
+        '503':
+          description: Konektor není provozuschopný.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /capabilities:
+    get:
+      tags: [Stav]
+      summary: Co konektor umí
+      description: |
+        ACS si odpověď zjišťuje při startu a pak jednou za hodinu. Volá jen to,
+        co je zde přiznané — díky tomu se konektor smí dodat po částech.
+      operationId: getConnectorCapabilities
+      responses:
+        '200':
+          description: Přiznané možnosti
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConnectorCapabilities' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /persons/{personId}:
+    put:
+      tags: [Osoby]
+      summary: Založení nebo aktualizace osoby
+      description: |
+        Jedno volání pro založení i změnu (upsert) — ACS nesleduje, jestli už
+        osoba v cílovém systému je. `personId` je identifikátor z ACS a konektor
+        si podle něj drží párování na svůj vnitřní záznam.
+
+        Ukončení pracovního vztahu se posílá jako `status: ended`, ne jako smazání
+        — historie průchodů a odebraných obědů musí v cílovém systému zůstat.
+      operationId: upsertPerson
+      parameters:
+        - $ref: '#/components/parameters/personId'
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PersonUpsert' }
+      responses:
+        '200':
+          description: Zapsáno; v odpovědi je identifikátor v cílovém systému.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UpsertResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '501': { $ref: '#/components/responses/NotSupported' }
+        '502': { $ref: '#/components/responses/TargetUnavailable' }
+
+    delete:
+      tags: [Osoby]
+      summary: Odebrání osoby
+      description: |
+        Používá se jen tam, kde to vyžaduje skartace. Běžné ukončení zaměstnance
+        se řeší přes `status: ended`. Neexistující osoba vrací `204`, aby
+        opakované volání neselhalo.
+      operationId: deletePerson
+      parameters:
+        - $ref: '#/components/parameters/personId'
+        - $ref: '#/components/parameters/idempotencyKey'
+      responses:
+        '204':
+          description: Odebráno, nebo už neexistovalo.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '501': { $ref: '#/components/responses/NotSupported' }
+        '502': { $ref: '#/components/responses/TargetUnavailable' }
+
+  /persons/{personId}/credentials:
+    put:
+      tags: [Osoby]
+      summary: Nastavení identifikátorů osoby
+      description: |
+        Posílá se **celý platný seznam**, ne přírůstek. Konektor zajistí, že
+        v cílovém systému zůstane právě tenhle stav — co v seznamu není, zneplatní.
+        Zabraňuje to rozejití stavů, kdy se jedno dílčí volání nepovede.
+
+        Hodnoty jsou normalizované (velká písmena, bez mezer a pomlček). Pokud
+        cílový systém vyžaduje jiný tvar (SPZ s mezerou, karta v desítkové
+        soustavě), převod je úkol konektoru.
+      operationId: setCredentials
+      parameters:
+        - $ref: '#/components/parameters/personId'
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [credentials]
+              properties:
+                credentials:
+                  type: array
+                  items: { $ref: '#/components/schemas/Credential' }
+      responses:
+        '204':
+          description: Stav identifikátorů nastaven.
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '501': { $ref: '#/components/responses/NotSupported' }
+        '502': { $ref: '#/components/responses/TargetUnavailable' }
+
+  /persons/{personId}/entitlements:
+    put:
+      tags: [Oprávnění]
+      summary: Nastavení oprávnění osoby
+      description: |
+        Také celý platný stav, ze stejného důvodu jako u identifikátorů. Cíl je
+        buď přístupový bod, nebo skupina — konektor si je mapuje na to, čemu
+        rozumí cílový systém (ve WIN-PAK access level, ve stravovacím systému
+        cenová hladina).
+
+        Cíl, který konektor nezná, se **nepřeskakuje mlčky**: vrátí se `422`
+        s výpisem neznámých cílů v `unknownTargets`, aby to správce viděl ve
+        frontě a doplnil párování.
+      operationId: setEntitlements
+      parameters:
+        - $ref: '#/components/parameters/personId'
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entitlements]
+              properties:
+                entitlements:
+                  type: array
+                  items: { $ref: '#/components/schemas/EntitlementAssignment' }
+      responses:
+        '200':
+          description: Stav nastaven; v odpovědi je, co se zapsalo.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EntitlementResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '501': { $ref: '#/components/responses/NotSupported' }
+        '502': { $ref: '#/components/responses/TargetUnavailable' }
+
+  /groups:
+    get:
+      tags: [Skupiny]
+      summary: Skupiny v cílovém systému
+      description: |
+        Slouží ke spárování skupin ACS s tím, co existuje v cílovém systému —
+        například cenových hladin ve stravování. Správce ACS pak páruje ze
+        seznamu, ne přepisováním kódů z hlavy.
+      operationId: listTargetGroups
+      parameters:
+        - name: kind
+          in: query
+          schema: { type: string, example: diners }
+      responses:
+        '200':
+          description: Skupiny cílového systému
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TargetGroup' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '501': { $ref: '#/components/responses/NotSupported' }
+
+  /access-points:
+    get:
+      tags: [Oprávnění]
+      summary: Přístupové body cílového systému
+      description: |
+        Dveře, brány a terminály, které systém zná. ACS je používá k párování na
+        své čtečky a přístupové body. Bez tohoto seznamu se párování zadává ručně
+        a je zdrojem chyb.
+      operationId: listTargetAccessPoints
+      responses:
+        '200':
+          description: Přístupové body
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TargetAccessPoint' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '501': { $ref: '#/components/responses/NotSupported' }
+
+  /events:
+    get:
+      tags: [Události]
+      summary: Vyzvednutí událostí
+      description: |
+        Pro systémy, které neumí události posílat samy. ACS se ptá pravidelně
+        a drží si `cursor` z poslední odpovědi.
+
+        Kdo události posílat umí, použije místo toho `POST /events`
+        v integračním API ACS — je to úspornější a rychlejší.
+      operationId: pullEvents
+      parameters:
+        - name: cursor
+          in: query
+          description: Kurzor z předchozí odpovědi; bez něj se začíná od nejstarší dostupné události.
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 200 }
+      responses:
+        '200':
+          description: Stránka událostí
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/TargetEvent' }
+                  nextCursor: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '501': { $ref: '#/components/responses/NotSupported' }
+
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: |
+        Minimální požadavek. Konektor bez nastaveného klíče musí všechna volání
+        odmítat (`503`) — nesmí se stát, že nenakonfigurovaný konektor běží
+        otevřený. Doporučeno navíc omezení na IP adresy ACS nodů a vzájemné TLS.
+
+  parameters:
+    personId:
+      name: personId
+      in: path
+      required: true
+      description: Identifikátor osoby v ACS (neměnný).
+      schema: { type: string }
+    idempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Konektor si klíč pamatuje nejméně 24 hodin a při opakovaném volání vrátí
+        původní výsledek, aniž by operaci provedl znovu. ACS opakuje volání po
+        timeoutu i po restartu, takže bez toho vznikají duplicity.
+      schema: { type: string, maxLength: 128 }
+
+  responses:
+    BadRequest:
+      description: Vadný požadavek.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthorized:
+      description: Chybějící nebo neplatný klíč.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Osoba nebo záznam v cílovém systému neexistuje.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unprocessable:
+      description: |
+        Cílový systém požadavek odmítl (neznámý cíl, obsazené číslo karty,
+        pravidlo systému). Chyba na straně dat — ACS ji ukáže správci a neopakuje.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotSupported:
+      description: |
+        Konektor operaci neumí. Musí odpovídat tomu, co přiznává
+        `GET /capabilities`. ACS operaci nebude opakovat.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TargetUnavailable:
+      description: |
+        Konektor se nedostal k cílovému systému. Přechodná chyba — ACS ji zopakuje
+        s narůstající prodlevou.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      description: |
+        Chyba podle RFC 9457 (`application/problem+json`). Text v `detail` se
+        zobrazuje správci karet v ACS, proto musí být srozumitelný člověku
+        a v češtině — „Číslo karty 100234 už patří jinému držiteli“, ne „ERR_0x8004“.
+      required: [title, status]
+      properties:
+        type: { type: string, format: uri, default: about:blank }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        targetErrorCode:
+          type: [string, 'null']
+          description: Původní kód chyby cílového systému, pro dohledání u dodavatele.
+        unknownTargets:
+          type: array
+          description: U `422` z nastavení oprávnění výpis cílů, které konektor neumí spárovat.
+          items: { type: string }
+      examples:
+        - title: Cíl není spárován
+          status: 422
+          detail: Skupina grp_diners_a nemá v systému pro stravování odpovídající cenovou hladinu.
+          unknownTargets: [grp_diners_a]
+
+    ConnectorCapabilities:
+      type: object
+      required: [connector, contractVersion, operations]
+      properties:
+        connector:
+          type: object
+          required: [name, version]
+          properties:
+            name: { type: string, example: Konektor stravování XY }
+            version: { type: string, example: 1.2.0 }
+            targetSystem: { type: string, example: XY Jídelna 5.4 }
+        contractVersion:
+          type: string
+          description: Verze tohoto kontraktu, kterou konektor plní.
+          example: '1.0'
+        operations:
+          type: array
+          description: |
+            Seznam podporovaných operací podle `operationId` z tohoto dokumentu.
+            Co tu není, ACS nezavolá.
+          items:
+            type: string
+            enum:
+              - upsertPerson
+              - deletePerson
+              - setCredentials
+              - setEntitlements
+              - listTargetGroups
+              - listTargetAccessPoints
+              - pullEvents
+        credentialTypes:
+          type: array
+          description: Druhy identifikátorů, které cílový systém zpracuje.
+          items:
+            type: string
+            enum: [card, licensePlate, pin, tag, biometric, mealAccount, other]
+        entitlementTargets:
+          type: array
+          description: Zda systém přijímá oprávnění na přístupové body, na skupiny, nebo obojí.
+          items:
+            type: string
+            enum: [accessPoint, group]
+        supportsValidity:
+          type: boolean
+          description: |
+            Umí systém omezit platnost oprávnění datem? Pokud ne, musí ACS
+            odebírat oprávnění sám při expiraci — a musí to o konektoru vědět
+            dopředu, jinak by prošlá oprávnění zůstala platná.
+        maxBatchSize: { type: [integer, 'null'] }
+
+    PersonUpsert:
+      type: object
+      required: [firstName, lastName, status]
+      properties:
+        personalNumber: { type: [string, 'null'], example: '13483' }
+        firstName: { type: string }
+        lastName: { type: string }
+        email: { type: [string, 'null'], format: email }
+        department: { type: [string, 'null'] }
+        status:
+          type: string
+          enum: [active, suspended, ended]
+        validFrom: { type: [string, 'null'], format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+
+    UpsertResult:
+      type: object
+      required: [targetId]
+      properties:
+        targetId:
+          type: string
+          description: |
+            Identifikátor osoby v cílovém systému. ACS si ho uloží k osobě
+            a posílá zpět v dalších voláních, takže se párování neztratí ani po
+            přeinstalaci konektoru.
+        created:
+          type: boolean
+          description: True u nově založené osoby, false u aktualizace.
+
+    Credential:
+      type: object
+      required: [type, value]
+      properties:
+        type:
+          type: string
+          enum: [card, licensePlate, pin, tag, biometric, mealAccount, other]
+        value: { type: string, example: 1AB2345 }
+        validFrom: { type: [string, 'null'], format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+
+    EntitlementAssignment:
+      type: object
+      description: Jedno oprávnění. Vyplňuje se `accessPointId`, nebo `groupId` — ne obojí.
+      properties:
+        accessPointId: { type: [string, 'null'] }
+        groupId: { type: [string, 'null'] }
+        validFrom: { type: [string, 'null'], format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+        entitlementId:
+          type: [string, 'null']
+          description: Identifikátor oprávnění v ACS, pro dohledání v logu.
+
+    EntitlementResult:
+      type: object
+      required: [applied]
+      properties:
+        applied:
+          type: integer
+          description: Kolik oprávnění je po volání v cílovém systému nastaveno.
+        removed:
+          type: integer
+          description: Kolik oprávnění konektor odebral, protože nebyla v poslaném stavu.
+        targetReferences:
+          type: array
+          description: Na co se oprávnění v cílovém systému přeložila (například access levely).
+          items: { type: string }
+          example: ['AL-1024', 'AL-1099']
+
+    TargetGroup:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, example: PRICE_ZAM }
+        name: { type: string, example: Zaměstnanecká cena }
+        kind: { type: [string, 'null'], example: diners }
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+
+    TargetAccessPoint:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, example: '1024' }
+        name: { type: string, example: Vjezd sever }
+        kind: { type: [string, 'null'], example: gate }
+        location: { type: [string, 'null'] }
+
+    TargetEvent:
+      type: object
+      required: [id, type, occurredAt]
+      properties:
+        id: { type: string }
+        type:
+          type: string
+          enum: [passed, denied, vehicleIn, vehicleOut, mealTaken, mealCancelled, deviceOffline, other]
+        occurredAt: { type: string, format: date-time }
+        targetPersonId: { type: [string, 'null'] }
+        personId:
+          type: [string, 'null']
+          description: Identifikátor osoby v ACS, pokud ho konektor zná.
+        accessPointId: { type: [string, 'null'] }
+        credential:
+          type: [object, 'null']
+          properties:
+            type: { type: string }
+            value: { type: string }
+        details:
+          type: object
+          additionalProperties: { type: string }

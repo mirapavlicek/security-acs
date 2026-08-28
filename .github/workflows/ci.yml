@@ -24,3 +24,20 @@ jobs:
 
       - name: Test
         run: dotnet test --no-build -c Release --logger "trx"
+
+  # Integrační kontrakty jdou do zadávací dokumentace, takže se nesmí tiše rozejít
+  # mezi sebou ani s popisem v README.
+  integration-specs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Nástroje pro kontrolu OpenAPI
+        run: pip install --quiet openapi-spec-validator pyyaml
+
+      - name: Kontrola integračních specifikací
+        run: python3 docs/integrace/kontrola-specifikaci.py
