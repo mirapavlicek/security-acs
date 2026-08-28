@@ -103,6 +103,10 @@ jobs:
             # U anotovaného tagu je popis releasu jeho zpráva: první řádek jako
             # název, zbytek jako text. Bez toho by se do popisu dostala zpráva
             # merge commitu, což nikomu nic neřekne.
+            #
+            # Tag se proto zakládá takto — bez --cleanup=verbatim by git z anotace
+            # vyhodil řádky začínající „#“, tedy všechny markdown nadpisy:
+            #   git tag -a v1.9.0 --cleanup=verbatim -F poznamky.md
             if [ "$(git cat-file -t "$tag")" = "tag" ]; then
               title="$(git tag -l --format='%(contents:subject)' "$tag")"
               git tag -l --format='%(contents:body)' "$tag" > release-notes.md
