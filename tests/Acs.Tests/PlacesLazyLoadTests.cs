@@ -1,6 +1,7 @@
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Data;
+using Acs.Infrastructure.Plans;
 using System.Security.Claims;
 using Acs.Web.Pages.Catalog;
 using Microsoft.AspNetCore.Http;
@@ -64,7 +65,8 @@ public sealed class PlacesLazyLoadTests : IDisposable
 
         // Stránka běží nad vlastním kontextem, aby ji neovlivnily entity načtené při přípravě dat.
         _pageDb = new AcsDbContext(new DbContextOptionsBuilder<AcsDbContext>().UseSqlite(_connection).Options);
-        _page = new PlacesModel(_pageDb, new AuditService(_pageDb))
+        _page = new PlacesModel(_pageDb, new AuditService(_pageDb),
+            new PlanGenerationService(_pageDb, new AuditService(_pageDb)))
         {
             PageContext = CreatePageContext(),
         };

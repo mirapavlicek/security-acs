@@ -204,6 +204,10 @@ public class PlanImportService(AcsDbContext db, AuditService audit)
                         updatedRooms++;
                     }
 
+                    // Poloha z výkresu — z ní pak generátor sestaví plán patra.
+                    room.SourceX = planRoom.X;
+                    room.SourceY = planRoom.Y;
+
                     roomsByNumber[planRoom.Number] = room;
                 }
             }
@@ -256,6 +260,9 @@ public class PlanImportService(AcsDbContext db, AuditService audit)
                     reader.CorridorId = room is null ? corridor?.Id : null;
                     updatedReaders++;
                 }
+
+                reader.SourceX = planReader.X;
+                reader.SourceY = planReader.Y;
             }
 
             await db.SaveChangesAsync(ct);

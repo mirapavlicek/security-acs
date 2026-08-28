@@ -10,6 +10,53 @@
     Podkladový obrázek (např. export z CAD) je volitelný — nahrává se v Budovách.
 </p>
 
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="card">
+    <h2 style="margin-top:0">Vygenerovat plán z dat</h2>
+    <p class="muted">
+        @if (Model.HasDrawingSource)
+        {
+            <text>
+                Patro má polohy z projektových výkresů, takže vygenerovaný plán bude
+                odpovídat skutečnému rozložení budovy.
+            </text>
+        }
+        else
+        {
+            <text>
+                Patro nemá polohy z výkresů (nevznikly importem z DPS), proto se sestaví
+                schéma podle chodeb — místnosti jedné chodby v jednom pásu.
+            </text>
+        }
+        @if (Model.UnplacedRooms > 0 || Model.UnplacedReaders > 0)
+        {
+            <text>
+                Bez pozice je @Model.UnplacedRooms místností a @Model.UnplacedReaders čteček.
+            </text>
+        }
+    </p>
+    <form method="post" asp-page-handler="Generate" class="inline-form">
+        <input type="hidden" name="id" value="@Model.Floor.Id" />
+        <button class="btn" type="submit" name="onlyEmpty" value="true">Generuj chybějící</button>
+        <button class="btn btn-ghost" type="submit" name="onlyEmpty" value="false"
+                onclick="return confirm('Přerovnat celé patro? Ruční úpravy pozic se přepíší.')">
+            Generuj celé patro
+        </button>
+    </form>
+    <p class="hint" style="margin-bottom:0">
+        „Generuj chybějící“ doplní jen prvky bez pozice a ruční práci nechá být.
+        Vygenerované rozvržení je výchozí návrh — dál se dá upravit myší níže.
+    </p>
+</div>
+
 <div class="card">
     <div style="margin-bottom:0.6rem">
         <button class="btn" id="save-btn" type="button">Uložit plán</button>

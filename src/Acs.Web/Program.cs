@@ -67,6 +67,7 @@ builder.Services.AddScoped<Acs.Infrastructure.Sync.AutoAssignmentService>();
 builder.Services.AddScoped<Acs.Infrastructure.Automation.AutomationService>();
 builder.Services.AddScoped<Acs.Infrastructure.Automation.HealthCheckService>();
 builder.Services.AddScoped<Acs.Infrastructure.Import.PlanImportService>();
+builder.Services.AddScoped<Acs.Infrastructure.Plans.PlanGenerationService>();
 builder.Services.AddScoped<Acs.Infrastructure.Sync.EmployeeSourceFactory>();
 builder.Services.AddHttpClient(nameof(Acs.Infrastructure.Sync.ApiEmployeeSource));
 builder.Services.AddSingleton<Acs.Infrastructure.Sync.SyncJobRunner>();

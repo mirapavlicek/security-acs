@@ -136,6 +136,28 @@ public sealed class PlanImportTests : IDisposable
         Assert.Contains(names, n => n.StartsWith("ACS.41 — 23-30504") && n.EndsWith("(2)"));
     }
 
+    /// <summary>
+    /// Souřadnice z výkresu jsou jediný podklad, ze kterého se dá vygenerovat plán
+    /// odpovídající skutečné budově — import je proto musí uložit.
+    /// </summary>
+    [Fact]
+    public async Task Import_StoresDrawingCoordinates()
+    {
+        await _importer.ImportAsync(Sample(), "MOC", false, true, "test");
+
+        var room = await _db.Rooms.SingleAsync(r => r.Name.StartsWith("23-30504"));
+        Assert.Equal(200, room.SourceX);
+        Assert.Equal(100, room.SourceY);
+
+        var reader = await _db.Readers.FirstAsync(r => r.Name.StartsWith("ACS.42"));
+        Assert.Equal(102, reader.SourceX);
+        Assert.Equal(102, reader.SourceY);
+
+        // Interaktivní plán zůstává prázdný, dokud ho někdo nevygeneruje nebo neupraví.
+        Assert.Null(room.PlanX);
+        Assert.Null(reader.SchemaX);
+    }
+
     [Fact]
     public async Task DryRun_ChangesNothing()
     {

@@ -88,6 +88,14 @@ public class Room
     public double? PlanY { get; set; }
     public double? PlanW { get; set; }
     public double? PlanH { get; set; }
+
+    /// <summary>
+    /// Poloha ve výkresu, ze kterého se místnost naimportovala (souřadnice PDF).
+    /// Slouží jako podklad pro vygenerování plánu — jednotky ani počátek nejsou
+    /// srovnatelné mezi patry, přepočet na procenta dělá generátor plánu.
+    /// </summary>
+    public double? SourceX { get; set; }
+    public double? SourceY { get; set; }
 }
 
 /// <summary>Čtečka — importovaná z WIN-PAK přes konektor, nebo ruční.</summary>
@@ -123,6 +131,10 @@ public class Reader
     /// <summary>Pozice na schématu patra (procenta 0–100), pro grafické plány.</summary>
     public double? SchemaX { get; set; }
     public double? SchemaY { get; set; }
+
+    /// <summary>Poloha ve výkresu, ze kterého se čtečka naimportovala (souřadnice PDF) — podklad pro generátor plánu.</summary>
+    public double? SourceX { get; set; }
+    public double? SourceY { get; set; }
 
     public DateTime? LastSyncedAt { get; set; }
 
