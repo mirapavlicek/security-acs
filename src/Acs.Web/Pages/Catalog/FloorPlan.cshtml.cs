@@ -2,6 +2,7 @@ using System.Text.Json;
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Data;
+using Acs.Infrastructure.Plans;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -9,13 +10,20 @@ using Microsoft.EntityFrameworkCore;
 namespace Acs.Web.Pages.Catalog;
 
 /// <summary>Interaktivní editor plánu patra: místnosti (obdélníky), čtečky a zařízení.</summary>
-public class FloorPlanModel(AcsDbContext db, AuditService audit) : PageModel
+public class FloorPlanModel(AcsDbContext db, AuditService audit, PlanGenerationService planGenerator) : PageModel
 {
     public Floor Floor { get; private set; } = null!;
     public bool HasUnderlay { get; private set; }
     public string LayoutJson { get; private set; } = "{}";
 
+    /// <summary>Má patro polohy z výkresů? Podle toho se pozná, jak dobrý plán generátor sestaví.</summary>
+    public bool HasDrawingSource { get; private set; }
+
+    public int UnplacedRooms { get; private set; }
+    public int UnplacedReaders { get; private set; }
+
     [TempData] public string? Message { get; set; }
+    [TempData] public string? ErrorMessage { get; set; }
 
     public record RoomDto(int Id, string Name, double? X, double? Y, double? W, double? H);
     public record ReaderDto(int Id, string Name, double? X, double? Y);
@@ -31,6 +39,15 @@ public class FloorPlanModel(AcsDbContext db, AuditService audit) : PageModel
         Floor = floor;
         HasUnderlay = floor.SchemaImage is not null;
         LayoutJson = JsonSerializer.Serialize(await LoadLayoutAsync(id), JsonOpts);
+
+        HasDrawingSource = await db.Rooms.AnyAsync(r => r.FloorId == id && r.SourceX != null)
+                           || await db.Readers.AnyAsync(r => r.SourceX != null
+                                                             && ((r.Room != null && r.Room.FloorId == id)
+                                                                 || (r.Corridor != null && r.Corridor.FloorId == id)));
+        UnplacedRooms = await db.Rooms.CountAsync(r => r.FloorId == id && r.PlanX == null);
+        UnplacedReaders = await db.Readers.CountAsync(r => r.SchemaX == null
+                                                          && ((r.Room != null && r.Room.FloorId == id)
+                                                              || (r.Corridor != null && r.Corridor.FloorId == id)));
         return Page();
     }
 
@@ -110,6 +127,32 @@ public class FloorPlanModel(AcsDbContext db, AuditService audit) : PageModel
         await audit.LogAsync(User.Identity?.Name, "floor-plan-saved", "Floor", id.ToString(),
             $"místností {layout.Rooms.Count}, čteček {layout.Readers.Count}, zařízení {layout.Devices.Count}");
         return new JsonResult(new { ok = true });
+    }
+
+    /// <summary>
+    /// Sestaví plán z dat, která už v systému jsou — z poloh ve výkresech, a když
+    /// je patro nemá, jako schéma podle chodeb. Správce si pak jen doladí detaily.
+    /// </summary>
+    public async Task<IActionResult> OnPostGenerateAsync(int id, bool onlyEmpty)
+    {
+        try
+        {
+            var result = await planGenerator.GenerateFloorAsync(id, onlyEmpty, User.Identity?.Name);
+            Message = result.Mode switch
+            {
+                PlanGenerationMode.Empty => "Patro nemá místnosti ani čtečky, plán není z čeho sestavit.",
+                PlanGenerationMode.AlreadyPlaced =>
+                    "Všechny místnosti i čtečky už mají pozici, doplňovat nebylo co. "
+                    + "Přerovnat plán jde tlačítkem „Generuj celé patro“.",
+                _ => $"Plán vygenerován — {result}.",
+            };
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Generování plánu se nezdařilo: {ex.Message}";
+        }
+
+        return RedirectToPage(new { id });
     }
 
     private static double? Clamp(double? value)

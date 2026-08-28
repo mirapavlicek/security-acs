@@ -28,6 +28,21 @@
     <button class="btn btn-sm" type="submit">Přidat část</button>
 </form>
 
+<h4 style="margin:0.8rem 0 0.2rem">Plány pater</h4>
+<p class="hint" style="margin-top:0">
+    Sestaví plány všech pater z dat — z poloh v projektových výkresech, a kde nejsou,
+    jako schéma podle chodeb. Hodí se hned po importu z DPS, ať se místnosti nemusí
+    do plánu přetahovat ručně.
+</p>
+<form method="post" asp-page="/Catalog/Places" asp-page-handler="GeneratePlans" class="inline-form">
+    <input type="hidden" name="buildingId" value="@building.Id" />
+    <button class="btn btn-sm" type="submit" name="onlyEmpty" value="true">Generuj chybějící plány</button>
+    <button class="btn btn-sm btn-ghost" type="submit" name="onlyEmpty" value="false"
+            onclick="return confirm('Přerovnat plány všech pater budovy @building.Name? Ruční úpravy pozic se přepíší.')">
+        Generuj všechny znovu
+    </button>
+</form>
+
 <h4 style="margin:0.8rem 0 0.2rem">Patra</h4>
 @if (Model.Floors.Count == 0)
 {

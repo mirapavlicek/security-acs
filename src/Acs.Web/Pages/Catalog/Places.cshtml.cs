@@ -1,6 +1,7 @@
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Data;
+using Acs.Infrastructure.Plans;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -26,7 +27,7 @@ public record FloorContent(
     Dictionary<int, int> CorridorReaderCounts,
     Dictionary<int, int> RoomReaderCounts);
 
-public class PlacesModel(AcsDbContext db, AuditService audit) : PageModel
+public class PlacesModel(AcsDbContext db, AuditService audit, PlanGenerationService planGenerator) : PageModel
 {
     public List<BuildingSummary> Buildings { get; private set; } = [];
 
@@ -169,6 +170,28 @@ public class PlacesModel(AcsDbContext db, AuditService audit) : PageModel
         await audit.LogAsync(User.Identity?.Name, "building-deleted", "Building", buildingId.ToString(), building.Name);
         Message = $"Budova {building.Name} smazána.";
         return RedirectToPage();
+    }
+
+    /// <summary>Vygeneruje plány všech pater budovy — po importu z výkresů to udělá práci za správce.</summary>
+    public async Task<IActionResult> OnPostGeneratePlansAsync(int buildingId, bool onlyEmpty)
+    {
+        try
+        {
+            var result = await planGenerator.GenerateBuildingAsync(buildingId, onlyEmpty, User.Identity?.Name);
+            Message = result.Floors.Count switch
+            {
+                0 => "Budova nemá žádná patra, plány není z čeho sestavit.",
+                _ when result.NothingToDo =>
+                    $"Doplňovat nebylo co — {result}. Přerovnat plány jde tlačítkem „Generuj všechny znovu“.",
+                _ => $"Plány vygenerovány — {result}.",
+            };
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Generování plánů se nezdařilo: {ex.Message}";
+        }
+
+        return RedirectToPage(new { open = $"building-{buildingId}" });
     }
 
     // ---------- Části ----------

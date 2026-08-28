@@ -29,7 +29,11 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
+      # Plná historie: u vydání se z anotace tagu bere název a popis releasu,
+      # a ten v plytkém checkoutu není k dispozici.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
@@ -88,8 +92,16 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME}"
           if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" --title "$tag" --notes-from-tag \
-              || gh release create "$tag" --title "$tag" --generate-notes
+            # U anotovaného tagu je popis releasu jeho zpráva: první řádek jako
+            # název, zbytek jako text. Bez toho by se do popisu dostala zpráva
+            # merge commitu, což nikomu nic neřekne.
+            if [ "$(git cat-file -t "$tag")" = "tag" ]; then
+              title="$(git tag -l --format='%(contents:subject)' "$tag")"
+              git tag -l --format='%(contents:body)' "$tag" > release-notes.md
+              gh release create "$tag" --title "${title:-$tag}" --notes-file release-notes.md
+            else
+              gh release create "$tag" --title "$tag" --generate-notes
+            fi
           fi
           gh release upload "$tag" \
             "${{ steps.package.outputs.name }}.zip" \

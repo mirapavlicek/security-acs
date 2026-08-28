@@ -193,6 +193,7 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
    ✅ Implementováno (upload PNG/JPEG/SVG per patro v Budovách, editor pozic
    kliknutím do plánu, prohlížeč `/Plans` se zvýrazněním vlastních přístupů;
    obrázky v DB → dostupné z obou HA nodů).
+   ✅ Plány se generují na tlačítko z dat — viz [Generování plánů](plany-generovani.md).
 
 ### C. Schvalovací workflow
 10. **Editor schvalovací matice** — neomezený počet úrovní, na každé úrovni
