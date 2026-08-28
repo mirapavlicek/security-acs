@@ -1,0 +1,259 @@
+@page "/ui/features/catalog"
+@model Acs.WinPakConnector.Pages.Features.CatalogModel
+@{
+    ViewData["Title"] = "Číselníky";
+}
+<h1>Časové zóny a svátky</h1>
+<p class="muted">
+    Číselníky, na kterých stojí přístupová oprávnění. ACS je nepoužívá — spravují se ve WIN-PAKu
+    nebo tady. Zónu nelze smazat, dokud ji někdo používá; proto je u ní vidět i přehled využití.
+</p>
+
+<partial name="_FeatureMessages" model="Model" />
+
+<div class="card">
+    <h2>Časové zóny</h2>
+    @if (Model.TimeZones.Count == 0)
+    {
+        <p class="muted">Žádné časové zóny se nenačetly.</p>
+    }
+    else
+    {
+        <table class="data">
+            <thead><tr><th>Id</th><th>Název</th><th>Popis</th><th>Účet</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var zone in Model.TimeZones)
+            {
+                <tr>
+                    <td class="mono">@zone.Id</td>
+                    <td>@zone.Name</td>
+                    <td class="muted">@zone.Description</td>
+                    <td class="muted">@zone.AccountName</td>
+                    <td>
+                        <a class="btn btn-sm btn-ghost" asp-page="/Features/Catalog" asp-route-timeZoneId="@zone.Id">Detail</a>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+
+    <h3>Nová zóna</h3>
+    <form method="post" asp-page-handler="AddTimeZone" class="btn-row">
+        <input type="text" name="name" placeholder="název" required style="max-width:14rem" />
+        <input type="text" name="description" placeholder="popis" style="max-width:18rem" />
+        <div class="checkbox-row">
+            <input type="checkbox" id="simple" name="simple" value="true" />
+            <label for="simple">jednoduchá varianta (CreateTimezone)</label>
+        </div>
+        <button class="btn" type="submit">Založit</button>
+    </form>
+</div>
+
+@if (Model.TimeZoneId is { Length: > 0 } timeZoneId)
+{
+    <div class="card">
+        <h2>Časová zóna @timeZoneId</h2>
+        @if (Model.DetailError is not null)
+        {
+            <div class="alert alert-error">@Model.DetailError</div>
+        }
+
+        <h3>Intervaly</h3>
+        <p class="hint">Den se zadává podle číselníku WIN-PAKu (0 = neděle …); čas ve tvaru HH:MM.</p>
+        <form method="post" asp-page-handler="SaveRanges">
+            <input type="hidden" name="timeZoneId" value="@timeZoneId" />
+            @for (var i = 0; i < 7; i++)
+            {
+                var existing = Model.Ranges.ElementAtOrDefault(i);
+                <div class="btn-row">
+                    <input type="number" name="dayType" value="@(existing?.DayType ?? i)" style="width:5rem" />
+                    <input type="text" name="startTime" value="@existing?.StartTime" placeholder="od" style="width:7rem" />
+                    <input type="text" name="endTime" value="@existing?.EndTime" placeholder="do" style="width:7rem" />
+                    @if (existing is not null)
+                    {
+                        <span class="muted mono">id @existing.Id</span>
+                    }
+                </div>
+            }
+            <div class="btn-row">
+                <button class="btn" type="submit">Uložit intervaly</button>
+            </div>
+        </form>
+
+        @if (Model.Ranges.Count > 0)
+        {
+            <form method="post" asp-page-handler="DeleteRange" class="btn-row">
+                <input type="hidden" name="timeZoneId" value="@timeZoneId" />
+                <select name="rangeId" style="width:auto">
+                    @foreach (var range in Model.Ranges)
+                    {
+                        <option value="@range.Id">@range.Id — den @range.DayType, @range.StartTime–@range.EndTime</option>
+                    }
+                </select>
+                <button class="btn btn-ghost" type="submit">Smazat interval</button>
+            </form>
+        }
+
+        @if (Model.Usage is { } usage)
+        {
+            <h3>Kdo zónu používá</h3>
+            <table class="data">
+                <tr><th>Operátoři</th><td class="mono">@Describe(usage.Operators)</td></tr>
+                <tr><th>Panely</th><td class="mono">@Describe(usage.Panels)</td></tr>
+                <tr><th>Přístupové úrovně</th><td class="mono">@Describe(usage.AccessLevels)</td></tr>
+                <tr><th>Akční skupiny</th><td class="mono">@Describe(usage.ActionGroups)</td></tr>
+                <tr><th>Karty</th><td class="mono">@Describe(usage.Cards)</td></tr>
+                <tr><th>Zařízení</th><td class="mono">@Describe(usage.Devices)</td></tr>
+            </table>
+        }
+
+        <h3>Přeřazení na jinou zónu</h3>
+        <form method="post" asp-page-handler="ReassignTimeZone" class="btn-row">
+            <input type="hidden" name="timeZoneId" value="@timeZoneId" />
+            <select name="newTimeZoneId" style="width:auto">
+                @foreach (var candidate in Model.ReassignCandidates)
+                {
+                    <option value="@candidate.Id">@candidate.Name</option>
+                }
+            </select>
+            <input type="text" name="cardIds" placeholder="id karet, čárkou" style="max-width:14rem" />
+            <input type="text" name="accessLevelIds" placeholder="id úrovní, čárkou" style="max-width:14rem" />
+            <button class="btn btn-ghost" type="submit">Přeřadit</button>
+        </form>
+
+        <form method="post" asp-page-handler="RemoveFromPanels" class="btn-row">
+            <input type="hidden" name="timeZoneId" value="@timeZoneId" />
+            <input type="text" name="panelIds" placeholder="id panelů, čárkou" style="max-width:14rem" />
+            <button class="btn btn-ghost" type="submit">Odebrat z panelů</button>
+        </form>
+
+        <h3>Úprava a smazání</h3>
+        <form method="post" asp-page-handler="EditTimeZone" class="btn-row">
+            <input type="hidden" name="currentName" value="@Model.TimeZones.FirstOrDefault(z => z.Id == timeZoneId)?.Name" />
+            <input type="text" name="name" value="@Model.TimeZones.FirstOrDefault(z => z.Id == timeZoneId)?.Name" required style="max-width:14rem" />
+            <input type="text" name="description" placeholder="popis" style="max-width:18rem" />
+            <button class="btn btn-ghost" type="submit">Uložit</button>
+        </form>
+        <form method="post" asp-page-handler="DeleteTimeZone" class="btn-row">
+            <input type="hidden" name="timeZoneId" value="@timeZoneId" />
+            <button class="btn btn-danger" type="submit"
+                    onclick="return confirm('Opravdu smazat časovou zónu?')">Smazat zónu</button>
+        </form>
+    </div>
+}
+
+<div class="card">
+    <h2>Svátky</h2>
+    <h3>Nový svátek</h3>
+    <form method="post" asp-page-handler="AddHoliday" class="btn-row">
+        <input type="text" name="name" placeholder="název" required style="max-width:14rem" />
+        <input type="number" name="year" value="@DateTime.Today.Year" style="width:7rem" />
+        <input type="number" name="month" value="1" min="1" max="12" style="width:5rem" />
+        <input type="number" name="day" value="1" min="1" max="31" style="width:5rem" />
+        <input type="number" name="type" value="0" style="width:5rem" title="HolidayType" />
+        <div class="checkbox-row">
+            <input type="checkbox" id="allYears" name="allYears" value="true" />
+            <label for="allYears">každý rok</label>
+        </div>
+        <button class="btn" type="submit">Založit</button>
+    </form>
+
+    <h3>Úprava a smazání</h3>
+    <form method="post" asp-page-handler="EditHoliday" class="btn-row">
+        <input type="text" name="currentName" placeholder="stávající název" required style="max-width:12rem" />
+        <input type="text" name="name" placeholder="nový název" required style="max-width:12rem" />
+        <input type="number" name="year" value="@DateTime.Today.Year" style="width:7rem" />
+        <input type="number" name="month" value="1" min="1" max="12" style="width:5rem" />
+        <input type="number" name="day" value="1" min="1" max="31" style="width:5rem" />
+        <input type="number" name="type" value="0" style="width:5rem" />
+        <div class="checkbox-row">
+            <input type="checkbox" id="allYearsEdit" name="allYears" value="true" />
+            <label for="allYearsEdit">každý rok</label>
+        </div>
+        <button class="btn btn-ghost" type="submit">Uložit</button>
+    </form>
+    <form method="post" asp-page-handler="DeleteHoliday" class="btn-row">
+        <input type="text" name="holidayId" placeholder="id svátku" required style="max-width:10rem" />
+        <button class="btn btn-ghost" type="submit">Smazat svátek</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Skupiny svátků</h2>
+    @if (Model.HolidayGroups.Count == 0)
+    {
+        <p class="muted">Žádné skupiny svátků se nenačetly.</p>
+    }
+    else
+    {
+        <table class="data">
+            <thead><tr><th>Id</th><th>Název</th><th>Účet</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var group in Model.HolidayGroups)
+            {
+                <tr>
+                    <td class="mono">@group.Id</td>
+                    <td>@group.Name</td>
+                    <td class="muted">@group.AccountId</td>
+                    <td><a class="btn btn-sm btn-ghost" asp-page="/Features/Catalog" asp-route-holidayGroupId="@group.Id">Detail</a></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+
+    <h3>Nová skupina</h3>
+    <form method="post" asp-page-handler="AddHolidayGroup" class="btn-row">
+        <input type="text" name="name" placeholder="název" required style="max-width:14rem" />
+        <input type="text" name="holidayIds" placeholder="id svátků, čárkou" style="max-width:14rem" />
+        <button class="btn" type="submit">Založit</button>
+    </form>
+
+    @if (Model.HolidayGroupId is { Length: > 0 } groupId)
+    {
+        <h3>Skupina @groupId</h3>
+        @if (Model.HolidaysInGroup.Count == 0)
+        {
+            <p class="muted">Skupina zatím neobsahuje žádný svátek.</p>
+        }
+        else
+        {
+            <table class="data">
+                <thead><tr><th>Id</th><th>Název</th><th>Datum</th><th>Každý rok</th></tr></thead>
+                <tbody>
+                @foreach (var holiday in Model.HolidaysInGroup)
+                {
+                    <tr>
+                        <td class="mono">@holiday.Id</td>
+                        <td>@holiday.Name</td>
+                        <td>@holiday.Day.@holiday.Month.@holiday.Year</td>
+                        <td>@(holiday.AppliesToAllYears ? "ano" : "ne")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+
+        @if (Model.PanelsUsingGroup.Count > 0)
+        {
+            <p class="muted">Skupinu používají panely: @string.Join(", ", Model.PanelsUsingGroup.Select(p => p.Name))</p>
+        }
+
+        <form method="post" asp-page-handler="EditHolidayGroup" class="btn-row">
+            <input type="hidden" name="currentName" value="@Model.HolidayGroups.FirstOrDefault(g => g.Id == groupId)?.Name" />
+            <input type="text" name="name" value="@Model.HolidayGroups.FirstOrDefault(g => g.Id == groupId)?.Name" required style="max-width:14rem" />
+            <input type="text" name="holidayIds" placeholder="id svátků, čárkou" style="max-width:14rem" />
+            <button class="btn btn-ghost" type="submit">Uložit</button>
+        </form>
+        <form method="post" asp-page-handler="DeleteHolidayGroup" class="btn-row">
+            <input type="hidden" name="holidayGroupId" value="@groupId" />
+            <button class="btn btn-danger" type="submit"
+                    onclick="return confirm('Opravdu smazat skupinu svátků?')">Smazat skupinu</button>
+        </form>
+    }
+</div>
+
+@functions {
+    static string Describe(IReadOnlyList<string> ids) => ids.Count == 0 ? "—" : string.Join(", ", ids);
+}

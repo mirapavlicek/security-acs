@@ -10,16 +10,29 @@ namespace Acs.WinPakConnector.Providers;
 /// proto jsou všechny SQL dotazy konfigurovatelné v appsettings
 /// (<see cref="MssqlProviderOptions"/>) a výchozí hodnoty je nutné ověřit
 /// proti konkrétní instalaci. Zápis tento provider záměrně nepodporuje —
-/// zápis do WIN-PAK smí jít pouze přes oficiální SDK.
+/// zápis do WIN-PAK smí jít pouze přes oficiální COM API (režim Com).
 /// </summary>
-public sealed class MssqlWinPakProvider(IOptions<MssqlProviderOptions> options) : IWinPakProvider
+public sealed class MssqlWinPakProvider(IOptions<MssqlProviderOptions> options) : WinPakProviderBase
 {
     private readonly MssqlProviderOptions _options = options.Value;
 
-    public string Mode => "Mssql";
-    public bool SupportsWrite => false;
+    public override string Mode => "Mssql";
 
-    public async Task<IReadOnlyList<ReaderDto>> GetReadersAsync(CancellationToken ct)
+    public override async Task<ConnectorStatusDto> GetStatusAsync(CancellationToken ct)
+    {
+        try
+        {
+            await using var connection = new SqlConnection(_options.ConnectionString);
+            await connection.OpenAsync(ct);
+            return new ConnectorStatusDto(true, [], null);
+        }
+        catch (Exception ex)
+        {
+            return new ConnectorStatusDto(false, [], ex.Message);
+        }
+    }
+
+    public override async Task<IReadOnlyList<ReaderDto>> GetReadersAsync(CancellationToken ct)
     {
         var result = new List<ReaderDto>();
         await foreach (var reader in QueryAsync(_options.ReadersQuery, ct))
@@ -36,7 +49,7 @@ public sealed class MssqlWinPakProvider(IOptions<MssqlProviderOptions> options) 
         return result;
     }
 
-    public async Task<IReadOnlyList<AccessLevelDto>> GetAccessLevelsAsync(CancellationToken ct)
+    public override async Task<IReadOnlyList<AccessLevelDto>> GetAccessLevelsAsync(CancellationToken ct)
     {
         var result = new List<AccessLevelDto>();
         await foreach (var reader in QueryAsync(_options.AccessLevelsQuery, ct))
@@ -50,7 +63,7 @@ public sealed class MssqlWinPakProvider(IOptions<MssqlProviderOptions> options) 
         return result;
     }
 
-    public async Task<IReadOnlyList<CardHolderDto>> SearchCardHoldersAsync(string? search, CancellationToken ct)
+    public override async Task<IReadOnlyList<CardHolderDto>> SearchCardHoldersAsync(string? search, CancellationToken ct)
     {
         var result = new List<CardHolderDto>();
         await foreach (var reader in QueryAsync(
@@ -63,7 +76,7 @@ public sealed class MssqlWinPakProvider(IOptions<MssqlProviderOptions> options) 
         return result;
     }
 
-    public async Task<CardHolderDto?> GetCardHolderAsync(string id, CancellationToken ct)
+    public override async Task<CardHolderDto?> GetCardHolderAsync(string id, CancellationToken ct)
     {
         await foreach (var reader in QueryAsync(
             _options.CardHolderByIdQuery, ct,
@@ -74,15 +87,6 @@ public sealed class MssqlWinPakProvider(IOptions<MssqlProviderOptions> options) 
 
         return null;
     }
-
-    public Task AssignAccessLevelAsync(string cardHolderId, string accessLevelId, CancellationToken ct)
-        => throw new NotSupportedException(
-            "MSSQL provider je read-only. Zápis do WIN-PAK vyžaduje režim Sdk (oficiální WIN-PAK API), " +
-            "do té doby zadává přístupy správce karet ručně ve WIN-PAK a v ACS je potvrdí.");
-
-    public Task RevokeAccessLevelAsync(string cardHolderId, string accessLevelId, CancellationToken ct)
-        => throw new NotSupportedException(
-            "MSSQL provider je read-only. Odebrání přístupu proveďte ručně ve WIN-PAK.");
 
     private static CardHolderDto MapCardHolder(SqlDataReader reader) => new(
         Id: GetString(reader, "Id") ?? "",

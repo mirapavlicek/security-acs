@@ -1,0 +1,256 @@
+@page "/ui/features/doors"
+@model Acs.WinPakConnector.Pages.Features.DoorsModel
+@{
+    ViewData["Title"] = "Dveře a zařízení";
+}
+<h1>Dveře a zařízení</h1>
+<p class="muted">
+    Povely komunikačního serveru WIN-PAK. ACS je v běžném provozu nepoužívá — přístupy jen
+    přiděluje kartám. Zařízení se adresují číslem <span class="mono">HID</span>.
+    Režim: <span class="badge badge-primary">@Model.Mode</span>,
+    ovládání dveří: <span class="badge @(Model.SupportsDoorControl ? "badge-ok" : "badge-bad")">@(Model.SupportsDoorControl ? "dostupné" : "nedostupné")</span>
+</p>
+
+<partial name="_FeatureMessages" model="Model" />
+
+@if (Model.InvalidHid is { } invalid)
+{
+    <div class="alert alert-warning">
+        Zařízení <span class="mono">@invalid</span> nemá číselné HID, takže se pro něj nedá zjistit
+        stav ani mu poslat povel. Komunikační server adresuje zařízení vždy číslem.
+    </div>
+}
+
+<div class="card">
+    <h2>Čtečky</h2>
+    @if (Model.Readers.Count == 0)
+    {
+        <p class="muted">Žádné čtečky se nenačetly.</p>
+    }
+    else
+    {
+        <table class="data">
+            <thead><tr><th>HID</th><th>Název</th><th>Panel</th><th>Umístění</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var reader in Model.Readers)
+            {
+                <tr>
+                    <td class="mono">@reader.Id</td>
+                    <td>@reader.Name</td>
+                    <td class="muted">@reader.PanelName</td>
+                    <td class="muted">@reader.Description</td>
+                    <td>
+                        <a class="btn btn-sm btn-ghost" asp-page="/Features/Doors" asp-route-hid="@reader.Id">Detail</a>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+@if (Model.Hid is { } hid)
+{
+    <div class="card">
+        <h2>Zařízení @hid</h2>
+        @if (Model.DetailError is not null)
+        {
+            <div class="alert alert-error">@Model.DetailError</div>
+        }
+        @if (Model.DoorStatus is { } status)
+        {
+            <table class="data">
+                <tr><th>Název</th><td>@status.DeviceName</td></tr>
+                <tr><th>Otevřeno</th><td>@Describe(status.IsOpen)</td></tr>
+                <tr><th>Shuntováno</th><td>@Describe(status.IsShunted)</td></tr>
+                <tr><th>Násilně otevřeno</th><td>@Describe(status.ForcedOpen)</td></tr>
+                <tr><th>Pootevřeno</th><td>@Describe(status.Ajar)</td></tr>
+                <tr><th>Účet</th><td class="muted">@status.Account / @status.SubAccount</td></tr>
+                @if (Model.DoorStatusCode is { } code)
+                {
+                    <tr><th>Číselný stav dveří</th><td class="mono">@code</td></tr>
+                }
+                @if (Model.DeviceStatus is { } deviceStatus)
+                {
+                    <tr><th>Stav zařízení</th><td class="mono">@deviceStatus</td></tr>
+                }
+                @if (Model.DefaultReaderMode is { } defaultMode)
+                {
+                    <tr><th>Výchozí režim čtečky</th><td>@((DoorMode)defaultMode)</td></tr>
+                }
+            </table>
+        }
+
+        <h3>Ovládání dveří</h3>
+        <div class="btn-row">
+            <form method="post" asp-page-handler="Unlock" class="inline">
+                <input type="hidden" name="hid" value="@hid" />
+                <button class="btn" type="submit">Odemknout</button>
+            </form>
+            <form method="post" asp-page-handler="Lock" class="inline">
+                <input type="hidden" name="hid" value="@hid" />
+                <button class="btn btn-ghost" type="submit">Zamknout</button>
+            </form>
+            <form method="post" asp-page-handler="Pulse" class="inline">
+                <input type="hidden" name="hid" value="@hid" />
+                <input type="number" name="seconds" min="1" max="3600" placeholder="s" style="width:6rem" />
+                <button class="btn btn-ghost" type="submit">Puls</button>
+            </form>
+            <form method="post" asp-page-handler="Mode" class="inline">
+                <input type="hidden" name="hid" value="@hid" />
+                <select name="mode" style="width:auto">
+                    @foreach (var mode in Enum.GetValues<DoorMode>())
+                    {
+                        <option value="@((int)mode)">@mode</option>
+                    }
+                </select>
+                <button class="btn btn-ghost" type="submit">Nastavit režim</button>
+            </form>
+        </div>
+
+        <h3>Vstupní bod</h3>
+        <form method="post" asp-page-handler="EntryPoint" class="btn-row">
+            <input type="hidden" name="hid" value="@hid" />
+            <input type="number" name="point" value="0" min="0" style="width:6rem" title="Číslo bodu" />
+            <button class="btn btn-ghost" type="submit" name="unlock" value="true">Odemknout bod</button>
+            <button class="btn btn-ghost" type="submit" name="unlock" value="false">Zamknout bod</button>
+        </form>
+
+        <h3>Alarmy</h3>
+        <form method="post" asp-page-handler="Acknowledge" class="btn-row">
+            <input type="hidden" name="hid" value="@hid" />
+            <input type="number" name="point" value="0" min="0" style="width:6rem" title="Číslo bodu" />
+            <button class="btn btn-ghost" type="submit">Potvrdit alarm</button>
+        </form>
+        <form method="post" asp-page-handler="ClearAlarm" class="btn-row">
+            <input type="hidden" name="hid" value="@hid" />
+            <input type="number" name="point" value="0" min="0" style="width:6rem" />
+            <button class="btn btn-ghost" type="submit">Zrušit alarm</button>
+        </form>
+        <form method="post" asp-page-handler="Note" class="btn-row">
+            <input type="hidden" name="hid" value="@hid" />
+            <input type="number" name="point" value="0" min="0" style="width:6rem" />
+            <input type="text" name="note" placeholder="Poznámka k transakci" required style="max-width:22rem" />
+            <button class="btn btn-ghost" type="submit">Přidat poznámku</button>
+        </form>
+        <form method="post" asp-page-handler="Transaction" class="btn-row">
+            <input type="hidden" name="hid" value="@hid" />
+            <input type="number" name="point" value="0" min="0" style="width:6rem" />
+            <button class="btn btn-ghost" type="submit">Zobrazit detail transakce</button>
+        </form>
+        <div class="btn-row">
+            <form method="post" asp-page-handler="Shunt" class="inline">
+                <input type="hidden" name="hid" value="@hid" />
+                <input type="hidden" name="shunt" value="true" />
+                <button class="btn btn-ghost" type="submit">Shuntovat</button>
+            </form>
+            <form method="post" asp-page-handler="Shunt" class="inline">
+                <input type="hidden" name="hid" value="@hid" />
+                <input type="hidden" name="shunt" value="false" />
+                <button class="btn btn-ghost" type="submit">Zrušit shunt</button>
+            </form>
+            <form method="post" asp-page-handler="UnshuntPoint" class="inline">
+                <input type="hidden" name="hid" value="@hid" />
+                <input type="number" name="point" value="0" min="0" style="width:6rem" />
+                <button class="btn btn-ghost" type="submit">Zrušit shunt bodu</button>
+            </form>
+        </div>
+
+        <h3>Buffer, výstupy a příkazy</h3>
+        <div class="btn-row">
+            <form method="post" asp-page-handler="Buffer" class="inline">
+                <input type="hidden" name="hid" value="@hid" />
+                <select name="mode" style="width:auto">
+                    <option value="0">hard</option>
+                    <option value="1">soft</option>
+                </select>
+                <button class="btn btn-ghost" type="submit" name="buffer" value="true">Bufferovat</button>
+                <button class="btn btn-ghost" type="submit" name="buffer" value="false">Zrušit buffer</button>
+            </form>
+        </div>
+        <div class="btn-row">
+            <form method="post" asp-page-handler="Energize" class="inline">
+                <input type="hidden" name="hid" value="@hid" />
+                <button class="btn btn-ghost" type="submit" name="energize" value="true">Sepnout výstup</button>
+                <button class="btn btn-ghost" type="submit" name="energize" value="false">Rozepnout výstup</button>
+            </form>
+            <form method="post" asp-page-handler="RestoreTimeZone" class="inline">
+                <input type="hidden" name="hid" value="@hid" />
+                <button class="btn btn-ghost" type="submit">Vrátit pod časovou zónu</button>
+            </form>
+        </div>
+        <form method="post" asp-page-handler="CustomCommand" class="btn-row">
+            <input type="hidden" name="hid" value="@hid" />
+            <input type="text" name="command" placeholder="Vlastní příkaz pro zařízení" required style="max-width:22rem" />
+            <button class="btn btn-ghost" type="submit">Odeslat příkaz</button>
+        </form>
+
+        @if (Model.NetAxsMode is { } netAxs)
+        {
+            <h3>Režim dveří NetAXS</h3>
+            <p class="hint">Hodnoty jsou id časových zón a priority podle konfigurace panelu NetAXS.</p>
+            <form method="post" asp-page-handler="NetAxsMode">
+                <input type="hidden" name="hid" value="@hid" />
+                <div class="cards-grid">
+                    <div>
+                        <label>Zakázané dveře</label>
+                        <input type="number" name="mode.DisableDoorTimeZone" value="@netAxs.DisableDoorTimeZone" />
+                        <label>Lockdown čtečky</label>
+                        <input type="number" name="mode.LockdownReaderTimeZone" value="@netAxs.LockdownReaderTimeZone" />
+                        <label>Jen karta</label>
+                        <input type="number" name="mode.CardOnlyTimeZone" value="@netAxs.CardOnlyTimeZone" />
+                        <label>Jen PIN</label>
+                        <input type="number" name="mode.PinOnlyTimeZone" value="@netAxs.PinOnlyTimeZone" />
+                        <label>Karta nebo PIN</label>
+                        <input type="number" name="mode.CardOrPinTimeZone" value="@netAxs.CardOrPinTimeZone" />
+                    </div>
+                    <div>
+                        <label>Karta a PIN</label>
+                        <input type="number" name="mode.CardAndPinTimeZone" value="@netAxs.CardAndPinTimeZone" />
+                        <label>Priorita jen karta</label>
+                        <input type="number" name="mode.CardOnlyPriority" value="@netAxs.CardOnlyPriority" />
+                        <label>Priorita jen PIN</label>
+                        <input type="number" name="mode.PinOnlyPriority" value="@netAxs.PinOnlyPriority" />
+                        <label>Priorita karta nebo PIN</label>
+                        <input type="number" name="mode.CardOrPinPriority" value="@netAxs.CardOrPinPriority" />
+                        <label>Priorita karta a PIN</label>
+                        <input type="number" name="mode.CardAndPinPriority" value="@netAxs.CardAndPinPriority" />
+                    </div>
+                </div>
+                <div class="btn-row">
+                    <button class="btn" type="submit">Uložit NetAXS režim</button>
+                </div>
+            </form>
+        }
+    </div>
+}
+
+@if (Model.Devices.Count > 0)
+{
+    <div class="card">
+        <h2>Zařízení připojená ke komunikačnímu serveru</h2>
+        <table class="data">
+            <thead><tr><th>HID</th><th>Název</th><th>Typ</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var device in Model.Devices)
+            {
+                <tr>
+                    <td class="mono">@device.Hid</td>
+                    <td>@device.Name</td>
+                    <td class="muted">@device.DeviceType</td>
+                    <td><a class="btn btn-sm btn-ghost" asp-page="/Features/Doors" asp-route-hid="@device.Hid">Detail</a></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@functions {
+    static string Describe(bool? value) => value switch
+    {
+        true => "ano",
+        false => "ne",
+        null => "neznámo",
+    };
+}

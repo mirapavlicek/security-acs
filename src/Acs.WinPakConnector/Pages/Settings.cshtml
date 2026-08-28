@@ -1,0 +1,203 @@
+@page "/ui/settings"
+@model Acs.WinPakConnector.Pages.SettingsModel
+@{
+    ViewData["Title"] = "Nastavení";
+}
+<h1>Nastavení konektoru</h1>
+<p class="muted">
+    Změny se zapisují do <span class="mono">@Model.SettingsFile</span> a projeví se hned —
+    provider se přestaví bez restartu služby. Původní <span class="mono">appsettings.json</span>
+    z instalace zůstává nedotčený.
+</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.Errors.Count > 0)
+{
+    <div class="alert alert-error">
+        <strong>Nastavení nebylo uloženo</strong>
+        <ul>
+            @foreach (var error in Model.Errors)
+            {
+                <li>@error</li>
+            }
+        </ul>
+    </div>
+}
+@if (Model.GeneratedApiKey is not null)
+{
+    <div class="alert alert-warning">
+        <strong>Nový API klíč</strong>
+        <p class="mono">@Model.GeneratedApiKey</p>
+        <p>Zkopírujte ho do ACS (Nastavení → WIN-PAK) a teprve pak uložte — jinak konektor přestane s ACS mluvit.</p>
+    </div>
+}
+
+<form method="post">
+    <div class="card">
+        <h2>Režim</h2>
+        <label for="mode">Zdroj dat</label>
+        <select id="mode" asp-for="Input.Mode">
+            @foreach (var mode in ProviderModes.All)
+            {
+                <option value="@mode" selected="@(string.Equals(Model.Input.Mode, mode, StringComparison.OrdinalIgnoreCase))">@mode</option>
+            }
+        </select>
+        @foreach (var mode in ProviderModes.All)
+        {
+            <p class="hint mode-hint" data-mode="@mode">@ProviderModes.Describe(mode)</p>
+        }
+    </div>
+
+    <div class="card">
+        <h2>Zabezpečení</h2>
+
+        <label for="apiKey">API klíč pro ACS</label>
+        <input type="password" id="apiKey" asp-for="Input.ApiKey" autocomplete="new-password"
+               placeholder="beze změny" />
+        <p class="hint">Aktuálně: <span class="mono">@Model.CurrentApiKeyMask</span>. Prázdné pole nechá klíč beze změny.</p>
+        <div class="btn-row">
+            <button class="btn btn-ghost" type="submit" asp-page-handler="GenerateKey">Vygenerovat nový klíč</button>
+        </div>
+
+        <label for="adminPassword">Heslo administrace</label>
+        <input type="password" id="adminPassword" asp-for="Input.AdminPassword" autocomplete="new-password"
+               placeholder="@(Model.HasAdminPassword ? "beze změny" : "zatím nenastaveno – přihlašuje se API klíčem")" />
+        <p class="hint">
+            Oddělené heslo do tohoto GUI. Dokud není nastavené, přihlašuje se API klíčem —
+            ten se pak ale musí zadávat do prohlížeče.
+        </p>
+        @if (Model.HasAdminPassword)
+        {
+            <div class="btn-row">
+                <button class="btn btn-ghost" type="submit" asp-page-handler="ClearAdminPassword">Zrušit heslo administrace</button>
+            </div>
+        }
+    </div>
+
+    <div class="card mode-section" data-mode="Com">
+        <h2>WIN-PAK přes COM</h2>
+
+        <h3>Přihlášení operátora</h3>
+        <label for="comUser">Uživatel</label>
+        <input type="text" id="comUser" asp-for="Input.Com.UserName" autocomplete="off" />
+
+        <label for="comPassword">Heslo</label>
+        <input type="password" id="comPassword" asp-for="Input.Com.Password" autocomplete="new-password"
+               placeholder="@(Model.HasComPassword ? "beze změny" : "")" />
+
+        <label for="comDomain">Doména</label>
+        <input type="text" id="comDomain" asp-for="Input.Com.Domain" autocomplete="off" />
+        <p class="hint">Prázdné u lokálních účtů WIN-PAK. S doménou se použije <span class="mono">InitServer2</span>.</p>
+
+        <h3>Účet</h3>
+        <label for="comAccount">Účet</label>
+        <input type="text" id="comAccount" asp-for="Input.Com.AccountName" autocomplete="off" />
+        <p class="hint">Karty i držitelé jsou mezi účty oddělení. Prázdné = čte se napříč účty (jen pro čtení číselníků).</p>
+
+        <label for="comSubAccount">Podúčet</label>
+        <input type="text" id="comSubAccount" asp-for="Input.Com.SubAccountName" autocomplete="off" />
+
+        <h3>Komunikační server</h3>
+        <div class="checkbox-row">
+            <input type="checkbox" id="comEnabled" asp-for="Input.Com.EnableCommunicationServer" />
+            <label for="comEnabled">Používat komunikační server (ovládání dveří a události z panelů)</label>
+        </div>
+        <p class="hint">Když ho nepotřebujete, nechte vypnutý — databázová část funguje samostatně.</p>
+
+        <label for="comViewType">Typ pohledu (wpviewTYPE)</label>
+        <input type="number" id="comViewType" asp-for="Input.Com.CommViewType" />
+        <p class="hint">4 = CommandOnly, což stačí pro povely i odběr událostí.</p>
+
+        <label for="comBuffer">Počet událostí držených v paměti</label>
+        <input type="number" id="comBuffer" asp-for="Input.Com.EventBufferSize" min="1" />
+
+        <h3>ProgID COM objektů</h3>
+        <p class="hint">Měňte jen tehdy, když je instalace WIN-PAKu registruje jinak než ve výchozím stavu.</p>
+        <label for="progApp">Application</label>
+        <input type="text" id="progApp" asp-for="Input.Com.ApplicationProgId" autocomplete="off" />
+        <label for="progCard">Card</label>
+        <input type="text" id="progCard" asp-for="Input.Com.CardProgId" autocomplete="off" />
+        <label for="progHolder">CardHolder</label>
+        <input type="text" id="progHolder" asp-for="Input.Com.CardHolderProgId" autocomplete="off" />
+        <label for="progLevel">AccessLevel</label>
+        <input type="text" id="progLevel" asp-for="Input.Com.AccessLevelProgId" autocomplete="off" />
+        <label for="progTz">TimeZone</label>
+        <input type="text" id="progTz" asp-for="Input.Com.TimeZoneProgId" autocomplete="off" />
+        <label for="progHoliday">MasterHoliday</label>
+        <input type="text" id="progHoliday" asp-for="Input.Com.HolidayProgId" autocomplete="off" />
+        <label for="progHolidayGroup">HolidayGroup</label>
+        <input type="text" id="progHolidayGroup" asp-for="Input.Com.HolidayGroupProgId" autocomplete="off" />
+        <label for="progSchedule">Schedule</label>
+        <input type="text" id="progSchedule" asp-for="Input.Com.ScheduleProgId" autocomplete="off" />
+        <label for="progTemplate">Template</label>
+        <input type="text" id="progTemplate" asp-for="Input.Com.TemplateProgId" autocomplete="off" />
+        <label for="progComm">Komunikační server</label>
+        <input type="text" id="progComm" asp-for="Input.Com.CommServerProgId" autocomplete="off" />
+        <label for="progNetAxs">NetAXS door info</label>
+        <input type="text" id="progNetAxs" asp-for="Input.Com.NetAxsDoorInfoProgId" autocomplete="off" />
+    </div>
+
+    <div class="card mode-section" data-mode="Mssql">
+        <h2>Čtení z databáze WIN-PAK</h2>
+        <p class="hint">
+            Schéma WIN-PAK je proprietární a mezi verzemi se liší, proto jsou dotazy konfigurovatelné.
+            Použijte SQL login s právem pouze <span class="mono">SELECT</span>.
+        </p>
+
+        <label for="sqlConnection">Connection string</label>
+        <input type="password" id="sqlConnection" asp-for="Input.Mssql.ConnectionString" autocomplete="new-password"
+               placeholder="@(Model.HasConnectionString ? "beze změny" : "")" />
+
+        <label for="sqlReaders">Dotaz na čtečky</label>
+        <textarea id="sqlReaders" asp-for="Input.Mssql.ReadersQuery"></textarea>
+        <p class="hint">Sloupce: Id, Name, Description, PanelName, AccountName, IsActive.</p>
+
+        <label for="sqlLevels">Dotaz na přístupové úrovně</label>
+        <textarea id="sqlLevels" asp-for="Input.Mssql.AccessLevelsQuery"></textarea>
+        <p class="hint">Sloupce: Id, Name, Description.</p>
+
+        <label for="sqlHolders">Dotaz na držitele karet</label>
+        <textarea id="sqlHolders" asp-for="Input.Mssql.CardHoldersQuery"></textarea>
+        <p class="hint">Parametr <span class="mono">@("@search")</span>; sloupce: Id, FirstName, LastName, Note.</p>
+
+        <label for="sqlHolder">Dotaz na jednoho držitele</label>
+        <textarea id="sqlHolder" asp-for="Input.Mssql.CardHolderByIdQuery"></textarea>
+        <p class="hint">Parametr <span class="mono">@("@id")</span>; stejné sloupce jako výše.</p>
+    </div>
+
+    <div class="card mode-section" data-mode="Mock">
+        <h2>Ukázková data</h2>
+        <p class="muted">
+            Režim Mock nemá co nastavovat — vrací pevnou sadu čteček, přístupových úrovní
+            a držitelů karet, aby šlo vyvíjet a zkoušet ACS bez WIN-PAKu. Zápisy se drží
+            v paměti procesu a restartem se ztratí.
+        </p>
+    </div>
+
+    <div class="btn-row">
+        <button class="btn" type="submit" asp-page-handler="Save">Uložit nastavení</button>
+        <a class="btn btn-ghost" asp-page="/Index">Zpět na přehled</a>
+    </div>
+</form>
+
+@section Scripts {
+<script>
+// Zobrazí jen tu sekci, která k vybranému režimu patří — formulář je jinak dlouhý.
+(() => {
+    const mode = document.getElementById('mode');
+    const sections = [...document.querySelectorAll('.mode-section')];
+    const hints = [...document.querySelectorAll('.mode-hint')];
+
+    function apply() {
+        for (const section of sections) section.hidden = section.dataset.mode !== mode.value;
+        for (const hint of hints) hint.hidden = hint.dataset.mode !== mode.value;
+    }
+
+    mode.addEventListener('change', apply);
+    apply();
+})();
+</script>
+}

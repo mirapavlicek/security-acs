@@ -97,6 +97,14 @@
     {
         <p class="muted">Test spojení: @Model.WinPakTestResult</p>
     }
+    @if (Model.WinPakAdminUrl is not null)
+    {
+        <p class="muted">
+            Nastavení samotného konektoru (režim, přihlášení operátora WIN-PAK, ProgID, diagnostika)
+            se spravuje v jeho vlastní administraci:
+            <a href="@Model.WinPakAdminUrl" target="_blank" rel="noopener">@Model.WinPakAdminUrl</a>.
+        </p>
+    }
 </div>
 
 <div class="card">

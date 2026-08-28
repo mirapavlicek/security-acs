@@ -71,8 +71,9 @@ public sealed class AccessSyncTests : IDisposable
         => new
         {
             id, firstName = "Jan", lastName = "Novák", note = (string?)null,
-            cards = new[] { new { cardNumber = card, status = "Active",
-                activationDate = (DateTime?)null, expirationDate = (DateTime?)null } },
+            // status 1 = Active podle číselníku WIN-PAK
+            cards = new[] { new { cardNumber = card, recordId = card, cardHolderId = id, status = 1, issue = 0,
+                activationDate = (DateTime?)null, expirationDate = (DateTime?)null, accessLevelIds = accessLevels } },
             accessLevelIds = accessLevels,
         };
 

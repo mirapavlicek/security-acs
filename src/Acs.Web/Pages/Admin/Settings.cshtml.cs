@@ -31,12 +31,20 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         SettingKeys.SmtpUseTls,
     ];
 
+    /// <summary>Odkaz do administrace konektoru — vlastní nastavení má konektor u sebe na serveru.</summary>
+    public string? WinPakAdminUrl { get; private set; }
+
     public async Task OnGetAsync() => await LoadAsync();
 
     private async Task LoadAsync()
     {
         foreach (var key in DisplayedKeys)
             Values[key] = await settings.GetAsync(key);
+
+        WinPakAdminUrl = Values[SettingKeys.WinPakBaseUrl] is { Length: > 0 } baseUrl
+                         && Uri.TryCreate(baseUrl.TrimEnd('/') + "/ui", UriKind.Absolute, out var uri)
+            ? uri.ToString()
+            : null;
     }
 
     private string UserName => User.Identity?.Name ?? "?";

@@ -1,0 +1,14 @@
+@model Acs.WinPakConnector.Pages.Features.FeaturePageModel
+
+@if (Model.LoadError is not null)
+{
+    <div class="alert alert-error">@Model.LoadError</div>
+}
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}

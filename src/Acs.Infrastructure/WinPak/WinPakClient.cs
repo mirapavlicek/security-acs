@@ -5,10 +5,40 @@ namespace Acs.Infrastructure.WinPak;
 
 public record WinPakReader(string Id, string Name, string? Description, string? PanelName, string? AccountName, bool IsActive);
 public record WinPakAccessLevel(string Id, string Name, string? Description);
-public record WinPakInfo(string Version, string ProviderMode, bool SupportsWrite);
-public record WinPakCard(string CardNumber, string? Status, DateTime? ActivationDate, DateTime? ExpirationDate);
+
+public record WinPakInfo(string Version, string ProviderMode, bool SupportsWrite,
+    bool SupportsDoorControl = false, string? AccountName = null);
+
+/// <summary>Stav karty podle WIN-PAK.</summary>
+public enum WinPakCardStatus { Unknown = 0, Active = 1, Inactive = 2, Trace = 3, LostOrStolen = 4 }
+
+/// <summary>Karta ve WIN-PAK. Přístupové úrovně patří kartě, ne držiteli.</summary>
+public record WinPakCard(
+    string CardNumber,
+    string? RecordId,
+    string? CardHolderId,
+    WinPakCardStatus Status,
+    int Issue,
+    DateTime? ActivationDate,
+    DateTime? ExpirationDate,
+    IReadOnlyList<string> AccessLevelIds);
+
 public record WinPakCardHolder(string Id, string FirstName, string LastName, string? Note,
     IReadOnlyList<WinPakCard> Cards, IReadOnlyList<string> AccessLevelIds);
+
+public record WinPakServerStatus(string ServerId, string ServerName, bool Connected, string? ServerType);
+
+public record WinPakStatus(bool DatabaseServerConnected, IReadOnlyList<WinPakServerStatus> Servers, string? Error);
+
+/// <summary>Režim dveří podle WIN-PAK.</summary>
+public enum WinPakDoorMode
+{
+    Disabled = 1, Unlocked = 2, Locked = 3, SiteCodeOnly = 4,
+    CardOnly = 5, PinOnly = 6, CardAndPin = 7, CardOrPin = 8,
+}
+
+public record WinPakDoorStatus(string Hid, string? DeviceName, bool? IsOpen, bool? IsShunted,
+    bool? ForcedOpen, bool? Ajar, string? Account, string? SubAccount);
 
 /// <summary>
 /// HTTP klient pro WinPak Connector (src/Acs.WinPakConnector) běžící na WIN-PAK serveru.
@@ -36,8 +66,21 @@ public class WinPakClient(HttpClient httpClient, SettingsService settings)
         return await response.Content.ReadFromJsonAsync<T>(ct);
     }
 
+    private async Task SendAsync(HttpMethod method, string path, object? body, CancellationToken ct)
+    {
+        using var request = await BuildRequestAsync(method, path, ct);
+        if (body is not null)
+            request.Content = JsonContent.Create(body);
+        using var response = await httpClient.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+    }
+
     public Task<WinPakInfo?> GetInfoAsync(CancellationToken ct = default)
         => GetAsync<WinPakInfo>("api/v1/info", ct);
+
+    /// <summary>Stav spojení konektoru s databázovým a komunikačním serverem WIN-PAK.</summary>
+    public Task<WinPakStatus?> GetStatusAsync(CancellationToken ct = default)
+        => GetAsync<WinPakStatus>("api/v1/status", ct);
 
     public async Task<IReadOnlyList<WinPakReader>> GetReadersAsync(CancellationToken ct = default)
         => await GetAsync<List<WinPakReader>>("api/v1/readers", ct) ?? [];
@@ -66,4 +109,40 @@ public class WinPakClient(HttpClient httpClient, SettingsService settings)
         using var response = await httpClient.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
     }
+
+    /// <summary>Karta podle čísla — null, pokud ji WIN-PAK nezná.</summary>
+    public async Task<WinPakCard?> GetCardAsync(string cardNumber, CancellationToken ct = default)
+    {
+        using var request = await BuildRequestAsync(HttpMethod.Get,
+            $"api/v1/cards/{Uri.EscapeDataString(cardNumber)}", ct);
+        using var response = await httpClient.SendAsync(request, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<WinPakCard>(ct);
+    }
+
+    /// <summary>Založí kartu, nebo upraví existující (WIN-PAK na to má jediné volání).</summary>
+    public Task UpsertCardAsync(string cardNumber, string? cardHolderId, WinPakCardStatus status,
+        DateTime? activationDate = null, DateTime? expirationDate = null,
+        IReadOnlyList<string>? accessLevelIds = null, CancellationToken ct = default)
+        => SendAsync(HttpMethod.Put, $"api/v1/cards/{Uri.EscapeDataString(cardNumber)}",
+            new { cardHolderId, status, activationDate, expirationDate, accessLevelIds }, ct);
+
+    public Task<WinPakDoorStatus?> GetDoorStatusAsync(long hid, CancellationToken ct = default)
+        => GetAsync<WinPakDoorStatus>($"api/v1/doors/{hid}", ct);
+
+    /// <summary>Krátce otevře dveře; bez délky se použije výchozí puls panelu.</summary>
+    public Task PulseDoorAsync(long hid, int? seconds = null, CancellationToken ct = default)
+        => SendAsync(HttpMethod.Post, $"api/v1/doors/{hid}/pulse", new { seconds }, ct);
+
+    public Task LockDoorAsync(long hid, CancellationToken ct = default)
+        => SendAsync(HttpMethod.Post, $"api/v1/doors/{hid}/lock", null, ct);
+
+    public Task UnlockDoorAsync(long hid, CancellationToken ct = default)
+        => SendAsync(HttpMethod.Post, $"api/v1/doors/{hid}/unlock", null, ct);
+
+    public Task SetDoorModeAsync(long hid, WinPakDoorMode mode, CancellationToken ct = default)
+        => SendAsync(HttpMethod.Post, $"api/v1/doors/{hid}/mode", new { mode }, ct);
 }

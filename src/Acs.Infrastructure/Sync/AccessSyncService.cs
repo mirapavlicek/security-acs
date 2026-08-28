@@ -78,8 +78,7 @@ public class AccessSyncService(AcsDbContext db, WinPakClient winPak, AuditServic
                 continue;
 
             // Aktualizace čísla karty podle WIN-PAK (bere se aktivní karta).
-            var activeCard = holder.Cards.FirstOrDefault(c =>
-                string.Equals(c.Status, "Active", StringComparison.OrdinalIgnoreCase))
+            var activeCard = holder.Cards.FirstOrDefault(c => c.Status == WinPakCardStatus.Active)
                 ?? holder.Cards.FirstOrDefault();
             if (activeCard is not null && employee.CardNumber != activeCard.CardNumber)
             {

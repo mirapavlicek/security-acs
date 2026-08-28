@@ -1,0 +1,210 @@
+@page "/ui/features/panels"
+@model Acs.WinPakConnector.Pages.Features.PanelsModel
+@{
+    ViewData["Title"] = "Panely";
+}
+<h1>Panely</h1>
+<p class="muted">
+    Řídicí jednotky, jejich výstupy a skupiny, přiřazení časových zón a svátků a hromadné povely.
+    Konfigurace hardwaru se běžně dělá ve WIN-PAKu — ACS ji nepoužívá.
+</p>
+
+<partial name="_FeatureMessages" model="Model" />
+
+<div class="card">
+    <h2>Seznam panelů</h2>
+    @if (Model.Panels.Count == 0)
+    {
+        <p class="muted">Žádné panely se nenačetly.</p>
+    }
+    else
+    {
+        <table class="data">
+            <thead><tr><th>Id</th><th>Název</th><th>Typ</th><th>Popis</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var panel in Model.Panels)
+            {
+                <tr>
+                    <td class="mono">@panel.Id</td>
+                    <td>@panel.Name</td>
+                    <td class="muted">@panel.DeviceType</td>
+                    <td class="muted">@panel.Description</td>
+                    <td><a class="btn btn-sm btn-ghost" asp-page="/Features/Panels" asp-route-panelId="@panel.Id">Detail</a></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+@if (Model.PanelId is { } panelId)
+{
+    <div class="card">
+        <h2>Panel @panelId</h2>
+        @if (Model.DetailError is not null)
+        {
+            <div class="alert alert-error">@Model.DetailError</div>
+        }
+        @if (Model.GroupCheck is not null)
+        {
+            <p class="muted">Volba skupin na panelu: <span class="mono">@Model.GroupCheck</span></p>
+        }
+
+        <h3>Výstupy</h3>
+        @if (Model.Outputs.Count == 0)
+        {
+            <p class="muted">Panel nemá žádné výstupy.</p>
+        }
+        else
+        {
+            <table class="data">
+                <thead><tr><th>Id</th><th>Název</th><th>Časová zóna</th></tr></thead>
+                <tbody>
+                @foreach (var output in Model.Outputs)
+                {
+                    <tr>
+                        <td class="mono">@output.Id</td>
+                        <td>@output.Name</td>
+                        <td>
+                            <form method="post" asp-page-handler="OutputTimeZone" class="inline">
+                                <input type="hidden" name="panelId" value="@panelId" />
+                                <input type="hidden" name="outputId" value="@output.Id" />
+                                <select name="timeZoneId" style="width:auto">
+                                    @foreach (var zone in Model.AvailableTimeZones)
+                                    {
+                                        <option value="@zone.Id">@zone.Name</option>
+                                    }
+                                </select>
+                                <select name="lockUnlock" style="width:auto" title="Rozšířená varianta rozlišuje zamknout/odemknout">
+                                    <option value="">základní</option>
+                                    <option value="0">zamknout</option>
+                                    <option value="1">odemknout</option>
+                                </select>
+                                <button class="btn btn-sm btn-ghost" type="submit">Nastavit</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+
+        <h3>Skupiny</h3>
+        @if (Model.Groups.Count == 0)
+        {
+            <p class="muted">Panel nemá žádné skupiny.</p>
+        }
+        else
+        {
+            <table class="data">
+                <thead><tr><th>Id</th><th>Název</th><th>Časová zóna</th></tr></thead>
+                <tbody>
+                @foreach (var group in Model.Groups)
+                {
+                    <tr>
+                        <td class="mono">@group.Id</td>
+                        <td>@group.Name</td>
+                        <td>
+                            <form method="post" asp-page-handler="GroupTimeZone" class="inline">
+                                <input type="hidden" name="panelId" value="@panelId" />
+                                <input type="hidden" name="groupId" value="@group.Id" />
+                                <select name="timeZoneId" style="width:auto">
+                                    @foreach (var zone in Model.AvailableTimeZones)
+                                    {
+                                        <option value="@zone.Id">@zone.Name</option>
+                                    }
+                                </select>
+                                <button class="btn btn-sm btn-ghost" type="submit">Nastavit</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+
+        <h3>Časové zóny panelu</h3>
+        <form method="post" asp-page-handler="TimeZones">
+            <input type="hidden" name="panelId" value="@panelId" />
+            @foreach (var zone in Model.AvailableTimeZones)
+            {
+                <div class="checkbox-row">
+                    <input type="checkbox" id="tz-@zone.Id" name="timeZoneIds" value="@zone.Id"
+                           checked="@Model.ConfiguredTimeZones.Any(c => c.Id == zone.Id)" />
+                    <label for="tz-@zone.Id">@zone.Name <span class="muted">@zone.Description</span></label>
+                </div>
+            }
+            <div class="btn-row">
+                <button class="btn" type="submit">Uložit časové zóny</button>
+            </div>
+        </form>
+
+        <h3>Skupiny svátků panelu</h3>
+        <form method="post" asp-page-handler="HolidayGroups">
+            <input type="hidden" name="panelId" value="@panelId" />
+            @foreach (var group in Model.AllHolidayGroups)
+            {
+                <div class="checkbox-row">
+                    <input type="checkbox" id="hg-@group.Id" name="holidayGroupIds" value="@group.Id"
+                           checked="@Model.ConfiguredHolidayGroups.Any(c => c.Id == group.Id)" />
+                    <label for="hg-@group.Id">@group.Name</label>
+                </div>
+            }
+            <div class="btn-row">
+                <button class="btn" type="submit">Uložit skupiny svátků</button>
+            </div>
+        </form>
+
+        <h3>Povely panelu</h3>
+        <form method="post" asp-page-handler="Initialize" class="btn-row">
+            <input type="hidden" name="hid" value="@panelId" />
+            <input type="number" name="panelType" value="0" style="width:7rem" title="Typ panelu (HIDType)" />
+            <input type="text" name="tasks" placeholder="kroky, např. 1,4" style="max-width:14rem" />
+            <button class="btn btn-ghost" type="submit">Inicializovat</button>
+        </form>
+        <div class="btn-row">
+            <form method="post" asp-page-handler="CancelInitialize" class="inline">
+                <input type="hidden" name="hid" value="@panelId" />
+                <button class="btn btn-ghost" type="submit">Zrušit inicializaci</button>
+            </form>
+            <form method="post" asp-page-handler="RefreshTimeZones" class="inline">
+                <input type="hidden" name="hid" value="@panelId" />
+                <button class="btn btn-ghost" type="submit">Nahrát časové zóny do panelu</button>
+            </form>
+        </div>
+    </div>
+}
+
+<div class="card">
+    <h2>Hromadné povely pro účet</h2>
+    <p class="hint">Týkají se všech dveří vybraného účtu WIN-PAK.</p>
+    <form method="post" asp-page-handler="LockAll" class="btn-row">
+        <select name="accountId" style="width:auto">
+            @foreach (var account in Model.Accounts)
+            {
+                <option value="@account.Id">@account.Name</option>
+            }
+        </select>
+        <button class="btn btn-ghost" type="submit" name="shouldLock" value="true">Zamknout všechny dveře</button>
+        <button class="btn btn-ghost" type="submit" name="shouldLock" value="false">Odemknout všechny dveře</button>
+    </form>
+    <form method="post" asp-page-handler="RefreshDoors" class="btn-row">
+        <select name="accountId" style="width:auto">
+            @foreach (var account in Model.Accounts)
+            {
+                <option value="@account.Id">@account.Name</option>
+            }
+        </select>
+        <button class="btn btn-ghost" type="submit">Obnovit stav dveří</button>
+    </form>
+
+    <h3>Door schedule</h3>
+    <form method="post" asp-page-handler="DoorSchedule" class="btn-row">
+        <input type="number" name="panelHid" placeholder="HID panelu" required style="width:9rem" />
+        <input type="number" name="panelType" value="0" placeholder="typ" style="width:6rem" />
+        <input type="number" name="entranceId" placeholder="vstup" required style="width:7rem" />
+        <input type="number" name="entrancePointId" placeholder="bod" required style="width:6rem" />
+        <input type="number" name="timeZoneId" placeholder="časová zóna" required style="width:9rem" />
+        <button class="btn btn-ghost" type="submit">Spustit</button>
+    </form>
+</div>

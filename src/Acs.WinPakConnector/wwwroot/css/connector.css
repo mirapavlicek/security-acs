@@ -1,0 +1,122 @@
+/* Vzhled administrace konektoru — záměrně stejný jazyk jako hlavní aplikace ACS. */
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --border: #d8dee7;
+  --text: #1b2733;
+  --muted: #64748b;
+  --primary: #0b6bcb;
+  --primary-contrast: #ffffff;
+  --danger: #c62828;
+  --success: #2e7d32;
+  --warning: #b26a00;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+}
+
+a { color: var(--primary); }
+a:hover { text-decoration: underline; }
+
+.topbar {
+  display: flex; align-items: center; gap: 1.5rem;
+  padding: 0.6rem 2rem;
+  background: var(--surface);
+  border-bottom: 2px solid var(--primary);
+}
+.brand { text-decoration: none; color: var(--text); display: flex; flex-direction: column; line-height: 1.15; }
+.brand-mark { font-size: 1.15rem; font-weight: 700; color: var(--primary); }
+.brand-sub { font-size: 0.72rem; color: var(--muted); }
+
+.mainnav { display: flex; gap: 0.6rem; flex: 1; flex-wrap: wrap; }
+.mainnav a { color: var(--text); text-decoration: none; padding: 0.35rem 0.6rem; border-radius: 6px; }
+.mainnav a:hover { background: var(--bg); color: var(--primary); text-decoration: none; }
+.topbar-right { margin-left: auto; }
+
+.content { flex: 1; width: 100%; max-width: 1100px; margin: 0 auto; padding: 1.5rem 2rem 2.5rem; }
+.footer { padding: 0.7rem 2rem; color: var(--muted); font-size: 0.8rem; border-top: 1px solid var(--border); }
+
+h1 { font-size: 1.45rem; margin: 0 0 1rem; }
+h2 { font-size: 1.1rem; margin: 0 0 0.8rem; }
+h3 { font-size: 0.95rem; margin: 1.2rem 0 0.4rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.3rem;
+  margin-bottom: 1.2rem;
+  overflow-x: auto;
+}
+.cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.2rem; }
+.cards-grid .card { margin-bottom: 0; }
+
+label { display: block; margin: 0.7rem 0 0.2rem; font-size: 0.86rem; color: var(--muted); }
+input[type="text"], input[type="password"], input[type="number"], select, textarea {
+  width: 100%; padding: 0.45rem 0.6rem;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  font-size: 0.94rem; font-family: inherit;
+}
+textarea { min-height: 4.5rem; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); border-color: var(--primary); }
+.hint { font-size: 0.8rem; color: var(--muted); margin: 0.2rem 0 0; }
+
+.checkbox-row { display: flex; align-items: center; gap: 0.5rem; margin: 0.8rem 0 0.2rem; }
+.checkbox-row label { margin: 0; color: var(--text); font-size: 0.94rem; }
+.checkbox-row input { width: auto; }
+
+.btn {
+  display: inline-block; border: 1px solid transparent;
+  background: var(--primary); color: var(--primary-contrast);
+  padding: 0.45rem 1rem; border-radius: 6px; cursor: pointer;
+  font-size: 0.94rem; text-decoration: none; white-space: nowrap;
+}
+.btn:hover { filter: brightness(1.08); text-decoration: none; }
+.btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
+.btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn-row { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-top: 1rem; }
+.btn-row input, .btn-row select, .btn-row textarea { width: auto; }
+.btn-sm { padding: 0.25rem 0.6rem; font-size: 0.85rem; }
+form.inline { display: flex; gap: 0.4rem; align-items: center; }
+
+table.data { width: 100%; border-collapse: collapse; }
+table.data th, table.data td {
+  text-align: left; padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--border); font-size: 0.9rem; overflow-wrap: anywhere;
+}
+table.data th { color: var(--muted); font-weight: 600; }
+
+.alert { padding: 0.7rem 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid; }
+.alert-error { color: var(--danger); border-color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }
+.alert-success { color: var(--success); border-color: var(--success); background: color-mix(in srgb, var(--success) 8%, var(--surface)); }
+.alert-warning { color: var(--warning); border-color: var(--warning); background: color-mix(in srgb, var(--warning) 8%, var(--surface)); }
+.alert ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
+
+.badge { display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px; font-size: 0.76rem; border: 1px solid var(--border); color: var(--muted); }
+.badge-ok { border-color: var(--success); color: var(--success); }
+.badge-bad { border-color: var(--danger); color: var(--danger); }
+.badge-primary { border-color: var(--primary); color: var(--primary); }
+
+.muted { color: var(--muted); }
+.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.88rem; }
+
+.login { max-width: 420px; margin: 3rem auto; }
+
+/* Sekce nastavení se přepínají podle zvoleného režimu. */
+.mode-section[hidden] { display: none; }
+
+/* Sekce Funkce: hodně formulářů pod sebou, proto užší mezery a čitelné oddělovače. */
+.card h3 + .btn-row { margin-top: 0.5rem; }
+.card h3 { border-top: 1px solid var(--border); padding-top: 0.9rem; }
+.card h3:first-of-type { border-top: none; }

@@ -1,0 +1,257 @@
+# Zprovoznění WinPak Connectoru (mezičlánek k WIN-PAK API)
+
+Postup pro obsluhu: jak dostat konektor od nuly do funkčního stavu a napojit
+na něj ACS. Referenční popis konektoru je v
+[`src/Acs.WinPakConnector/README.md`](../src/Acs.WinPakConnector/README.md),
+rozbor samotného WIN-PAK API v
+[`docs/winpak-api/README.md`](winpak-api/README.md).
+
+## K čemu konektor je
+
+WIN-PAK nemá REST API — jeho rozhraní jsou COM objekty přes COM+/DCOM, tedy
+Windows-only. ACS běží na RHEL a COM volat nemůže. Konektor je proto malá
+Windows služba, která běží na WIN-PAK serveru, mluví s ním nativně přes COM
+a pro ACS z toho dělá normální REST:
+
+```
+ACS (RHEL, 10.84.7.146/147)  ──HTTP + API klíč──▶  WinPak Connector (Windows, port 52001)  ──COM+──▶  WIN-PAK
+```
+
+Bez konektoru ACS neumí načítat čtečky ani předávat přístupy — správce karet je
+musí zadávat ve WIN-PAKu ručně.
+
+## Než začnete
+
+| Předpoklad | Jak ověřit |
+| --- | --- |
+| WIN-PAK edice **SE nebo PE** s licencí **`SRVWPPAPI`** | v XE API vůbec není; licenci potvrdí dodavatel WIN-PAKu |
+| WIN-PAK nainstalovaný **s volbou Web** | tím se nasadí `DatabaseAPIServer`, bez kterého API nefunguje |
+| Existují COM+ aplikace **WIN-PAK CS DBServer Helper** a **WIN-PAK CS ComServer Helper** | krok 1 níže |
+| **Účet operátora WIN-PAK** pro konektor (jméno, heslo, případně doména) | krok 2 níže |
+| Znáte **název účtu (account)** a případně podúčtu, ve kterém jsou karty a držitelé | ve WIN-PAK klientovi; ověří se v kroku 7 |
+| Na WIN-PAK serveru je volný **TCP port 52001** | `netstat -ano \| findstr 52001` |
+| Firewall pustí na 52001 **jen** aplikační servery ACS | krok 4 |
+
+.NET runtime instalovat netřeba — konektor se publikuje jako self-contained.
+
+Doporučené místo pro konektor je **přímo WIN-PAK server**. Odpadne tím DCOM přes
+síť a s ním firewallové i autentizační potíže. Pokud to nejde, viz poznámku
+na konci kroku 1.
+
+## Krok 1 — ověřit COM+ komponenty
+
+Na WIN-PAK serveru:
+
+1. Spusťte `dcomcnfg` (nebo Ovládací panely → Nástroje pro správu → Component Services).
+2. Rozbalte **Component Services → Computers → My Computer → COM+ Applications**.
+3. Musí tam být:
+   - **WIN-PAK CS DBServer Helper** — databázová část API (`NCIHelper.dll`),
+   - **WIN-PAK CS ComServer Helper** — komunikační server (`ACCW.dll`).
+
+Když tam nejsou, WIN-PAK není nainstalovaný s volbou Web nebo chybí licence API —
+dál nemá smysl pokračovat, řešte to s dodavatelem WIN-PAKu.
+
+> **Konektor na jiném stroji než WIN-PAK:** u obou COM+ aplikací dejte
+> pravým tlačítkem **Export → Application proxy**, vzniklý instalátor přeneste
+> na stroj s konektorem a nainstalujte. Bez proxy tam COM objekty nejsou
+> zaregistrované a konektor to ohlásí hláškou
+> „COM objekt '…' není na tomto stroji zaregistrován“.
+
+## Krok 2 — účet operátora WIN-PAK
+
+Konektor se k WIN-PAKu přihlašuje jako operátor. Ve WIN-PAK klientovi založte
+(nebo si vyžádejte) účet, který má práva na to, co má ACS dělat:
+
+- čtení čteček, přístupových úrovní, držitelů a karet,
+- zápis karet a jejich přístupových úrovní (to je vlastní přidělení přístupu),
+- volitelně ovládání dveří, pokud ho chcete používat ze sekce Funkce.
+
+Nedávejte účtu víc, než potřebuje. Pokud WIN-PAK používá **doménové přihlášení**
+(„Logon using Domain Credentials“), poznamenejte si i doménu — konektor pak
+použije `InitServer2`.
+
+Účet, pod kterým poběží **služba konektoru**, musí mít právo volat COM+ aplikace
+z kroku 1. Nejjednodušší je nechat službu běžet pod `LocalSystem` na WIN-PAK
+serveru; při vzdáleném nasazení použijte doménový účet s právy na DCOM.
+
+## Krok 3 — sestavit a zkopírovat
+
+Na build stroji (může být i vývojářský Linux):
+
+```bash
+dotnet publish src/Acs.WinPakConnector -c Release -r win-x64 --self-contained \
+  -o publish/winpak-connector
+```
+
+Obsah `publish/winpak-connector` zkopírujte na WIN-PAK server, doporučeně do
+`C:\Program Files\AcsWinPakConnector`.
+
+## Krok 4 — první konfigurace, služba a firewall
+
+1. V `appsettings.json` nastavte jen dvě věci:
+   - `Security:ApiKey` — silný náhodný klíč (`openssl rand -hex 32`, nebo si ho
+     později vygenerujte v GUI). Bez klíče konektor odmítá všechny požadavky
+     a nepustí vás ani do administrace.
+   - `Kestrel:Endpoints:Http:Url` — ponechte `http://0.0.0.0:52001`, nebo omezte
+     na konkrétní interní IP.
+
+   Zbytek (režim, přihlášení k WIN-PAKu, účet, ProgID) se pohodlněji nastaví
+   v GUI v kroku 6.
+
+2. Zaregistrujte službu (PowerShell jako administrátor):
+
+   ```powershell
+   New-Service -Name "AcsWinPakConnector" `
+     -BinaryPathName '"C:\Program Files\AcsWinPakConnector\Acs.WinPakConnector.exe"' `
+     -DisplayName "ACS WinPak Connector" -StartupType Automatic
+   Start-Service AcsWinPakConnector
+   ```
+
+3. Otevřete port jen aplikačním serverům ACS (a případně stanicím správců):
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "ACS WinPak Connector" -Direction Inbound `
+     -Protocol TCP -LocalPort 52001 -RemoteAddress 10.84.7.146,10.84.7.147 -Action Allow
+   ```
+
+4. Ověřte, že služba žije:
+
+   ```powershell
+   Invoke-RestMethod http://localhost:52001/health   # → status = ok
+   ```
+
+## Krok 5 — přihlásit se do administrace
+
+Otevřete `http://<winpak-server>:52001/ui`. Přihlašuje se **API klíčem**
+z kroku 4, protože samostatné heslo administrace zatím není nastavené.
+
+V **Nastavení → Zabezpečení** si hned nastavte **Heslo administrace**, ať se
+API klíč nemusí zadávat do prohlížeče. Po uložení se přihlašuje tímto heslem;
+API klíč zůstává jen pro komunikaci s ACS.
+
+## Krok 6 — přepnout na režim Com
+
+V **Nastavení**:
+
+1. **Režim** změňte na `Com`. Zobrazí se sekce „WIN-PAK přes COM“.
+2. **Přihlášení operátora** — uživatel, heslo a doména z kroku 2. Doménu nechte
+   prázdnou u lokálních účtů WIN-PAK.
+3. **Účet** — název účtu WIN-PAK, ve kterém jsou karty a držitelé, případně
+   i podúčet. Prázdný účet znamená čtení napříč účty a hodí se jen na číselníky;
+   pro zápis karet ho vyplňte.
+4. **Komunikační server** zapněte jen tehdy, když chcete ovládat dveře nebo
+   odebírat události z panelů. Databázová část funguje i bez něj.
+5. **ProgID** neměňte, pokud instalace neregistruje objekty jinak než výchozí
+   `NCIHelper.*` a `ACCW.MTSCBServer`.
+6. **Uložit nastavení.** Restart služby není potřeba — konektor se přestaví sám.
+
+Nastavení se ukládá do `appsettings.Local.json` vedle programu. Ten soubor
+obsahuje hesla, takže mu omezte přístup (ACL složky) na účet služby a
+administrátory. Instalační `appsettings.json` zůstává nedotčený, takže se dá
+kdykoli vrátit do výchozího stavu jeho smazáním.
+
+## Krok 7 — ověřit, že konektor doopravdy čte z WIN-PAKu
+
+Otevřete **Diagnostiku**. Všechny řádky mají mít zelené „ok“:
+
+| Kontrola | Co znamená |
+| --- | --- |
+| Stav spojení | přihlášení a připojení k databázovému serveru prošlo |
+| Účty | vidíte název svého účtu a jeho podúčty — podle toho zkontrolujte krok 6 |
+| Čtečky | počet odpovídá tomu, co je ve WIN-PAKu |
+| Přístupové úrovně | počet odpovídá WIN-PAKu |
+| Držitelé karet | počet odpovídá WIN-PAKu |
+| Systémové údaje | zdroj dat, časová zóna serveru, operátor, max. délka čísla karty |
+| Časové zóny, Panely | číselníky a hardware se čtou |
+
+Prázdné číselníky při zeleném spojení obvykle znamenají špatně zadaný účet.
+Když něco svítí červeně, hledejte hlášku v tabulce na konci tohoto dokumentu.
+
+Na **Přehledu** zkontrolujte, že „Zápis do WIN-PAK“ je **ano** — bez toho ACS
+přístupy nepředá.
+
+## Krok 8 — napojit ACS
+
+V ACS jako administrátor otevřete **Nastavení → WIN-PAK konektor**:
+
+1. **Adresa konektoru** — `http://<winpak-server>:52001`.
+2. **API klíč** — týž klíč jako v konektoru.
+3. Klikněte **Otestovat spojení**. Očekávaná odpověď: `OK — režim Com, verze …,
+   zápis: ano`.
+4. Zapněte **Automatická synchronizace čteček** (interval např. 60 minut).
+5. Zapněte **Zpětná synchronizace stavu přístupů** (interval např. 15 minut),
+   ať se změny provedené přímo ve WIN-PAKu propíší do ACS.
+6. Uložte.
+
+Pod nastavením je odkaz do administrace konektoru, ať se k ní správce dostane
+z jednoho místa.
+
+## Krok 9 — ověřit celou cestu
+
+1. **Čtečky** → *Synchronizovat z WIN-PAK*. Musí se naimportovat čtečky
+   a u nich zůstat vyplněný panel a popis.
+2. U aspoň jedné čtečky doplňte **WIN-PAK access level** (Čtečky → Upravit →
+   „WIN-PAK access level“), jinak ji nelze předat do WIN-PAKu.
+3. Zkuste projít celý tok: podat žádost → schválit → ve **Frontě karet**
+   *Předat do systému*. Ve WIN-PAKu se přístup musí objevit na kartě držitele.
+4. V ACS otevřete **Automatizace** — self-diagnostika tam nesmí hlásit problém
+   s konektorem ani se servery WIN-PAKu.
+
+## Kontrolní seznam po zprovoznění
+
+- [ ] `GET /health` na konektoru vrací `ok`
+- [ ] Diagnostika konektoru je celá zelená
+- [ ] Přehled hlásí „Zápis do WIN-PAK: ano“
+- [ ] V administraci je nastavené **heslo administrace** (ne jen API klíč)
+- [ ] Port 52001 je firewallem omezený na aplikační servery
+- [ ] `appsettings.Local.json` má omezené ACL
+- [ ] Test spojení v ACS vrací `OK — režim Com`
+- [ ] Synchronizace čteček i zpětná synchronizace jsou zapnuté
+- [ ] Čtečky mají vyplněný WIN-PAK access level
+- [ ] Zkušební žádost prošla celým tokem až do WIN-PAKu
+
+## Když to nejde
+
+| Hláška / projev | Příčina | Co udělat |
+| --- | --- | --- |
+| `COM objekt '…' není na tomto stroji zaregistrován` | konektor neběží na WIN-PAK serveru, nebo chybí COM+ proxy | nasaďte konektor na WIN-PAK server, nebo nainstalujte application proxy (krok 1) |
+| `Režim Com vyžaduje Windows` | konektor běží na Linuxu | režim Com jde jen na Windows; na Linuxu použijte Mock |
+| `Přihlášení k WIN-PAK se nezdařilo — ověřte uživatele, heslo a doménu` | špatné údaje operátora, nebo se má použít doména | zkontrolujte krok 2 a 6; u doménového přihlášení vyplňte doménu |
+| `Připojení k databázi WIN-PAK selhalo (status -2)` | databázový server WIN-PAK neodpovídá | zkontrolujte služby WIN-PAKu a MSSQL na serveru |
+| `Registrace u komunikačního serveru WIN-PAK selhala (InitServer vrátil false)` | komunikační server neběží, nebo účet nemá práva | ověřte službu komunikačního serveru; nebo ho v nastavení vypněte, pokud dveře neovládáte |
+| HTTP **401** z `/api/*` | ACS má jiný API klíč než konektor | srovnejte klíč v ACS a v konektoru |
+| HTTP **503** z `/api/*` | konektor nemá nakonfigurovaný API klíč | doplňte `Security:ApiKey` a restartujte službu |
+| HTTP **501** | operaci neumí zvolený režim (typicky Mssql) | přepněte na režim Com |
+| HTTP **502** | konektor se nedostal k WIN-PAKu | podívejte se do Diagnostiky, hláška tam bude konkrétnější |
+| HTTP **422** | WIN-PAK zápis odmítl | hláška nese jeho stavový kód, např. „číslo karty už existuje“ nebo „neplatná přístupová úroveň“ |
+| Diagnostika zelená, ale číselníky prázdné | špatný název účtu nebo podúčtu | porovnejte s výsledkem kontroly „Účty“ |
+| ACS hlásí „konektor je jen pro čtení“ | běží režim Mssql nebo Mock | přepněte na Com |
+
+Logy služby: Prohlížeč událostí → Windows Logs → Application, zdroj
+`AcsWinPakConnector`.
+
+## Aktualizace konektoru
+
+1. Publikujte novou verzi (krok 3).
+2. `Stop-Service AcsWinPakConnector`.
+3. Přepište soubory programu. **`appsettings.Local.json` nechte** — je v něm
+   nastavení včetně hesel.
+4. `Start-Service AcsWinPakConnector`, pak zkontrolujte Diagnostiku.
+
+**Pořadí vůči ACS:** konektor aktualizujte **dřív** než ACS. Nové verze si mezi
+sebou předávají stav karty číselně, starý konektor ho posílal textem — kdyby šlo
+ACS první, zpětná synchronizace přístupů by na starém konektoru skončila chybou.
+
+## Dokud není licence API
+
+Konektor jde provozovat i bez `SRVWPPAPI`, ale s omezením:
+
+- **Režim `Mssql`** — čte přímo z databáze WIN-PAK (SQL login stačí s právem
+  `SELECT`). Dotazy jsou konfigurovatelné v GUI, protože schéma WIN-PAKu je
+  proprietární a mezi verzemi se liší. Zápis nefunguje: schválené přístupy
+  zadává správce karet ve WIN-PAKu ručně a v ACS je jen potvrdí.
+- **Režim `Mock`** — ukázková data v paměti. Slouží k vývoji a k předvedení ACS
+  bez WIN-PAKu, do provozu nepatří.
+
+Přepnutí na `Com` je později jen změna režimu v GUI; REST rozhraní se nemění,
+takže ACS se nijak nepřekonfiguruje.
