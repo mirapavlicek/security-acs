@@ -15,7 +15,7 @@ public class ImportReadersModel(EkvReaderImportService importer) : PageModel
     }
 
     public async Task<IActionResult> OnPostAsync(
-        string buildingName, IFormFile? file, string? dryRun, string? keepUnmatched)
+        string buildingName, IFormFile? file, IFormFile? positionsFile, string? dryRun, string? keepUnmatched)
     {
         if (file is null || file.Length == 0)
         {
@@ -33,11 +33,19 @@ public class ImportReadersModel(EkvReaderImportService importer) : PageModel
                 return RedirectToPage();
             }
 
+            Dictionary<string, List<EkvPosition>>? positions = null;
+            if (positionsFile is { Length: > 0 })
+            {
+                await using var positionsStream = positionsFile.OpenReadStream();
+                positions = EkvReaderImportService.ParsePositions(positionsStream);
+            }
+
             var result = await importer.ImportAsync(
                 rows, buildingName.Trim(),
                 dryRun: dryRun == "true",
                 deactivateUnmatched: keepUnmatched != "true",
-                userName: User.Identity?.Name);
+                userName: User.Identity?.Name,
+                positions: positions);
 
             Message = result.ToString();
         }

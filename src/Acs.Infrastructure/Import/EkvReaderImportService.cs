@@ -27,6 +27,9 @@ public record EkvReaderRow(
     public bool IsLift => !string.IsNullOrWhiteSpace(Lift);
 }
 
+/// <summary>Poloha čtečky ve výkresu EKV daného patra (souřadnice PDF, stejná soustava jako u místností).</summary>
+public record EkvPosition(string Floor, double X, double Y);
+
 public record EkvImportResult(
     int Rows,
     int Created,
@@ -35,6 +38,7 @@ public record EkvImportResult(
     int RoomsCreated,
     int Deactivated,
     int Ambiguous,
+    int Positioned,
     IReadOnlyList<string> Unresolved,
     bool DryRun)
 {
@@ -45,6 +49,8 @@ public record EkvImportResult(
         text.Append($"řádků {Rows}, nových čteček {Created}, aktualizováno {Updated} ");
         text.Append($"(z toho převzato z výkresů {ClaimedFromDrawing}), založených částí místností {RoomsCreated}, ");
         text.Append($"deaktivováno čteček z výkresů bez protějšku {Deactivated}.");
+        if (Positioned > 0)
+            text.Append($" Poloha z výkresů EKV nastavena u {Positioned} čteček.");
         if (Ambiguous > 0)
             text.Append($"\nMístností s více záznamy v číselníku (vybrán ten na patře podle čísla): {Ambiguous}.");
         if (Unresolved.Count > 0)
@@ -128,6 +134,19 @@ public class EkvReaderImportService(AcsDbContext db, AuditService audit)
         return result;
     }
 
+    /// <summary>
+    /// Pozice z <c>ekv-readers.json</c> (výstup <c>import/moc/extract_ekv.py</c>):
+    /// číslo čtečky → seznam poloh po patrech. Výtahová čtečka je na každém patře,
+    /// kde výtah staví, proto seznam.
+    /// </summary>
+    public static Dictionary<string, List<EkvPosition>> ParsePositions(Stream json)
+    {
+        var parsed = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<EkvPosition>>>(
+            json, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))
+            ?? [];
+        return new Dictionary<string, List<EkvPosition>>(parsed, StringComparer.OrdinalIgnoreCase);
+    }
+
     private static string? Cell(string?[] row, int index)
         => index >= 0 && index < row.Length ? row[index] : null;
 
@@ -154,9 +173,16 @@ public class EkvReaderImportService(AcsDbContext db, AuditService audit)
     /// Náhled běží stejnou cestou kódu v transakci, která se odvolá — počty
     /// odpovídají tomu, co by ostrý běh udělal.
     /// </summary>
+    /// <param name="positions">
+    /// Volitelné polohy čteček z výkresů EKV. Bez nich se poloha nemění — čtečky
+    /// převzaté z výkresů si nechají tu, kterou měly. Když jsou zadané, jsou pro
+    /// polohy autoritativní: čtečka, která v nich není, polohu ztratí.
+    /// </param>
     public async Task<EkvImportResult> ImportAsync(
         IReadOnlyList<EkvReaderRow> rows, string buildingName, bool dryRun,
-        bool deactivateUnmatched, string? userName, CancellationToken ct = default)
+        bool deactivateUnmatched, string? userName,
+        IReadOnlyDictionary<string, List<EkvPosition>>? positions = null,
+        CancellationToken ct = default)
     {
         var strategy = db.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
@@ -164,7 +190,7 @@ public class EkvReaderImportService(AcsDbContext db, AuditService audit)
             await using var tx = await db.Database.BeginTransactionAsync(ct);
             try
             {
-                var result = await RunAsync(rows, buildingName, dryRun, deactivateUnmatched, userName, ct);
+                var result = await RunAsync(rows, buildingName, dryRun, deactivateUnmatched, userName, positions, ct);
                 if (dryRun)
                     await tx.RollbackAsync(ct);
                 else
@@ -181,7 +207,8 @@ public class EkvReaderImportService(AcsDbContext db, AuditService audit)
 
     private async Task<EkvImportResult> RunAsync(
         IReadOnlyList<EkvReaderRow> rows, string buildingName, bool dryRun,
-        bool deactivateUnmatched, string? userName, CancellationToken ct)
+        bool deactivateUnmatched, string? userName,
+        IReadOnlyDictionary<string, List<EkvPosition>>? positions, CancellationToken ct)
     {
         var building = await db.Buildings.FirstOrDefaultAsync(b => b.Name == buildingName, ct)
             ?? throw new InvalidOperationException(
@@ -209,7 +236,7 @@ public class EkvReaderImportService(AcsDbContext db, AuditService audit)
             .ToDictionary(r => r.DeviceNumber!, StringComparer.OrdinalIgnoreCase);
         var claimed = new HashSet<int>();
 
-        int created = 0, updated = 0, claimedFromDrawing = 0, roomsCreated = 0;
+        int created = 0, updated = 0, claimedFromDrawing = 0, roomsCreated = 0, positioned = 0;
         var unresolved = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var row in rows)
@@ -258,6 +285,8 @@ public class EkvReaderImportService(AcsDbContext db, AuditService audit)
             }
 
             Apply(reader, row, room, corridor);
+            if (positions is not null && ApplyPosition(reader, row, room, corridor, positions, floorNames))
+                positioned++;
             byDevice[row.DeviceNumber] = reader;
         }
 
@@ -280,7 +309,7 @@ public class EkvReaderImportService(AcsDbContext db, AuditService audit)
         }
 
         var result = new EkvImportResult(rows.Count, created, updated, claimedFromDrawing,
-            roomsCreated, deactivated, ambiguous, [.. unresolved], dryRun);
+            roomsCreated, deactivated, ambiguous, positioned, [.. unresolved], dryRun);
 
         if (!dryRun)
             await audit.LogAsync(userName, "ekv-readers-imported", "Building", building.Id.ToString(), result.ToString(), ct);
@@ -436,6 +465,64 @@ public class EkvReaderImportService(AcsDbContext db, AuditService audit)
             + $"podlaží {row.Floor}; stavební objekt {row.BuildingObject}."
             + (room is null && corridor is null ? $" Místnost {row.RoomNumber} v číselníku nenalezena." : "")
             + Note(row);
+    }
+
+    /// <summary>
+    /// Poloha z výkresu EKV. Výkres je jeden na celé patro, v ACS jsou části A/B
+    /// samostatná patra — vybírá se podle předpony názvu patra, na kterém čtečka
+    /// (přes místnost nebo chodbu) leží. U výtahů a čteček bez místnosti rozhoduje
+    /// patro z tabulky; když se nic netrefí, vezme se první známá poloha.
+    /// </summary>
+    private static bool ApplyPosition(
+        Reader reader, EkvReaderRow row, Room? room, Corridor? corridor,
+        IReadOnlyDictionary<string, List<EkvPosition>> positions, Dictionary<int, string> floorNames)
+    {
+        // Soubor s polohami je pro polohy autoritativní: čtečka, která v něm není
+        // (popisek vyvedený mimo půdorys), polohu ztratí a plán ji položí do místnosti.
+        if (!positions.TryGetValue(row.DeviceNumber, out var candidates) || candidates.Count == 0)
+        {
+            reader.SourceX = null;
+            reader.SourceY = null;
+            return false;
+        }
+
+        var floorId = room?.FloorId ?? corridor?.FloorId;
+        var floorName = floorId is { } id ? floorNames.GetValueOrDefault(id) : null;
+        floorName ??= TableFloorLabel(row.Floor);
+
+        // Poloha je přepočtená do soustavy konkrétního patra ACS („2NP B“). Poloha
+        // pro jiné patro by čtečku posadila mimo plán, proto se raději nenastaví.
+        var position = candidates.FirstOrDefault(p =>
+                floorName is not null && floorName.Equals(p.Floor, StringComparison.OrdinalIgnoreCase))
+            ?? candidates.FirstOrDefault(p =>
+                floorName is not null
+                && (floorName.StartsWith(p.Floor, StringComparison.OrdinalIgnoreCase)
+                    || p.Floor.StartsWith(floorName, StringComparison.OrdinalIgnoreCase)));
+        if (position is null)
+        {
+            reader.SourceX = null;
+            reader.SourceY = null;
+            return false;
+        }
+
+        reader.SourceX = position.X;
+        reader.SourceY = position.Y;
+        return true;
+    }
+
+    /// <summary>„-02PP“ → „2PP“, „3NP_B23“ → „3NP“, „7NP“ → „TP“ (technické podlaží).</summary>
+    internal static string? TableFloorLabel(string? tableFloor)
+    {
+        if (string.IsNullOrWhiteSpace(tableFloor))
+            return null;
+
+        var label = tableFloor.TrimStart('-');
+        var underscore = label.IndexOf('_');
+        if (underscore > 0)
+            label = label[..underscore];
+        if (label.StartsWith('0'))
+            label = label[1..];
+        return label.Equals("7NP", StringComparison.OrdinalIgnoreCase) ? "TP" : label;
     }
 
     private static string Note(EkvReaderRow row)

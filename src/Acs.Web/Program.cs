@@ -194,6 +194,7 @@ if (args.Contains("--import-plan"))
 
 // ---------- Import čteček z tabulky EKV (CLI) ----------
 // Použití: Acs.Web --import-readers <tabulka.xlsx> [--building MOC] [--dry-run] [--keep-unmatched]
+//          [--positions import/moc/ekv-readers.json]   (polohy z výkresů EKV, viz extract_ekv.py)
 // Tabulka „čtečky EKV“ z dokumentace skutečného provedení; jde nahrát dveřní
 // i výtahovou. Čtečky z výkresů se sjednotí podle rozvaděče a místnosti;
 // co protějšek nemá, se deaktivuje (--keep-unmatched to vypne).
@@ -215,11 +216,21 @@ if (args.Contains("--import-readers"))
         .GetRequiredService<Acs.Infrastructure.Import.EkvReaderImportService>();
     await using var tableStream = File.OpenRead(path);
     var tableRows = Acs.Infrastructure.Import.EkvReaderImportService.Parse(tableStream);
+
+    Dictionary<string, List<Acs.Infrastructure.Import.EkvPosition>>? readerPositions = null;
+    var positionsIdx = Array.IndexOf(args, "--positions");
+    if (positionsIdx >= 0 && positionsIdx + 1 < args.Length)
+    {
+        await using var positionsStream = File.OpenRead(args[positionsIdx + 1]);
+        readerPositions = Acs.Infrastructure.Import.EkvReaderImportService.ParsePositions(positionsStream);
+    }
+
     var readersResult = await readerImporter.ImportAsync(
         tableRows, buildingName,
         dryRun: args.Contains("--dry-run"),
         deactivateUnmatched: !args.Contains("--keep-unmatched"),
-        userName: "cli");
+        userName: "cli",
+        positions: readerPositions);
     Console.WriteLine(readersResult);
     return 0;
 }

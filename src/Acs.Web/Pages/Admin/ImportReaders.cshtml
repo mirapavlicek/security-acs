@@ -36,6 +36,13 @@
         <input type="file" name="file"
                accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx" required />
 
+        <label>Polohy čteček z výkresů EKV — <code>ekv-readers.json</code> (volitelné)</label>
+        <input type="file" name="positionsFile" accept="application/json,.json" />
+        <p class="hint">
+            Výstup skriptu <code>import/moc/extract_ekv.py</code> nad výkresy „čtečky EKV – celý objekt“
+            (jeden list na patro). Čtečky pak dostanou polohu ve výkresu, ze které se generuje plán patra.
+        </p>
+
         <div class="checkbox-row">
             <input type="checkbox" id="dryRun" name="dryRun" value="true" checked />
             <label for="dryRun">Jen náhled (nic se neuloží)</label>

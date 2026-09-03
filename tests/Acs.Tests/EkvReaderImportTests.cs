@@ -381,6 +381,127 @@ public sealed class EkvReaderImportTests : IDisposable
         Assert.True(drawing.IsActive);
     }
 
+    // ---------- Polohy z výkresů EKV ----------
+
+    [Fact]
+    public async Task Import_NastaviPolohuPodlePatraMistnosti()
+    {
+        var room = AddRoom(_floor1NpB, "23-00516 — STROJOVNA");
+        var rows = new[] { new EkvReaderRow("363111", "23-00516", "1NP", "ACS.11", null, "101", null, null) };
+        var positions = new Dictionary<string, List<EkvPosition>>
+        {
+            // Stejná čtečka přepočtená do soustavy části A i B — vybrat se musí B, kde místnost je.
+            ["363111"] = [new EkvPosition("1NP A", 100, 100), new EkvPosition("1NP B", 2500, 1300)],
+        };
+
+        var result = await _importer.ImportAsync(rows, "MOC", false, true, "test", positions);
+
+        Assert.Equal(1, result.Positioned);
+        var reader = await _db.Readers.SingleAsync(r => r.DeviceNumber == "363111");
+        Assert.Equal(room.Id, reader.RoomId);
+        Assert.Equal(2500, reader.SourceX);
+        Assert.Equal(1300, reader.SourceY);
+        Assert.Contains("Poloha z výkresů EKV nastavena u 1", result.ToString());
+    }
+
+    [Fact]
+    public async Task Import_PolohuProJinePatroNepouzije()
+    {
+        AddRoom(_floor1NpA, "23-00516 — STROJOVNA");
+        var rows = new[] { new EkvReaderRow("363111", "23-00516", "1NP", "ACS.11", null, "101", null, null) };
+        var positions = new Dictionary<string, List<EkvPosition>>
+        {
+            ["363111"] = [new EkvPosition("1NP B", 2500, 1300)],
+        };
+
+        var result = await _importer.ImportAsync(rows, "MOC", false, true, "test", positions);
+
+        // Souřadnice v soustavě jiného patra by čtečku posadily mimo plán.
+        Assert.Equal(0, result.Positioned);
+        var reader = await _db.Readers.SingleAsync(r => r.DeviceNumber == "363111");
+        Assert.Null(reader.SourceX);
+    }
+
+    [Fact]
+    public async Task Import_VytahBezMistnostiBerePolohuPodlePatraZTabulky()
+    {
+        var rows = new[]
+        {
+            new EkvReaderRow("384051", null, "6NP", "ACS.62.V06", "čtečka v kabině", null, "výtah V06", "blokování volby"),
+        };
+        var positions = new Dictionary<string, List<EkvPosition>>
+        {
+            ["384051"] = [new EkvPosition("2NP A", 1, 1), new EkvPosition("6NP", 900, 700)],
+        };
+
+        var result = await _importer.ImportAsync(rows, "MOC", false, true, "test", positions);
+
+        Assert.Equal(1, result.Positioned);
+        var reader = await _db.Readers.SingleAsync(r => r.DeviceNumber == "384051");
+        Assert.Equal(900, reader.SourceX);
+    }
+
+    [Fact]
+    public async Task Import_SeZadanymiPolohamiZtratiCteckaBezZaznamuStarouPolohu()
+    {
+        var room = AddRoom(_floor2Pp, "23-02301 — ROZVODNA");
+        var drawing = AddDrawingReader("ACS.03 — 23-02301 — ROZVODNA", room);
+        drawing.SourceX = 11;
+        drawing.SourceY = 22;
+        _db.SaveChanges();
+        var rows = new[] { new EkvReaderRow("362001", "23-02301", "-02PP", "ACS.03", null, "101", null, null) };
+
+        // Popisek této čtečky byl vyvedený mimo půdorys, extraktor ji vynechal.
+        await _importer.ImportAsync(rows, "MOC", false, true, "test", new Dictionary<string, List<EkvPosition>>());
+
+        await _db.Entry(drawing).ReloadAsync();
+        Assert.Null(drawing.SourceX);
+    }
+
+    [Fact]
+    public async Task Import_BezPolohSePolohaNemeni()
+    {
+        var room = AddRoom(_floor2Pp, "23-02301 — ROZVODNA");
+        var drawing = AddDrawingReader("ACS.03 — 23-02301 — ROZVODNA", room);
+        drawing.SourceX = 11;
+        drawing.SourceY = 22;
+        _db.SaveChanges();
+        var rows = new[] { new EkvReaderRow("362001", "23-02301", "-02PP", "ACS.03", null, "101", null, null) };
+
+        var result = await _importer.ImportAsync(rows, "MOC", false, true, "test");
+
+        Assert.Equal(0, result.Positioned);
+        await _db.Entry(drawing).ReloadAsync();
+        Assert.Equal(11, drawing.SourceX);
+    }
+
+    [Fact]
+    public void ParsePositions_NacteJsonZExtraktoru()
+    {
+        const string json = """
+            {"362002":[{"floor":"2PP","x":2776.3,"y":1471.4,"room":"23-023S2"}],
+             "383131":[{"floor":"1NP A","x":1,"y":2},{"floor":"6NP","x":3,"y":4}]}
+            """;
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
+
+        var positions = EkvReaderImportService.ParsePositions(stream);
+
+        Assert.Equal(2, positions.Count);
+        Assert.Equal(2776.3, positions["362002"][0].X);
+        Assert.Equal("2PP", positions["362002"][0].Floor);
+        Assert.Equal(2, positions["383131"].Count);
+    }
+
+    [Theory]
+    [InlineData("-02PP", "2PP")]
+    [InlineData("-01PP", "1PP")]
+    [InlineData("3NP_B23", "3NP")]
+    [InlineData("7NP", "TP")]
+    [InlineData("7NP_B23", "TP")]
+    [InlineData(null, null)]
+    public void TableFloorLabel_PrevedeOznaceniZTabulky(string? table, string? expected)
+        => Assert.Equal(expected, EkvReaderImportService.TableFloorLabel(table));
+
     [Fact]
     public async Task Import_ChybejiciBudovaSrozumitelneSelze()
     {

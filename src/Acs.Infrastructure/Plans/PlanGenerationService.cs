@@ -98,9 +98,11 @@ public class PlanGenerationService(AcsDbContext db, AuditService audit)
             ?? throw new KeyNotFoundException($"Patro {floorId} neexistuje.");
 
         var rooms = await db.Rooms.Where(r => r.FloorId == floorId).OrderBy(r => r.Name).ToListAsync(ct);
+        // Deaktivované čtečky (odhady z výkresů bez protějšku v dokumentaci) do plánu nepatří.
         var readers = await db.Readers
-            .Where(r => (r.Room != null && r.Room.FloorId == floorId)
-                        || (r.Corridor != null && r.Corridor.FloorId == floorId))
+            .Where(r => r.IsActive
+                        && ((r.Room != null && r.Room.FloorId == floorId)
+                            || (r.Corridor != null && r.Corridor.FloorId == floorId)))
             .OrderBy(r => r.Name)
             .ToListAsync(ct);
 

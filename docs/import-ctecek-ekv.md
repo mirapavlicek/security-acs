@@ -39,6 +39,46 @@ Z 380 dveří má 358 čtečku z obou stran a v 337 případech vstupují obě s
 hledat. Až se čtečky budou párovat s WIN-PAK, je to klíč — instalační firma
 konfigurovala WIN-PAK podle této dokumentace.
 
+## Polohy čteček z výkresů EKV
+
+K tabulkám patří i výkresy **„čtečky EKV – celý objekt“** (jeden list na patro).
+Na plánu je u každé čtečky třířádkový popisek:
+
+```
+čtečka 362021
+vstup do: 23-02306
+rozv.:  ACS.03
+```
+
+Skript `import/moc/extract_ekv.py` z něj vytáhne polohu každé čtečky a uloží ji
+do `import/moc/ekv-readers.json`; import ji pak čtečce nastaví jako polohu ve
+výkresu (`Reader.SourceX/SourceY`), ze které se generuje plán patra:
+
+```bash
+python3 import/moc/extract_ekv.py import/moc/pdf-ekv/*.pdf
+```
+
+Tři věci, na které skript musel přijít a které se hodí vědět při další dodávce:
+
+- **Číslo čtečky je na listu dvakrát** — v popisku u čtečky a ve výpisové tabulce
+  na okraji. Kotvou je slovo „čtečka“ těsně vlevo od čísla; v tabulce není.
+- **Listy EKV mají stejné měřítko jako původní půdorysy, ale jiný počátek** —
+  na 1PP jsou všechny místnosti posunuté přesně o 379 pt, části B o ~1000 pt v y.
+  Posun se pro každou dvojici list → patro ACS spočítá jako medián rozdílu poloh
+  místností, které jsou na obou výkresech, a polohy se přepočtou. Patro s méně
+  než třemi společnými místnostmi (TP) se přenést nedá.
+- **Část popisků je vyvedená šipkou mimo půdorys** (řada popisků pod plánem).
+  Polohu čtečky nese čára, ne text — popisek dál než 400 pt od popisku své
+  místnosti se proto nepřenese a plán čtečku položí do středu její místnosti.
+  Na MOC je to 49 z 761 čteček.
+
+Popisky na výkresu se s tabulkou shodují v místnosti u 732 z 735 čteček
+(zbylé tři jsou „střecha“ zkrácená na jedno slovo) — výkres a tabulka říkají
+totéž.
+
+Výsledek na MOC: 695 čteček s polohou; čtečka je od popisku své místnosti
+medián 108 pt, 90 % pod 235 pt — stejně jako na samotném výkresu.
+
 ## Co import dělá
 
 **Číselníky → Čtečky → Import čteček z tabulky EKV** (`/Admin/ImportReaders`),
@@ -46,9 +86,14 @@ nebo z příkazové řádky:
 
 ```bash
 dotnet run --project src/Acs.Web -- --import-readers "ctecky EKV - cely objekt.xlsx" --dry-run
-dotnet run --project src/Acs.Web -- --import-readers "ctecky EKV - cely objekt.xlsx"
-dotnet run --project src/Acs.Web -- --import-readers "ctecky EKV - vytahy.xlsx"
+dotnet run --project src/Acs.Web -- --import-readers "ctecky EKV - cely objekt.xlsx" \
+  --positions import/moc/ekv-readers.json
+dotnet run --project src/Acs.Web -- --import-readers "ctecky EKV - vytahy.xlsx" \
+  --positions import/moc/ekv-readers.json
 ```
+
+Soubor s polohami je volitelný; když je zadaný, je pro polohy autoritativní —
+čtečka, která v něm není, polohu ztratí a plán ji položí do místnosti.
 
 Pro každý řádek tabulky:
 
@@ -67,6 +112,7 @@ Pro každý řádek tabulky:
 5. Na konci **deaktivuje** čtečky z výkresů, které v tabulce protějšek nemají —
    to jsou odhady, které neseděly. Nemažou se, historie zůstává. U výtahové
    tabulky se nedeaktivuje nikdy, protože dveřní čtečky neobsahuje.
+   Deaktivované čtečky se nekreslí do plánů ani nenabízejí v editoru plánu.
 
 Import je idempotentní: opakovaný běh existující čtečky (podle čísla) jen
 aktualizuje. Náhled běží stejnou cestou v transakci, která se odvolá, takže
@@ -76,7 +122,9 @@ počty odpovídají ostrému běhu.
 
 Nad číselníkem z výkresů (651 čteček): 475 nových, 263 převzatých, 388
 deaktivovaných, 4 založené části místností → **761 aktivních čteček se skutečným
-číslem** (738 dveřních + 23 výtahových), 0 duplicit.
+číslem** (738 dveřních + 23 výtahových), 0 duplicit, 695 s polohou z výkresů EKV.
+Vygenerované plány pak umístí 718 čteček (aktivní čtečky navázané na místnost
+nebo chodbu).
 
 ## Co zůstává na ruční dořešení
 

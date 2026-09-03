@@ -147,6 +147,23 @@ public sealed class PlanGenerationTests : IDisposable
     }
 
     [Fact]
+    public async Task Deaktivovana_ctecka_se_do_planu_neumistuje()
+    {
+        var room = AddRoom("M2001", sourceX: 200, sourceY: 200);
+        AddRoom("M2002", sourceX: 4000, sourceY: 4000);
+        // Odhad z výkresů, který import čteček EKV deaktivoval — v plánu by strašil.
+        var inactive = AddReader("ACS.24 — M2001", roomId: room.Id, sourceX: 200, sourceY: 200);
+        inactive.IsActive = false;
+        _db.SaveChanges();
+
+        var result = await _generator.GenerateFloorAsync(_floor.Id, onlyEmpty: false, "test");
+
+        Assert.Equal(0, result.ReadersPlaced);
+        await _db.Entry(inactive).ReloadAsync();
+        Assert.Null(inactive.SchemaX);
+    }
+
+    [Fact]
     public async Task Ctecka_bez_vazby_na_patro_se_negeneruje()
     {
         AddRoom("M2001", sourceX: 200, sourceY: 200);

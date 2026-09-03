@@ -493,6 +493,7 @@ deploy/acs.env
 
 # Zdrojové PDF výkresů (velké, nejsou potřeba v repozitáři — stačí vyextrahovaný rooms.json)
 import/moc/pdf/
+import/moc/pdf-ekv/
 
 # Nastavení konektoru měněné z jeho administrace — obsahuje hesla a API klíč.
 appsettings.Local.json
