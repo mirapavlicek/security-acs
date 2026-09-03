@@ -106,7 +106,60 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
         }
     }
 
-    private IComDispatch App => _app ?? throw new InvalidOperationException("Není přihlášeno k WIN-PAK.");
+    private IComDispatch App => _app is null
+        ? throw new InvalidOperationException("Není přihlášeno k WIN-PAK.")
+        : new ReconnectingDispatch(this);
+
+    /// <summary>
+    /// Volání na aplikační objekt s obnovou relace. Když COM+ server WIN-PAKu spadne
+    /// (na ostrém: „The remote procedure call failed“ a pak „The RPC server is
+    /// unavailable“ u všeho dalšího), proxy je mrtvá a dřív zůstala mrtvá až do
+    /// restartu služby. Teď se relace zahodí, přihlásí znovu a volání jednou
+    /// zopakuje — odmítnuté RPC se na serveru neprovedlo.
+    /// </summary>
+    private sealed class ReconnectingDispatch(WinPakDatabaseApi api) : IComDispatch
+    {
+        public object Target => api._app!.Target;
+
+        public object? Invoke(string method, object?[] args)
+            => Retry(() => api._app!.Invoke(method, args));
+
+        public object? GetProperty(string name)
+            => Retry(() => api._app!.GetProperty(name));
+
+        public object? GetProperty(string name, object?[] index)
+            => Retry(() => api._app!.GetProperty(name, index));
+
+        public void SetProperty(string name, object? value)
+            => Retry(() => { api._app!.SetProperty(name, value); return (object?)null; });
+
+        public void SetProperty(string name, object?[] index, object? value)
+            => Retry(() => { api._app!.SetProperty(name, index, value); return (object?)null; });
+
+        private object? Retry(Func<object?> call)
+        {
+            try
+            {
+                return call();
+            }
+            catch (ComCallException ex) when (ex.IsConnectionLost)
+            {
+                api.ResetSession();
+                api.EnsureSession();
+                return call();
+            }
+        }
+    }
+
+    /// <summary>Zahodí mrtvou relaci bez pokusu o odhlášení — server, který by ho přijal, už neběží.</summary>
+    private void ResetSession()
+    {
+        _app = null;
+        _userId = 0;
+        _resolvedAccountName = null;
+        _resolvedSubAccountName = null;
+        _panelNames.Clear();
+    }
 
     /// <summary>Přihlásí se a připojí k databázovému serveru. Opakované volání nic nedělá.</summary>
     public void EnsureSession()
