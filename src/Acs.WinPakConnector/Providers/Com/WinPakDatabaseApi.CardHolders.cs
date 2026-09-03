@@ -117,8 +117,15 @@ public sealed partial class WinPakDatabaseApi
     }
 
     /// <summary>Pole, podle kterých umí WIN-PAK v tomto účtu vyhledávat držitele.</summary>
+    /// <summary>
+    /// Skutečný WIN-PAK vrací pole vyhledávání jako prostý seznam názvů (řetězců),
+    /// ne objekty s vlastnostmi — na řetězci by čtení <c>NoteFieldName</c> selhalo
+    /// („Method 'System.String.NoteFieldName' not found“). Obě podoby se přijmou;
+    /// u řetězců je index pořadí v seznamu (od 1, jak WIN-PAK čísluje pole).
+    /// </summary>
     public IReadOnlyList<CardHolderSearchFieldDto> GetCardHolderSearchFields()
-        => CallList("GetCardHolderSearchFieldsByAccountName",
+        => CallNamedList("GetCardHolderSearchFieldsByAccountName",
+            (name, index) => new CardHolderSearchFieldDto(name, index),
             field => new CardHolderSearchFieldDto(
                 ComValue.ToStringOrEmpty(field.GetProperty("NoteFieldName")),
                 ComValue.ToInt(field.GetProperty("FieldIndex"))),
@@ -137,7 +144,8 @@ public sealed partial class WinPakDatabaseApi
 
     /// <summary>Šablony poznámkových polí účtu (<c>GetNoteFieldTemplateDetailsByAccount</c>).</summary>
     public IReadOnlyList<NoteFieldTemplateDto> GetNoteFieldTemplates()
-        => CallList("GetNoteFieldTemplateDetailsByAccount",
+        => CallNamedList("GetNoteFieldTemplateDetailsByAccount",
+            (name, index) => new NoteFieldTemplateDto(name, index, null),
             template => new NoteFieldTemplateDto(
                 ComValue.ToStringOrEmpty(template.GetProperty("NoteFieldName")),
                 ComValue.ToInt(template.GetProperty("FieldIndex")),

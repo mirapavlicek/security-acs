@@ -44,16 +44,25 @@ public abstract class FeaturePageModel(WinPakProviderCache providers) : PageMode
         }
         catch (Exception ex)
         {
+            // Bez providera nemá smysl načítat cokoli dalšího.
+            _providerUnavailable = true;
             LoadError = ex.Message;
         }
 
         await next();
     }
 
-    /// <summary>Načtení dat pro zobrazení — chyba se ukáže v hlavičce stránky a zbytek se vykreslí dál.</summary>
+    private bool _providerUnavailable;
+
+    /// <summary>
+    /// Načtení dat pro zobrazení. Chyby se sbírají a zobrazí v hlavičce stránky, ale
+    /// další načítání pokračuje — když WIN-PAK odmítne jednu pomocnou položku (třeba
+    /// pole vyhledávání), karty a držitelé se přesto vykreslí. Dřív první chyba
+    /// zastavila vše ostatní a stránka ukázala jen ji.
+    /// </summary>
     protected async Task LoadAsync(Func<Task> load)
     {
-        if (LoadError is not null)
+        if (_providerUnavailable)
             return;
 
         try
@@ -62,7 +71,7 @@ public abstract class FeaturePageModel(WinPakProviderCache providers) : PageMode
         }
         catch (Exception ex)
         {
-            LoadError = Describe(ex);
+            LoadError = LoadError is null ? Describe(ex) : $"{LoadError}\n{Describe(ex)}";
         }
     }
 
