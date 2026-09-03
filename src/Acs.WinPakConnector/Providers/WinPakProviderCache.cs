@@ -30,7 +30,7 @@ public sealed class WinPakProviderCache(ConnectorSettingsStore store, ILogger<Wi
                 var settings = store.Current();
                 var replacement = Create(settings);
 
-                (_provider as IDisposable)?.Dispose();
+                (_provider as IProviderShutdown)?.Shutdown();
                 _provider = replacement;
                 _fingerprint = fingerprint;
 
@@ -45,7 +45,7 @@ public sealed class WinPakProviderCache(ConnectorSettingsStore store, ILogger<Wi
     {
         lock (_gate)
         {
-            (_provider as IDisposable)?.Dispose();
+            (_provider as IProviderShutdown)?.Shutdown();
             _provider = null;
             _fingerprint = null;
         }

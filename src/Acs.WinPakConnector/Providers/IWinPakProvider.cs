@@ -12,6 +12,19 @@ namespace Acs.WinPakConnector.Providers;
 /// Metody, které provider neumí, vyhazují <see cref="NotSupportedException"/> —
 /// konektor je mapuje na HTTP 501, aby ACS poznalo rozdíl mezi „nejde“ a „selhalo“.
 /// </summary>
+/// <summary>
+/// Ukončení relace providera (odhlášení z WIN-PAKu, uvolnění zámku). Záměrně
+/// není <see cref="IDisposable"/>: provider se z DI vydává jako transient přes
+/// factory a ASP.NET Core by disposable instanci na konci každého požadavku
+/// sám zlikvidoval — přitom ji drží <c>WinPakProviderCache</c> jako singleton.
+/// Přesně to se stalo: po prvním požadavku padalo vše na „Cannot access
+/// a disposed object: SemaphoreSlim“. Životní cyklus řídí jen cache.
+/// </summary>
+public interface IProviderShutdown
+{
+    void Shutdown();
+}
+
 public interface IWinPakProvider
 {
     /// <summary>Název režimu pro diagnostiku (Mock / Mssql / Com).</summary>
