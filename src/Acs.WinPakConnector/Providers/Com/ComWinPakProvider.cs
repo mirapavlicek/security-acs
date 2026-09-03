@@ -16,6 +16,7 @@ namespace Acs.WinPakConnector.Providers.Com;
 public sealed partial class ComWinPakProvider : WinPakProviderBase, IProviderShutdown
 {
     private readonly WinPakComOptions _options;
+    private readonly IComFactory _com;
     private readonly WinPakDatabaseApi _database;
     private readonly WinPakCommApi? _comm;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -25,6 +26,7 @@ public sealed partial class ComWinPakProvider : WinPakProviderBase, IProviderShu
     public ComWinPakProvider(IOptions<WinPakComOptions> options, IComFactory com, ILogger? logger = null)
     {
         _options = options.Value;
+        _com = com;
         _database = new WinPakDatabaseApi(com, _options);
         _comm = _options.EnableCommunicationServer ? new WinPakCommApi(com, _options) : null;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
@@ -194,6 +196,37 @@ public sealed partial class ComWinPakProvider : WinPakProviderBase, IProviderShu
         => RunAsync(() => { var result = work(); InvalidateCatalogCache(); return result; }, ct, operation);
 
     private WinPakCommApi Comm => _comm ?? throw NotSupported("ovládání dveří (vypnuté v konfiguraci konektoru)");
+
+    /// <summary>
+    /// Porovná všechna volání, která konektor umí (přepis příručky), se skutečnými
+    /// signaturami objektů WIN-PAKu z jejich typové informace. Do databáze se nevolá
+    /// nic; komunikační server se popisuje z čerstvě vytvořeného objektu bez registrace.
+    /// </summary>
+    public Task<IReadOnlyList<Signatures.SignatureCheckResult>> CheckSignaturesAsync(CancellationToken ct)
+        => RunAsync<IReadOnlyList<Signatures.SignatureCheckResult>>(() =>
+        {
+            var catalog = Signatures.ConnectorCallCatalog.Record(_options);
+            var databaseCalls = catalog.Calls.Where(c => c.Origin.StartsWith(nameof(WinPakDatabaseApi), StringComparison.Ordinal)).ToList();
+            var commCalls = catalog.Calls.Where(c => c.Origin.StartsWith(nameof(WinPakCommApi), StringComparison.Ordinal)).ToList();
+
+            var results = new List<Signatures.SignatureCheckResult>();
+            results.AddRange(_database.InspectApplication(app => Signatures.SignatureCheck.Run(databaseCalls, Signatures.SignatureCheck.Describe(app))));
+
+            if (_comm is not null && commCalls.Count > 0)
+            {
+                var server = _com.Create(_options.CommServerProgId);
+                try
+                {
+                    results.AddRange(Signatures.SignatureCheck.Run(commCalls, Signatures.SignatureCheck.Describe(server)));
+                }
+                finally
+                {
+                    _com.Release(server);
+                }
+            }
+
+            return results;
+        }, ct);
 
     /// <summary>
     /// Stav se nemá řadit za dlouhé volání: když WIN-PAK právě něco zpracovává,

@@ -218,6 +218,27 @@ z jednoho místa.
 4. V ACS otevřete **Automatizace** — self-diagnostika tam nesmí hlásit problém
    s konektorem ani se servery WIN-PAKu.
 
+## Krok 7b — porovnat signatury API s touto instalací
+
+Příručka WIN-PAK API a skutečné COM objekty se v detailech liší (počet
+parametrů, typy výstupů, tvar seznamů). Místo objevování rozdílů jeden po
+druhém při používání je zkontrolujte najednou: *Diagnostika → Signatury
+WIN-PAK API → Zkontrolovat signatury* (nebo `GET /api/v1/diagnostics/signatures`).
+
+Konektor spustí všechna svá volání (≈170 metod databázového i komunikačního
+API) nad atrapou, zaznamená, co posílá, a porovná to se skutečnými signaturami
+objektů z jejich typové informace. Do databáze WIN-PAKu se přitom nevolá nic.
+Výsledek u každé metody:
+
+- **sedí** — počet i typy parametrů odpovídají,
+- **vyrovná se za běhu** — liší se způsobem, který konektor sám napraví
+  (výstupní řetězec místo null, výstupní variant místo čísla, chybějící
+  parametry na konci),
+- **rozdíl** — konektor to sám nenapraví; sekci „Rozdíly k zkopírování“
+  pošlete vývoji, opraví se podle skutečné signatury najisto,
+- **metoda chybí** — tato verze nebo licence WIN-PAKu metodu nemá; funkce,
+  které ji používají, budou hlásit chybu.
+
 ## Kontrolní seznam po zprovoznění
 
 - [ ] `GET /health` na konektoru vrací `ok`
@@ -245,6 +266,7 @@ z jednoho místa.
 | HTTP **501** | operaci neumí zvolený režim (typicky Mssql) | přepněte na režim Com |
 | HTTP **502** | konektor se nedostal k WIN-PAKu | podívejte se do Diagnostiky, hláška tam bude konkrétnější |
 | HTTP **422** | WIN-PAK zápis odmítl | hláška nese jeho stavový kód, např. „číslo karty už existuje“ nebo „neplatná přístupová úroveň“ |
+| Volání odmítnuté kvůli počtu nebo typu parametru (`Number of parameters…`, `Type mismatch`) | rozdíl mezi příručkou a instalací | Diagnostika → Signatury WIN-PAK API ukáže všechny rozdíly najednou; hláška konektoru od v1.12.8 nese skutečnou signaturu |
 | Diagnostika zelená, ale číselníky prázdné | špatný název účtu nebo podúčtu | porovnejte s výsledkem kontroly „Účty“ — ta vypíše pracovní účet |
 | `WIN-PAK má více účtů a v konfiguraci konektoru není vybraný žádný` | WIN-PAK má víc účtů | vyberte účet v Nastavení; hláška vyjmenuje, které jsou k dispozici |
 | `WIN-PAK <metoda>: … (HRESULT 0x…)` | konkrétní volání COM odmítl WIN-PAK | text za dvojtečkou je původní hláška WIN-PAKu; u `IsConnected` a systémových údajů jde často o rozdíl verze API, zbytek funguje |

@@ -94,6 +94,12 @@ api.MapGet("/info", (IWinPakProvider provider) => new ConnectorInfoDto(
 api.MapGet("/status", async (IWinPakProvider provider, CancellationToken ct)
     => Results.Ok(await provider.GetStatusAsync(ct)));
 
+// Porovnání volání konektoru se skutečnými signaturami objektů WIN-PAKu (jen režim Com).
+api.MapGet("/diagnostics/signatures", async (IWinPakProvider provider, CancellationToken ct)
+    => provider is ComWinPakProvider com
+        ? Results.Ok(await com.CheckSignaturesAsync(ct))
+        : Results.Problem($"Režim {provider.Mode} nemá COM objekty, které by šlo popsat.", statusCode: StatusCodes.Status501NotImplemented));
+
 api.MapGet("/accounts", async (IWinPakProvider provider, CancellationToken ct)
     => Results.Ok(await provider.GetAccountsAsync(ct)));
 

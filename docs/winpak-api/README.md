@@ -189,6 +189,12 @@ CardHolderID, FirstName, LastName, EmailID, ExtRefID, NoteField, NoteFields,
 Photo, Signature, SpareDW3, SpareDW4`. `ExtRefID` je místo pro osobní číslo
 z personálního systému — pro párování držitelů s ACS.
 
+Všechny rozdíly najednou ukáže stránka *Signatury WIN-PAK API* v administraci
+konektoru (`/ui/signatures`, REST `GET /api/v1/diagnostics/signatures`): katalog
+volání konektoru (`ConnectorCallCatalog`, ≈170 metod) proti typové informaci
+objektů (`SignatureCheck`). Po prvním spuštění na ostrém serveru sem přepište
+výsledek — tabulka výše je pak úplná.
+
 Když WIN-PAK odmítne název členu, hláška konektoru vypíše skutečné členy
 objektu (`ComMembers.Describe`); doplňte je sem. Když odmítne počet nebo typ
 parametrů, hláška vypíše skutečnou signaturu metody z typové informace
