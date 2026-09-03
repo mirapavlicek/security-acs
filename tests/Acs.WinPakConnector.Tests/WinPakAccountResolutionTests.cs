@@ -270,6 +270,38 @@ public sealed class WinPakAccountResolutionTests
         Assert.Null(templates[1].Definition);
     }
 
+    [Fact]
+    public void Pole_vyhledavani_s_jinym_nazvem_vlastnosti_se_prectou_z_varianty()
+    {
+        // Ostrý WIN-PAK: objekt nemá NoteFieldName („Unknown name“), název je pod jinou vlastností.
+        ArrangeLogin("FN Motol");
+        ArrangeSubAccounts("Default");
+        var field = (FakeComDispatch)_com.Record("f1", ("FieldName", "Oddělení"), ("Index", 3));
+        field.Throws["NoteFieldName"] = new ComCallException("NoteFieldName",
+            new COMException("Unknown name.", unchecked((int)0x80020006)));
+        field.Throws["FieldIndex"] = new ComCallException("FieldIndex",
+            new COMException("Unknown name.", unchecked((int)0x80020006)));
+        App.OutValues["GetCardHolderSearchFieldsByAccountName#2"] = new object[] { field };
+
+        var mapped = Assert.Single(CreateApi(accountName: null).GetCardHolderSearchFields());
+
+        Assert.Equal("Oddělení", mapped.Name);
+        Assert.Equal(3, mapped.Index);
+    }
+
+    [Fact]
+    public void Kdyz_nesedi_zadna_varianta_hlaska_vyjmenuje_co_se_zkouselo()
+    {
+        var target = (FakeComDispatch)_com.Record("x");
+        foreach (var name in new[] { "A", "B" })
+            target.Throws[name] = new ComCallException(name, new COMException("Unknown name.", unchecked((int)0x80020006)));
+
+        var error = Assert.Throws<ComCallException>(() => ComMembers.ReadAny(target, "A", "B"));
+
+        Assert.Contains("A, B", error.Message);
+        Assert.True(ComMembers.IsUnknownName(error));
+    }
+
     // ---------- Systémové údaje ----------
 
     [Fact]
