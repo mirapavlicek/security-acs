@@ -297,6 +297,22 @@ což konektor neovlivní.
 
 ## Aktualizace konektoru
 
+**Skriptem** (PowerShell jako administrátor na WIN-PAK serveru; skript je
+v balíku releasu i v repozitáři jako `deploy/Update-WinPakConnector.ps1`):
+
+```powershell
+irm https://raw.githubusercontent.com/mirapavlicek/security-acs/main/deploy/Update-WinPakConnector.ps1 -OutFile Update-WinPakConnector.ps1
+.\Update-WinPakConnector.ps1 -Version 1.12.7     # bez -Version = nejnovější release
+```
+
+Skript stáhne balík releasu, ověří SHA-256, zastaví službu, zazálohuje
+instalaci do `C:\Program Files\AcsWinPakConnector.bak-<verze>-<čas>`, přepíše
+soubory programu (**`appsettings.Local.json` nechává**), službu spustí a počká
+na `/health`. Když konektor do minuty neodpoví, vrátí zálohu. Server bez
+přístupu na GitHub: balík stáhněte jinde a předejte `-ZipPath`.
+
+**Ručně:**
+
 1. Stáhněte (nebo publikujte) novou verzi — viz krok 3.
 2. `Stop-Service AcsWinPakConnector`.
 3. Přepište soubory programu. **`appsettings.Local.json` nechte** — je v něm

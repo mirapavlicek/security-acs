@@ -70,6 +70,8 @@ jobs:
         id: package
         run: |
           name="AcsWinPakConnector-${{ steps.version.outputs.version }}-win-x64"
+          # Aktualizační skript jde s balíkem, ať je na serveru při ruce.
+          cp deploy/Update-WinPakConnector.ps1 publish/winpak-connector/
           (cd publish && zip -qr "../${name}.zip" winpak-connector)
           sha256sum "${name}.zip" | tee "${name}.zip.sha256"
           echo "name=${name}" >> "$GITHUB_OUTPUT"
