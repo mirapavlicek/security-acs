@@ -22,7 +22,13 @@ public interface IComDispatch
 
     object? GetProperty(string name);
 
+    /// <summary>Indexovaná vlastnost, např. <c>NoteField(1)</c> u držitele karty.</summary>
+    object? GetProperty(string name, object?[] index);
+
     void SetProperty(string name, object? value);
+
+    /// <summary>Zápis do indexované vlastnosti, např. <c>NoteField(1) = "…"</c>.</summary>
+    void SetProperty(string name, object?[] index, object? value);
 }
 
 /// <summary>Vytváří a obaluje COM objekty. V testech se nahrazuje atrapou.</summary>
@@ -133,8 +139,26 @@ public sealed class ComDispatch(object instance) : IComDispatch
     public object? GetProperty(string name)
         => Unwrap(name, () => Instance.GetType().InvokeMember(name, BindingFlags.GetProperty, null, Instance, null));
 
+    public object? GetProperty(string name, object?[] index)
+        => Unwrap(name, () => Instance.GetType().InvokeMember(name, BindingFlags.GetProperty, null, Instance, Normalize(index)));
+
     public void SetProperty(string name, object? value)
         => Unwrap(name, () => Instance.GetType().InvokeMember(name, BindingFlags.SetProperty, null, Instance, [value]));
+
+    public void SetProperty(string name, object?[] index, object? value)
+        => Unwrap(name, () => Instance.GetType().InvokeMember(name, BindingFlags.SetProperty, null, Instance, [.. Normalize(index), value]));
+
+    private static object?[] Normalize(object?[] args)
+    {
+        var copy = (object?[])args.Clone();
+        for (var i = 0; i < copy.Length; i++)
+        {
+            if (copy[i] is long l && l is >= int.MinValue and <= int.MaxValue)
+                copy[i] = (int)l;
+        }
+
+        return copy;
+    }
 
     /// <summary>
     /// <see cref="Type.InvokeMember(string, BindingFlags, Binder, object, object[])"/> balí
