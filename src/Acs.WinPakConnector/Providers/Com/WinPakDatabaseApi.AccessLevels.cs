@@ -6,10 +6,10 @@ namespace Acs.WinPakConnector.Providers.Com;
 public sealed partial class WinPakDatabaseApi
 {
     public IReadOnlyList<AccessLevelDto> GetAccessLevels()
-        => string.IsNullOrWhiteSpace(_options.AccountName)
+        // Bez jednoznačného účtu (více účtů, žádný nevybraný) se vrátí úrovně všech účtů.
+        => AccountNameOrNull is null
             ? CallList("GetAllAccessLevels", MapAccessLevel, [null])
-            : CallList("GetAccessLevelsByAccountName", MapAccessLevel,
-                _options.AccountName, _options.SubAccountName, null);
+            : CallList("GetAccessLevelsByAccountName", MapAccessLevel, AccountName, _options.SubAccountName, null);
 
     private static AccessLevelDto MapAccessLevel(IComDispatch level) => new(
         ComValue.ToStringOrEmpty(level.GetProperty("AccessLevelID")),
@@ -18,7 +18,7 @@ public sealed partial class WinPakDatabaseApi
 
     public AccessLevelDto? GetAccessLevelByName(string name)
     {
-        var result = Call("GetAccessLevelByName", name, _options.AccountName, null);
+        var result = Call("GetAccessLevelByName", name, AccountName, null);
         var raw = ComValue.AsEnumerable(result[2]).FirstOrDefault();
         return raw is null ? null : MapAccessLevel(_com.Wrap(raw));
     }
@@ -31,7 +31,7 @@ public sealed partial class WinPakDatabaseApi
 
     /// <summary>Strom přístupů úrovně včetně časových zón, jak ho vrací <c>GetAccessTreeByName</c>.</summary>
     public string? GetAccessTree(string accessLevelName)
-        => ComValue.ToStringOrNull(Call("GetAccessTreeByName", accessLevelName, _options.AccountName, null)[2]);
+        => ComValue.ToStringOrNull(Call("GetAccessTreeByName", accessLevelName, AccountName, null)[2]);
 
     /// <summary>Založí prázdnou přístupovou úroveň (<c>CreateAccessLevel</c>).</summary>
     public void CreateAccessLevel(CreateAccessLevelRequest request)
@@ -41,14 +41,14 @@ public sealed partial class WinPakDatabaseApi
             : [AccountId];
 
         CallCardWrite("Založení přístupové úrovně", "CreateAccessLevel",
-            request.Name, request.Description ?? "", accountIds, _options.AccountName, 0);
+            request.Name, request.Description ?? "", accountIds, AccountName, 0);
     }
 
     /// <summary>Přiřadí úrovni čtečky se společnou časovou zónou (<c>ConfigureAccessLevel</c>).</summary>
     public void ConfigureAccessLevel(string accessLevelName, ConfigureAccessLevelRequest request)
         => CallCardWrite("Konfigurace přístupové úrovně", "ConfigureAccessLevel",
             accessLevelName,
-            _options.AccountName,
+            AccountName,
             request.ReaderNames.Select(object? (r) => r).ToArray(),
             request.TimeZoneName,
             0);
@@ -57,7 +57,7 @@ public sealed partial class WinPakDatabaseApi
     public void ConfigureEntranceAccess(string accessLevelName, ConfigureEntranceRequest request)
         => CallCardWrite("Konfigurace vstupu přístupové úrovně", "ConfigureEntranceAccess",
             accessLevelName,
-            _options.AccountName,
+            AccountName,
             request.ReaderName,
             request.TimeZoneName,
             request.GroupName ?? "",
@@ -101,13 +101,13 @@ public sealed partial class WinPakDatabaseApi
         var level = _com.Create(_options.AccessLevelProgId);
         level.SetProperty("AccessLevelName", request.Name);
         level.SetProperty("AccessLevelDesc", request.Description ?? "");
-        level.SetProperty("AccountName", _options.AccountName);
+        level.SetProperty("AccountName", AccountName);
         return level;
     }
 
     public void DeleteAccessLevel(string accessLevelName)
         => CallCardWrite("Smazání přístupové úrovně", "DeleteAccessLevel",
-            accessLevelName, _options.AccountName, 0);
+            accessLevelName, AccountName, 0);
 
     /// <summary>Smaže úroveň a na kartách ji nahradí jinou (<c>DeleteAL</c>).</summary>
     public void DeleteAccessLevelWithReplacement(string accessLevelId, string replacementAccessLevelId, bool multiple)
@@ -116,7 +116,7 @@ public sealed partial class WinPakDatabaseApi
     /// <summary>Karty, které úroveň používají — nutné zjistit před jejím zrušením.</summary>
     public IReadOnlyList<CardDto> IsolateAccessLevel(string accessLevelName)
     {
-        var result = Call("IsolateAccessLevel", accessLevelName, _options.AccountName, null, 0);
+        var result = Call("IsolateAccessLevel", accessLevelName, AccountName, null, 0);
         WinPakStatus.EnsureCardSucceeded("Vyhledání karet přístupové úrovně", ComValue.ToInt(result[3]));
         return ComValue.AsEnumerable(result[2]).Select(_com.Wrap).Select(MapCard).ToList();
     }
@@ -124,14 +124,14 @@ public sealed partial class WinPakDatabaseApi
     /// <summary>Úrovně, na které lze karty přeřadit (<c>GetAccesslevelsForReassign</c>).</summary>
     public IReadOnlyList<AccessLevelDto> GetAccessLevelsForReassign(string currentAccessLevelName)
         => CallList("GetAccesslevelsForReassign", MapAccessLevel,
-            _options.AccountName, currentAccessLevelName, null);
+            AccountName, currentAccessLevelName, null);
 
     /// <summary>Přeřadí karty ze staré úrovně na novou (<c>ReassignAccessLevel</c>).</summary>
     public void ReassignAccessLevel(string currentAccessLevelName, ReassignAccessLevelRequest request)
     {
         var cards = IsolateAccessLevel(currentAccessLevelName);
         CallCardWrite("Přeřazení karet na jinou přístupovou úroveň", "ReassignAccessLevel",
-            _options.AccountName,
+            AccountName,
             currentAccessLevelName,
             request.NewAccessLevelName,
             cards.Select(object? (c) => ComValue.ToLong(c.RecordId)).ToArray(),

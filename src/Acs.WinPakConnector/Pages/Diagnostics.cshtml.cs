@@ -44,9 +44,18 @@ public class DiagnosticsModel(WinPakProviderCache providers) : PageModel
         await RunAsync("Účty", async () =>
         {
             var accounts = await provider.GetAccountsAsync(ct);
-            return accounts.Count == 0
+            var list = accounts.Count == 0
                 ? "žádný účet"
                 : string.Join(", ", accounts.Select(a => $"{a.Name} ({a.SubAccounts.Count} podúčtů)"));
+
+            // Čtečky, držitelé i karty jsou po účtech; s jakým účtem se pracuje, musí být vidět.
+            var effective = provider.AccountName;
+            var origin = provider is ComWinPakProvider { AccountResolvedAutomatically: true }
+                ? " (doplněn automaticky — jediný ve WIN-PAKu; v konfiguraci není vyplněný)"
+                : "";
+            return effective is null
+                ? $"{list} — pracovní účet není nastaven"
+                : $"{list} — pracovní účet: {effective}{origin}";
         });
 
         await RunAsync("Čtečky", async () => $"{(await provider.GetReadersAsync(ct)).Count} čteček");
@@ -61,8 +70,11 @@ public class DiagnosticsModel(WinPakProviderCache providers) : PageModel
             await RunAsync("Systémové údaje", async () =>
             {
                 var info = await catalog.GetSystemInfoAsync(ct);
-                return $"zdroj {info.DataSourceName ?? "?"}, zóna {info.ServerTimeZone ?? "?"}, "
-                       + $"operátor {info.CurrentOperator?.Name ?? "?"}, max. délka karty {info.MaxCardNumberLength}";
+                var summary = $"zdroj {info.DataSourceName ?? "?"}, zóna {info.ServerTimeZone ?? "?"}, "
+                              + $"operátor {info.CurrentOperator?.Name ?? "?"}, max. délka karty {info.MaxCardNumberLength}";
+                if (info.Problems is { Count: > 0 } problems)
+                    throw new InvalidOperationException($"{summary}; WIN-PAK odmítl: {string.Join("; ", problems)}");
+                return summary;
             });
 
             await RunAsync("Časové zóny", async () => $"{(await catalog.GetTimeZonesAsync(ct)).Count} zón");

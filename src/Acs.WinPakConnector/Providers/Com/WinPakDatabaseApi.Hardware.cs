@@ -70,7 +70,7 @@ public sealed partial class WinPakDatabaseApi
             branch => new AccessAreaBranchDto(
                 ComValue.ToStringOrEmpty(branch.GetProperty("DeviceID")),
                 ComValue.ToStringOrEmpty(branch.GetProperty("DeviceName"))),
-            _options.AccountName, null);
+            AccountName, null);
 
     public IReadOnlyList<ReaderDto> GetReadersInAccessAreaBranch(string branchName)
         => CallList("GetReadersInAccessAreaBranch",
@@ -79,12 +79,12 @@ public sealed partial class WinPakDatabaseApi
                 ComValue.ToStringOrEmpty(reader.GetProperty("DeviceName")),
                 ComValue.ToStringOrNull(reader.GetProperty("DeviceDesc")),
                 PanelName: null,
-                AccountName: _options.AccountName,
+                AccountName: AccountName,
                 IsActive: true),
-            _options.AccountName, branchName, null);
+            AccountName, branchName, null);
 
     public IReadOnlyList<TimeZoneDto> GetAvailableTimeZonesOfBranch(string branchName)
-        => CallList("GetAvailableTimezonesOfBranch", MapTimeZone, _options.AccountName, branchName, null);
+        => CallList("GetAvailableTimezonesOfBranch", MapTimeZone, AccountName, branchName, null);
 
     // ---------- Skupiny čteček ----------
 
@@ -94,5 +94,5 @@ public sealed partial class WinPakDatabaseApi
     /// <summary>Skupina, kterou má čtečka v dané přístupové úrovni.</summary>
     public string? GetAssociatedGroupOfReader(string accessLevelName, string readerName)
         => ComValue.ToStringOrNull(
-            Call("GetAssociatedGroupofReader", accessLevelName, _options.AccountName, readerName, 0)[3]);
+            Call("GetAssociatedGroupofReader", accessLevelName, AccountName, readerName, 0)[3]);
 }
