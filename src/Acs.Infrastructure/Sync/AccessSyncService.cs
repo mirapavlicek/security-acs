@@ -96,7 +96,8 @@ public class AccessSyncService(AcsDbContext db, WinPakClient winPak, AuditServic
             var items = await db.AccessRequestItems
                 .Include(i => i.Request)
                 .Where(i => i.Request!.TargetEmployeeId == employee.Id
-                            && i.Request.Kind == RequestKind.Grant)
+                            && i.Request.Kind == RequestKind.Grant
+                            && i.ParkingPermitId == null) // parkování s WIN-PAK nesouvisí
                 .ToListAsync(ct);
 
             // Aktivní čtečky v ACS: jednotlivé položky + expanze aktivních skupinových položek.

@@ -7,9 +7,9 @@ using Microsoft.EntityFrameworkCore;
 namespace Acs.Infrastructure.Notifications;
 
 /// <summary>Počty věcí, které čekají na zásah přihlášeného uživatele.</summary>
-public record AttentionCounts(int PendingApprovals, int CardQueue, int MyPending)
+public record AttentionCounts(int PendingApprovals, int CardQueue, int MyPending, int ParkingQueue = 0)
 {
-    public int Total => PendingApprovals + CardQueue;
+    public int Total => PendingApprovals + CardQueue + ParkingQueue;
 }
 
 /// <summary>
@@ -35,7 +35,13 @@ public class AttentionService(AcsDbContext db, RequestWorkflowService workflow)
         var pendingApprovals = (await workflow.GetPendingForApproverAsync(userId, isAdmin, ct)).Count;
 
         var cardQueue = isAdmin || user.IsInRole(nameof(AppRole.CardAdmin))
-            ? await db.AccessRequestItems.CountAsync(i => i.Status == RequestStatus.Approved, ct)
+            ? await db.AccessRequestItems.CountAsync(
+                i => i.Status == RequestStatus.Approved && i.ParkingPermitId == null, ct)
+            : 0;
+
+        var parkingQueue = isAdmin || user.IsInRole(nameof(AppRole.ParkingAdmin))
+            ? await db.AccessRequestItems.CountAsync(
+                i => i.Status == RequestStatus.Approved && i.ParkingPermitId != null, ct)
             : 0;
 
         // Vlastní žádosti, které ještě nejsou vyřízené (informativní, bez červené).
@@ -43,6 +49,6 @@ public class AttentionService(AcsDbContext db, RequestWorkflowService workflow)
             i => i.Request!.RequesterUserId == userId
                  && (i.Status == RequestStatus.Pending || i.Status == RequestStatus.Approved), ct);
 
-        return _cached = new AttentionCounts(pendingApprovals, cardQueue, myPending);
+        return _cached = new AttentionCounts(pendingApprovals, cardQueue, myPending, parkingQueue);
     }
 }

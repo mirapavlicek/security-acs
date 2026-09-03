@@ -6,6 +6,24 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Acs.Infrastructure.Workflow;
 
+/// <summary>Vstup žádosti o parkovací povolení.</summary>
+/// <param name="PermitTypeId">Druh povolení.</param>
+/// <param name="AllSites">Platí pro všechny areály (pak se <paramref name="SiteIds"/> ignoruje).</param>
+/// <param name="SiteIds">Vybrané areály.</param>
+/// <param name="Plates">SPZ (u vazby na SPZ); normalizují se.</param>
+/// <param name="FunctionTitle">Funkce (u vazby na funkci).</param>
+/// <param name="ValidFrom">Začátek platnosti (null = dnes).</param>
+/// <param name="ValidTo">Konec platnosti (null = podle výchozí délky druhu, jinak bez omezení).</param>
+public record ParkingRequestInput(
+    int PermitTypeId,
+    bool AllSites,
+    IReadOnlyCollection<int>? SiteIds,
+    IReadOnlyCollection<string>? Plates,
+    string? FunctionTitle,
+    DateTime? ValidFrom,
+    DateTime? ValidTo,
+    string? Justification);
+
 /// <summary>
 /// Jádro schvalovacího workflow:
 /// <list type="bullet">
@@ -121,17 +139,7 @@ public class RequestWorkflowService(
         if (readerIds.Count == 0 && groupIds.Count == 0)
             throw new InvalidOperationException("Žádost musí obsahovat alespoň jednu čtečku nebo skupinu.");
 
-        // Autorizace: kdo smí žádat za koho.
-        if (!requesterCanActForOthers)
-        {
-            var ownEmployeeId = await db.Users
-                .Where(u => u.Id == requesterUserId)
-                .Select(u => u.EmployeeId)
-                .FirstOrDefaultAsync(ct);
-            if (ownEmployeeId is null || ownEmployeeId.Value != targetEmployeeId)
-                throw new UnauthorizedAccessException(
-                    "Nemáte oprávnění podat žádost za jiného zaměstnance.");
-        }
+        await EnsureCanRequestForAsync(requesterUserId, targetEmployeeId, requesterCanActForOthers, ct);
 
         var allIds = kind == RequestKind.Grant
             ? await ExpandWithDependenciesAsync(readerIds, ct)
@@ -251,6 +259,233 @@ public class RequestWorkflowService(
         return request;
     }
 
+    /// <summary>Autorizace: kdo smí žádat za koho.</summary>
+    private async Task EnsureCanRequestForAsync(
+        int requesterUserId, int targetEmployeeId, bool requesterCanActForOthers, CancellationToken ct)
+    {
+        if (requesterCanActForOthers)
+            return;
+
+        var ownEmployeeId = await db.Users
+            .Where(u => u.Id == requesterUserId)
+            .Select(u => u.EmployeeId)
+            .FirstOrDefaultAsync(ct);
+        if (ownEmployeeId is null || ownEmployeeId.Value != targetEmployeeId)
+            throw new UnauthorizedAccessException(
+                "Nemáte oprávnění podat žádost za jiného zaměstnance.");
+    }
+
+    // ---------- Parkovací povolení ----------
+
+    /// <summary>Stavy, ve kterých parkovací povolení „běží nebo platí“ (blokují duplicitní žádost).</summary>
+    public static readonly RequestStatus[] ActiveParkingStatuses =
+        [RequestStatus.Pending, RequestStatus.Approved, RequestStatus.Issued];
+
+    /// <summary>
+    /// Podání žádosti o parkovací povolení. Povolení je vázané buď na SPZ (jednu či více,
+    /// podle <see cref="ParkingPermitType.MaxPlates"/>), nebo na funkci; platí pro vybrané
+    /// nebo všechny areály. Řetěz schvalování = matice druhu povolení a poté matice
+    /// zvolených areálů (u „všech areálů“ všech aktivních areálů). Bez jakékoli matice
+    /// zůstává položka čekat na rozhodnutí administrátora — nic se neschvaluje automaticky.
+    /// </summary>
+    public async Task<AccessRequest> CreateParkingRequestAsync(
+        int requesterUserId, int targetEmployeeId, ParkingRequestInput input,
+        bool requesterCanActForOthers = false, CancellationToken ct = default)
+    {
+        await EnsureCanRequestForAsync(requesterUserId, targetEmployeeId, requesterCanActForOthers, ct);
+
+        var type = await db.ParkingPermitTypes
+            .Include(t => t.ApprovalMatrix!).ThenInclude(m => m.Levels)
+            .FirstOrDefaultAsync(t => t.Id == input.PermitTypeId, ct)
+            ?? throw new InvalidOperationException("Druh parkovacího povolení nenalezen.");
+        if (!type.IsActive)
+            throw new InvalidOperationException($"Druh povolení „{type.Name}“ není aktivní.");
+
+        if (!await db.Employees.AnyAsync(e => e.Id == targetEmployeeId, ct))
+            throw new InvalidOperationException("Zaměstnanec nenalezen.");
+
+        // Vazba: SPZ, nebo funkce.
+        List<string> plates = [];
+        string? functionTitle = null;
+        if (type.Binding == PermitBinding.LicensePlate)
+        {
+            plates = (input.Plates ?? [])
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Select(EmployeeIdentifier.Normalize)
+                .Distinct()
+                .ToList();
+            if (plates.Count == 0)
+                throw new InvalidOperationException("Zadejte alespoň jednu registrační značku (SPZ).");
+            if (plates.Count > Math.Max(1, type.MaxPlates))
+                throw new InvalidOperationException(
+                    $"Druh povolení „{type.Name}“ dovoluje nejvýše {Math.Max(1, type.MaxPlates)} SPZ.");
+            var invalid = plates.FirstOrDefault(p => p.Length is < 2 or > 12 || !p.All(char.IsLetterOrDigit));
+            if (invalid is not null)
+                throw new InvalidOperationException($"„{invalid}“ nevypadá jako platná registrační značka.");
+        }
+        else
+        {
+            functionTitle = input.FunctionTitle?.Trim();
+            if (string.IsNullOrWhiteSpace(functionTitle))
+                throw new InvalidOperationException("U povolení na funkci zadejte název funkce.");
+        }
+
+        // Areály.
+        List<Site> sites;
+        if (input.AllSites)
+        {
+            sites = await db.Sites.Where(s => s.IsActive).OrderBy(s => s.SortOrder).ThenBy(s => s.Name).ToListAsync(ct);
+        }
+        else
+        {
+            var siteIds = (input.SiteIds ?? []).Distinct().ToList();
+            if (siteIds.Count == 0)
+                throw new InvalidOperationException("Vyberte alespoň jeden areál, nebo zvolte „všechny areály“.");
+            sites = await db.Sites.Where(s => siteIds.Contains(s.Id) && s.IsActive)
+                .OrderBy(s => s.SortOrder).ThenBy(s => s.Name).ToListAsync(ct);
+            if (sites.Count != siteIds.Count)
+                throw new InvalidOperationException("Některý z vybraných areálů neexistuje nebo není aktivní.");
+        }
+
+        // Platnost.
+        var validFrom = (input.ValidFrom ?? DateTime.UtcNow.Date);
+        var validTo = input.ValidTo
+            ?? (type.DefaultValidityMonths is { } months ? validFrom.AddMonths(months) : null);
+        if (validTo is not null && validTo <= validFrom)
+            throw new InvalidOperationException("Konec platnosti musí být později než začátek.");
+
+        // Duplicita: na stejný druh už zaměstnanec má běžící nebo platné povolení.
+        var duplicate = await db.AccessRequestItems.AnyAsync(i =>
+            i.ParkingPermitId != null
+            && i.ParkingPermit!.PermitTypeId == type.Id
+            && i.Request!.TargetEmployeeId == targetEmployeeId
+            && i.Request.Kind == RequestKind.Grant
+            && ActiveParkingStatuses.Contains(i.Status), ct);
+        if (duplicate)
+            throw new InvalidOperationException(
+                $"Na povolení „{type.Name}“ už tomuto zaměstnanci běží nebo platí jiná žádost.");
+
+        // Řetěz matic: druh → areály (bez duplicit, jen aktivní matice s úrovněmi).
+        var chain = new List<int>();
+        if (type.ApprovalMatrix is { IsActive: true, Levels.Count: > 0 })
+            chain.Add(type.ApprovalMatrix.Id);
+        var siteMatrixIds = sites.Where(s => s.ApprovalMatrixId != null).Select(s => s.ApprovalMatrixId!.Value).Distinct().ToList();
+        if (siteMatrixIds.Count > 0)
+        {
+            var usable = await db.ApprovalMatrices
+                .Where(m => siteMatrixIds.Contains(m.Id) && m.IsActive && m.Levels.Any())
+                .Select(m => m.Id)
+                .ToListAsync(ct);
+            foreach (var site in sites)
+            {
+                if (site.ApprovalMatrixId is { } mid && usable.Contains(mid) && !chain.Contains(mid))
+                    chain.Add(mid);
+            }
+        }
+
+        var firstMatrixId = chain.Count > 0 ? chain[0] : (int?)null;
+        var firstLevel = firstMatrixId is null
+            ? 0
+            : await db.ApprovalLevels.Where(l => l.MatrixId == firstMatrixId.Value).MinAsync(l => (int?)l.Order, ct) ?? 0;
+
+        var permit = new ParkingPermit
+        {
+            EmployeeId = targetEmployeeId,
+            PermitTypeId = type.Id,
+            FunctionTitle = functionTitle,
+            AllSites = input.AllSites,
+            Sites = input.AllSites ? [] : sites.Select(s => new ParkingPermitSite { SiteId = s.Id }).ToList(),
+            Plates = plates.Select(p => new ParkingPermitPlate { Value = p }).ToList(),
+            ValidFrom = validFrom,
+            ValidTo = validTo,
+        };
+
+        var request = new AccessRequest
+        {
+            Kind = RequestKind.Grant,
+            RequesterUserId = requesterUserId,
+            TargetEmployeeId = targetEmployeeId,
+            Justification = input.Justification,
+            ValidUntil = validTo,
+            Items =
+            [
+                new AccessRequestItem
+                {
+                    ParkingPermit = permit,
+                    MatrixId = firstMatrixId,
+                    Status = RequestStatus.Pending,
+                    CurrentStageOrder = 1,
+                    CurrentLevelOrder = firstLevel,
+                    Stages = chain.Select((m, idx) => new AccessRequestItemStage { Order = idx + 1, MatrixId = m }).ToList(),
+                },
+            ],
+        };
+
+        db.AccessRequests.Add(request);
+        await db.SaveChangesAsync(ct);
+        await audit.LogAsync(null, "parking-request-created", "ParkingPermit", permit.Id.ToString(),
+            $"zaměstnanec {targetEmployeeId}, druh {type.Name}, {permit.SubjectText()}, {(input.AllSites ? "všechny areály" : string.Join(", ", sites.Select(s => s.Name)))}", ct);
+
+        if (notifier is not null)
+            await notifier.NotifyPendingAsync(request.Items[0].Id, ct);
+
+        return request;
+    }
+
+    /// <summary>
+    /// Žádost o odebrání vydaného parkovacího povolení. Neprochází schvalováním —
+    /// jde rovnou do fronty správce parkování (jako vrácení karty).
+    /// </summary>
+    public async Task<AccessRequest> CreateParkingRevokeRequestAsync(
+        int requesterUserId, int permitId, string? reason,
+        bool requesterCanActForOthers = false, CancellationToken ct = default)
+    {
+        var permit = await db.ParkingPermits.Include(p => p.PermitType)
+            .FirstOrDefaultAsync(p => p.Id == permitId, ct)
+            ?? throw new KeyNotFoundException("Parkovací povolení nenalezeno.");
+
+        await EnsureCanRequestForAsync(requesterUserId, permit.EmployeeId, requesterCanActForOthers, ct);
+
+        var issued = await db.AccessRequestItems.AnyAsync(i =>
+            i.ParkingPermitId == permitId && i.Request!.Kind == RequestKind.Grant
+            && i.Status == RequestStatus.Issued, ct);
+        if (!issued)
+            throw new InvalidOperationException("Povolení není vydané — není co odebírat.");
+
+        var alreadyRequested = await db.AccessRequestItems.AnyAsync(i =>
+            i.ParkingPermitId == permitId && i.Request!.Kind == RequestKind.Revoke
+            && (i.Status == RequestStatus.Pending || i.Status == RequestStatus.Approved), ct);
+        if (alreadyRequested)
+            throw new InvalidOperationException("O odebrání tohoto povolení už je požádáno.");
+
+        var request = new AccessRequest
+        {
+            Kind = RequestKind.Revoke,
+            RequesterUserId = requesterUserId,
+            TargetEmployeeId = permit.EmployeeId,
+            Justification = reason ?? "žádost o odebrání parkovacího povolení",
+            Items =
+            [
+                new AccessRequestItem
+                {
+                    ParkingPermitId = permitId,
+                    Status = RequestStatus.Approved,
+                    CurrentLevelOrder = 0,
+                    DecidedAt = DateTime.UtcNow,
+                },
+            ],
+        };
+        db.AccessRequests.Add(request);
+        await db.SaveChangesAsync(ct);
+        await audit.LogAsync(null, "parking-revoke-requested", "ParkingPermit", permitId.ToString(),
+            $"uživatel {requesterUserId}", ct);
+
+        if (notifier is not null)
+            await notifier.NotifyDecidedAsync(request.Items[0].Id, ct);
+
+        return request;
+    }
+
     // ---------- Kdo smí rozhodovat ----------
 
     /// <summary>Vrátí id uživatelů, za které smí <paramref name="userId"/> aktuálně jednat (on sám + zástupy).</summary>
@@ -279,6 +514,9 @@ public class RequestWorkflowService(
             .Include(i => i.Request!).ThenInclude(r => r.RequesterUser)
             .Include(i => i.Reader)
             .Include(i => i.ReaderGroup)
+            .Include(i => i.ParkingPermit!).ThenInclude(p => p.PermitType)
+            .Include(i => i.ParkingPermit!).ThenInclude(p => p.Plates)
+            .Include(i => i.ParkingPermit!).ThenInclude(p => p.Sites).ThenInclude(s => s.Site)
             .Include(i => i.Decisions)
             .Where(i => i.Status == RequestStatus.Pending)
             .ToListAsync(ct);

@@ -72,10 +72,13 @@ public class EmailNotificationService(
 
             var statusText = item.Status switch
             {
+                RequestStatus.Approved when item.IsParking => "schváleno — čeká na vydání správcem parkování",
                 RequestStatus.Approved => "schváleno — čeká na zadání správcem karet",
                 RequestStatus.Rejected => "zamítnuto",
                 RequestStatus.PushedToWinPak => "zapsáno do WIN-PAK — přístup je aktivní",
                 RequestStatus.ManuallyConfirmed => "zadáno do WIN-PAK (ručně) — přístup je aktivní",
+                RequestStatus.Issued => "vydáno — parkovací povolení je platné",
+                RequestStatus.Revoked when item.IsParking => "parkovací povolení odebráno",
                 RequestStatus.Revoked => "přístup odebrán",
                 RequestStatus.Cancelled => "žádost zrušena",
                 _ => item.Status.ToString(),
@@ -101,9 +104,9 @@ public class EmailNotificationService(
 
             await SendAsync(to, subject, body, ct);
 
-            // Jakmile je položka schválená, upozorni správce karet, že jim něco přibylo.
+            // Jakmile je položka schválená, upozorni správce karet (resp. parkování), že jim něco přibylo.
             if (item.Status == RequestStatus.Approved)
-                await NotifyCardAdminsAsync(item, ct);
+                await NotifyQueueAdminsAsync(item, ct);
         }
         catch (Exception ex)
         {
@@ -111,12 +114,13 @@ public class EmailNotificationService(
         }
     }
 
-    /// <summary>Upozornění správcům karet, že do fronty přibyla schválená položka.</summary>
-    private async Task NotifyCardAdminsAsync(AccessRequestItem item, CancellationToken ct)
+    /// <summary>Upozornění správcům karet (resp. parkování), že do jejich fronty přibyla schválená položka.</summary>
+    private async Task NotifyQueueAdminsAsync(AccessRequestItem item, CancellationToken ct)
     {
+        var role = item.IsParking ? AppRole.ParkingAdmin : AppRole.CardAdmin;
         var emails = await db.Users
             .Where(u => u.IsActive && u.Email != null
-                        && ((u.Roles & AppRole.CardAdmin) == AppRole.CardAdmin
+                        && ((u.Roles & role) == role
                             || (u.Roles & AppRole.Admin) == AppRole.Admin))
             .Select(u => u.Email!)
             .Distinct()
@@ -125,16 +129,29 @@ public class EmailNotificationService(
             return;
 
         var action = item.Request!.Kind == RequestKind.Revoke ? "odebrání" : "udělení";
+        var what = item.IsParking ? "parkovacího povolení" : "přístupu";
+        var queue = item.IsParking
+            ? "Fronta správce parkování: http://acs.fnmh.network/Parking/Queue"
+            : "Fronta správce karet: http://acs.fnmh.network/CardQueue";
         await SendAsync(emails,
-            $"ACS: ve frontě čeká {action} přístupu (#{item.RequestId})",
+            $"ACS: ve frontě čeká {action} {what} (#{item.RequestId})",
             $"Zaměstnanec: {item.Request.TargetEmployee!.FullName}\n"
             + $"Položka: {ItemName(item)}\n"
-            + $"Typ: {action} přístupu\n\n"
-            + "Fronta správce karet: http://acs.fnmh.network/CardQueue", ct);
+            + $"Typ: {action} {what}\n\n"
+            + queue, ct);
     }
 
-    private static string ItemName(AccessRequestItem item)
-        => item.Reader?.Name ?? (item.ReaderGroup is null ? "—" : $"skupina {item.ReaderGroup.Name}");
+    /// <summary>Lidský popis předmětu položky — čtečka, skupina, nebo parkovací povolení.</summary>
+    public static string ItemName(AccessRequestItem item)
+    {
+        if (item.ParkingPermit is { } permit)
+        {
+            var type = permit.PermitType?.Name ?? "parkovací povolení";
+            return $"parkovací povolení {type} — {permit.SubjectText()} ({permit.SitesText()})";
+        }
+
+        return item.Reader?.Name ?? (item.ReaderGroup is null ? "—" : $"skupina {item.ReaderGroup.Name}");
+    }
 
     public async Task NotifyEscalationAsync(int itemId, int waitingDays, CancellationToken ct = default)
     {
@@ -170,6 +187,9 @@ public class EmailNotificationService(
             .Include(i => i.Request!).ThenInclude(r => r.RequesterUser)
             .Include(i => i.Reader)
             .Include(i => i.ReaderGroup)
+            .Include(i => i.ParkingPermit!).ThenInclude(p => p.PermitType)
+            .Include(i => i.ParkingPermit!).ThenInclude(p => p.Plates)
+            .Include(i => i.ParkingPermit!).ThenInclude(p => p.Sites).ThenInclude(s => s.Site)
             .AsNoTracking()
             .FirstOrDefaultAsync(i => i.Id == itemId, ct);
 

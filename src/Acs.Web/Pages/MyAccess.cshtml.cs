@@ -31,7 +31,8 @@ public class MyAccessModel(AcsDbContext db, RequestWorkflowService workflow) : P
             .Include(i => i.Reader).ThenInclude(r => r!.Room).ThenInclude(room => room!.Corridor)
             .Include(i => i.Reader).ThenInclude(r => r!.Corridor).ThenInclude(c => c!.Floor).ThenInclude(f => f!.Building)
             .Include(i => i.ReaderGroup)
-            .Where(i => i.Request!.TargetEmployeeId == Employee.Id && i.Request.Kind == RequestKind.Grant)
+            .Where(i => i.Request!.TargetEmployeeId == Employee.Id && i.Request.Kind == RequestKind.Grant
+                        && i.ParkingPermitId == null) // parkovací povolení mají vlastní stránku
             .ToListAsync();
 
         ActiveItems = items
