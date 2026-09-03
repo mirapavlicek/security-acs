@@ -64,7 +64,11 @@ public record CardHolderDto(
     string LastName,
     string? Note,
     IReadOnlyList<CardDto> Cards,
-    IReadOnlyList<string> AccessLevelIds);
+    IReadOnlyList<string> AccessLevelIds,
+    /// <summary>E-mail držitele (<c>EmailID</c> ve WIN-PAKu).</summary>
+    string? Email = null,
+    /// <summary>Externí reference držitele (<c>ExtRefID</c>) — místo pro osobní číslo z personálního systému.</summary>
+    string? ExternalRef = null);
 
 /// <summary>Zařízení připojené ke komunikačnímu serveru (ADV).</summary>
 public record DeviceDto(string Hid, string Name, string? DeviceType);

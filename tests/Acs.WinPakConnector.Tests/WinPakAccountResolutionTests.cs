@@ -302,6 +302,42 @@ public sealed class WinPakAccountResolutionTests
         Assert.True(ComMembers.IsUnknownName(error));
     }
 
+    [Fact]
+    public void Sablony_z_objektu_drzitele_se_berou_z_jeho_kolekce_NoteFields()
+    {
+        // Skutečný WIN-PAK: GetNoteFieldTemplateDetailsByAccount vrací objekt držitele
+        // (FirstName, LastName, NoteField, NoteFields, Photo…), pole jsou v NoteFields.
+        ArrangeLogin("FN Motol");
+        ArrangeSubAccounts("Default");
+        var template = _com.Record("tpl",
+            ("FirstName", "Šablona"), ("LastName", ""), ("CardHolderID", 0L),
+            ("NoteFields", new object[] { "Oddělení", "Telefon", _com.Record("nf3", ("Name", "Pozice"), ("Index", 7)) }));
+        App.OutValues["GetNoteFieldTemplateDetailsByAccount#2"] = new object[] { template };
+
+        var templates = CreateApi(accountName: null).GetNoteFieldTemplates();
+
+        Assert.Equal(["Oddělení", "Telefon", "Pozice"], templates.Select(t => t.Name));
+        Assert.Equal([1, 2, 7], templates.Select(t => t.Index));
+    }
+
+    [Fact]
+    public void Drzitel_nese_email_a_externi_referenci_kdyz_je_WinPak_ma()
+    {
+        ArrangeLogin("FN Motol");
+        ArrangeSubAccounts("Default");
+        App.OutValues["GetCardHoldersByAccountName#2"] = new object[]
+        {
+            _com.Record("h", ("CardHolderID", 1001L), ("FirstName", "Miroslav"), ("LastName", "Pavlíček"),
+                ("EmailID", "pavlicek@fnmotol.cz"), ("ExtRefID", "13483")),
+        };
+        App.OutValues["GetCardsByAccountName#2"] = Array.Empty<object>();
+
+        var holder = Assert.Single(CreateApi(accountName: null).GetCardHolders());
+
+        Assert.Equal("pavlicek@fnmotol.cz", holder.Email);
+        Assert.Equal("13483", holder.ExternalRef);
+    }
+
     // ---------- Systémové údaje ----------
 
     [Fact]
