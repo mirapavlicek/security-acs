@@ -25,13 +25,11 @@ public class CardsModel(WinPakProviderCache providers) : FeaturePageModel(provid
     {
         await LoadAsync(async () => CardHolders = await Provider.SearchCardHoldersAsync(null, ct));
         await LoadAsync(async () => AccessLevels = await Provider.GetAccessLevelsAsync(ct));
-        await LoadAsync(async () =>
-        {
-            var catalog = RequireCatalog();
-            SearchFields = await catalog.GetCardHolderSearchFieldsAsync(ct);
-            NoteFields = await catalog.GetNoteFieldTemplatesAsync(ct);
-            CardsWithoutHolder = await catalog.GetCardsAsync(onlyWithoutHolder: true, ct);
-        });
+        // Každá pomocná položka zvlášť — jedna odmítnutá (třeba pole vyhledávání)
+        // nemá shodit karty ani držitele, kvůli kterým se sem chodí.
+        await LoadAsync(async () => SearchFields = await RequireCatalog().GetCardHolderSearchFieldsAsync(ct));
+        await LoadAsync(async () => NoteFields = await RequireCatalog().GetNoteFieldTemplatesAsync(ct));
+        await LoadAsync(async () => CardsWithoutHolder = await RequireCatalog().GetCardsAsync(onlyWithoutHolder: true, ct));
 
         await LoadDetailAsync(ct);
     }

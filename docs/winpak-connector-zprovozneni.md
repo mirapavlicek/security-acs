@@ -251,6 +251,7 @@ z jednoho místa.
 | `WIN-PAK <metoda>: Type mismatch. (0x80020005)` | typ argumentu při pozdní vazbě | konektor takové volání sám zopakuje s opravenými argumenty (výstupní řetězec místo null, 32bitové id); když hláška zůstane, pošlete název metody — signatura se v příručce liší |
 | Držitelé a přístupové úrovně 0, ale čtečky a časové zóny fungují | podúčet | držitelé i úrovně jsou pod podúčtem; konektor doplní jediný podúčet účtu sám, u více podúčtů ho vyberte v Nastavení |
 | `Cannot access a disposed object. Object name: 'System.Threading.SemaphoreSlim'` | provider zlikvidovaný DI kontejnerem po prvním požadavku (do v1.12.2) | aktualizovat konektor na v1.12.3 nebo novější |
+| `Method 'System.String.NoteFieldName' not found` | WIN-PAK vrátil pole vyhledávání jako prosté řetězce (do v1.12.3) | aktualizovat konektor; stránky Features od té verze při odmítnuté pomocné položce zobrazí zbytek |
 | `WIN-PAK NoteField: Number of parameters specified does not match the expected number` | poznámkové pole držitele je indexované | od v1.12.2 konektor čte první poznámkové pole; výpis držitelů kvůli poznámce nepadá |
 
 > **Bezpečnost:** `GetWPDSN` vrací ve skutečné instalaci celý připojovací řetězec

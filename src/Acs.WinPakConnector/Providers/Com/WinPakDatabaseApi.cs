@@ -208,6 +208,22 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
         return ComValue.AsEnumerable(result[^1]).Select(_com.Wrap).Select(map).ToList();
     }
 
+    /// <summary>
+    /// Seznam, jehož prvky mohou být buď objekty s vlastnostmi, nebo prosté hodnoty
+    /// (řetězce, čísla) — WIN-PAK obojí střídá podle volání. Prostá hodnota se
+    /// namapuje přes <paramref name="fromValue"/> s pořadím od 1.
+    /// </summary>
+    private List<T> CallNamedList<T>(string method, Func<string, int, T> fromValue,
+        Func<IComDispatch, T> fromObject, params object?[] args)
+    {
+        var result = Call(method, args);
+        return ComValue.AsEnumerable(result[^1])
+            .Select((raw, position) => raw is string or int or long or double or decimal
+                ? fromValue(ComValue.ToStringOrEmpty(raw), position + 1)
+                : fromObject(_com.Wrap(raw!)))
+            .ToList();
+    }
+
     private static long[] ToIds(IEnumerable<string>? values)
         => (values ?? []).Select(v => ComValue.ToLong(v)).Where(id => id > 0).Distinct().ToArray();
 

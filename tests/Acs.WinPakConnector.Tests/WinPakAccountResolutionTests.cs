@@ -223,6 +223,53 @@ public sealed class WinPakAccountResolutionTests
         Assert.Equal("(připojovací údaje skryty)", described);
     }
 
+    // ---------- Seznamy prostých hodnot ----------
+
+    [Fact]
+    public void Pole_vyhledavani_jako_seznam_retezcu_se_namapuje_s_poradim()
+    {
+        // Skutečný WIN-PAK vrací názvy polí, ne objekty — na řetězci by čtení vlastnosti selhalo.
+        ArrangeLogin("FN Motol");
+        ArrangeSubAccounts("Default");
+        App.OutValues["GetCardHolderSearchFieldsByAccountName#2"] = new object[] { "LastName", "FirstName", "Note1" };
+
+        var fields = CreateApi(accountName: null).GetCardHolderSearchFields();
+
+        Assert.Equal(["LastName", "FirstName", "Note1"], fields.Select(f => f.Name));
+        Assert.Equal([1, 2, 3], fields.Select(f => f.Index));
+    }
+
+    [Fact]
+    public void Pole_vyhledavani_jako_objekty_se_namapuji_z_vlastnosti()
+    {
+        ArrangeLogin("FN Motol");
+        ArrangeSubAccounts("Default");
+        App.OutValues["GetCardHolderSearchFieldsByAccountName#2"] = new object[]
+        {
+            _com.Record("f1", ("NoteFieldName", "Oddělení"), ("FieldIndex", 7)),
+        };
+
+        var field = Assert.Single(CreateApi(accountName: null).GetCardHolderSearchFields());
+
+        Assert.Equal("Oddělení", field.Name);
+        Assert.Equal(7, field.Index);
+    }
+
+    [Fact]
+    public void Sablony_poznamkovych_poli_jako_retezce_maji_prazdnou_definici()
+    {
+        ArrangeLogin("FN Motol");
+        ArrangeSubAccounts("Default");
+        App.OutValues["GetNoteFieldTemplateDetailsByAccount#2"] = new object[] { "Oddělení", "Telefon" };
+
+        var templates = CreateApi(accountName: null).GetNoteFieldTemplates();
+
+        Assert.Equal(2, templates.Count);
+        Assert.Equal("Telefon", templates[1].Name);
+        Assert.Equal(2, templates[1].Index);
+        Assert.Null(templates[1].Definition);
+    }
+
     // ---------- Systémové údaje ----------
 
     [Fact]
