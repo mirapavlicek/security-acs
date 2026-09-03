@@ -14,6 +14,9 @@ public class EditModel(AcsDbContext db, AuditService audit, ReaderCleanupService
     public Reader Reader { get; set; } = new() { Name = "" };
 
     public List<Room> Rooms { get; private set; } = [];
+
+    /// <summary>Aktivní přístupové úrovně WIN-PAKu ze zrcadla — nabídka pro mapování čtečky.</summary>
+    public List<AccessLevel> AccessLevels { get; private set; } = [];
     public List<Corridor> Corridors { get; private set; } = [];
     public List<ApprovalMatrix> Matrices { get; private set; } = [];
     public List<ReaderDependency> Dependencies { get; private set; } = [];
@@ -148,6 +151,7 @@ public class EditModel(AcsDbContext db, AuditService audit, ReaderCleanupService
 
     private async Task LoadListsAsync(int? id)
     {
+        AccessLevels = await db.AccessLevels.Where(a => a.IsActive).OrderBy(a => a.Name).ToListAsync();
         Rooms = await db.Rooms
             .Include(r => r.Floor).ThenInclude(f => f!.Building)
             .OrderBy(r => r.Floor!.Building!.Name).ThenBy(r => r.Floor!.SortOrder).ThenBy(r => r.Name)

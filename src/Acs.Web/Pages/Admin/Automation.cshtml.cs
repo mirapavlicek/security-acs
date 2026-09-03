@@ -12,6 +12,7 @@ public class AutomationModel(
     AutomationService automation,
     HealthCheckService health,
     ReaderSyncService readerSync,
+    AccessLevelSyncService accessLevelSync,
     EmployeeSyncService employeeSync,
     CardSyncService cardSync,
     AccessSyncService accessSync,
@@ -70,6 +71,7 @@ public class AutomationModel(
         var user = User.Identity?.Name;
 
         await TryAsync(messages, "čtečky", async () => (await readerSync.SyncAsync(user)).ToString());
+        await TryAsync(messages, "přístupové úrovně", async () => (await accessLevelSync.SyncAsync(user)).ToString());
         await TryAsync(messages, "zaměstnanci", async () => (await employeeSync.SyncAsync(user)).ToString());
         await TryAsync(messages, "karty", async () => (await cardSync.SyncAsync(user)).ToString());
         await TryAsync(messages, "auto-zařazení", async () => (await autoAssign.RunAsync(user)).ToString());

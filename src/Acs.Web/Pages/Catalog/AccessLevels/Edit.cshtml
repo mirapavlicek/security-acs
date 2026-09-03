@@ -1,0 +1,84 @@
+@page "{id:int?}"
+@model Acs.Web.Pages.Catalog.AccessLevels.EditModel
+@{
+    ViewData["Title"] = Model.Id is null ? "Nová přístupová úroveň" : $"Přístupová úroveň: {Model.Name}";
+}
+<h1>@ViewData["Title"]</h1>
+<p class="muted">
+    Uložení zapíše celou definici do WIN-PAKu: čtečky, které nejsou zaškrtnuté, z úrovně zmizí.
+    Časová zóna říká, kdy na dané čtečce úroveň platí (typicky „Always“ nebo pracovní doba).
+</p>
+
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+@if (!Model.IsActive)
+{
+    <div class="alert alert-error">Úroveň je ve WIN-PAKu zrušená — uložením se založí znovu pod stejným názvem.</div>
+}
+@if (Model.TreeUnreadable)
+{
+    <div class="alert alert-error">
+        WIN-PAK vrátil složení úrovně v podobě, které ACS nerozumí — zaškrtnuté čtečky níže <strong>nemusí odpovídat</strong>
+        skutečnému stavu. Než uložíte, porovnejte je se stromem přístupů dole a pošlete ho vývoji.
+    </div>
+}
+@if (Model.TimeZonesError is not null)
+{
+    <div class="alert alert-error">Časové zóny se z WIN-PAKu nenačetly: @Model.TimeZonesError — bez nich nejde úroveň uložit.</div>
+}
+
+<form method="post">
+    <div class="card" style="max-width:640px">
+        <label>Název</label>
+        <input asp-for="Name" required maxlength="256" />
+        <label>Popis</label>
+        <input asp-for="Description" maxlength="1024" />
+    </div>
+
+    <div class="card">
+        <h2 style="margin-top:0">Čtečky v úrovni</h2>
+        <p class="hint">Čtečky, které už mají svou úroveň, jsou označené — zařazení do další úrovně je v pořádku (třeba společné vchody).</p>
+        <table class="data">
+            <thead><tr><th style="width:1%"></th><th>Čtečka</th><th>Budova</th><th>WIN-PAK id</th><th>Časová zóna</th></tr></thead>
+            <tbody>
+            @foreach (var reader in Model.Readers)
+            {
+                var selected = Model.Selected.TryGetValue(reader.Id, out var tz);
+                <tr>
+                    <td><input type="checkbox" name="readerIds" value="@reader.Id" checked="@selected" /></td>
+                    <td>@reader.Name @if (reader.HasLevel) { <span class="badge" title="Čtečka už má namapovanou svou úroveň">má úroveň</span> }</td>
+                    <td class="muted">@reader.Building</td>
+                    <td class="mono muted">@reader.ExternalId</td>
+                    <td>
+                        <select name="tz_@reader.Id" style="width:auto">
+                            @foreach (var zone in Model.TimeZones)
+                            {
+                                <option value="@zone.Id" selected="@(selected && tz == zone.Id)">@zone.Name</option>
+                            }
+                        </select>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (Model.Readers.Count == 0)
+        {
+            <p class="muted">Žádné čtečky z WIN-PAKu — nejdřív synchronizujte <a asp-page="/Catalog/Readers/Index">čtečky</a>.</p>
+        }
+    </div>
+
+    <div class="btn-row">
+        <button class="btn" type="submit" disabled="@(Model.TimeZonesError is not null)">@(Model.Id is null ? "Založit ve WIN-PAKu" : "Uložit do WIN-PAKu")</button>
+        <a class="btn btn-ghost" asp-page="Index">Zpět</a>
+    </div>
+</form>
+
+@if (Model.AccessTree is { Length: > 0 })
+{
+    <div class="card">
+        <h2 style="margin-top:0">Strom přístupů podle WIN-PAKu</h2>
+        <pre class="mono muted" style="white-space:pre-wrap">@Model.AccessTree</pre>
+    </div>
+}

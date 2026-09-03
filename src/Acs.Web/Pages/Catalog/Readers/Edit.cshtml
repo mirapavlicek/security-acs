@@ -20,8 +20,27 @@
         <input asp-for="Reader.Description" />
         <label>Panel</label>
         <input asp-for="Reader.PanelName" />
-        <label>WIN-PAK access level (pro zápis přístupů)</label>
-        <input asp-for="Reader.AccessLevelExternalId" placeholder="např. AL-03" />
+        <label>Přístupová úroveň WIN-PAK (pro zápis přístupů)</label>
+        @if (Model.AccessLevels.Count > 0)
+        {
+            <select asp-for="Reader.AccessLevelExternalId">
+                <option value="">— nenamapováno —</option>
+                @if (Model.Reader.AccessLevelExternalId is { Length: > 0 } current && Model.AccessLevels.All(a => a.ExternalId != current))
+                {
+                    <option value="@current" selected>@current (mimo zrcadlo WIN-PAKu)</option>
+                }
+                @foreach (var level in Model.AccessLevels)
+                {
+                    <option value="@level.ExternalId">@level.Name <text>(</text>@level.ExternalId<text>)</text></option>
+                }
+            </select>
+            <p class="hint">Úrovně se berou ze zrcadla WIN-PAKu — <a asp-page="/Catalog/AccessLevels/Index">spravovat úrovně</a>.</p>
+        }
+        else
+        {
+            <input asp-for="Reader.AccessLevelExternalId" placeholder="id úrovně ve WIN-PAKu" />
+            <p class="hint">Úrovně zatím nejsou synchronizované — <a asp-page="/Catalog/AccessLevels/Index">synchronizovat</a>, pak půjdou vybrat ze seznamu.</p>
+        }
         <label>Místnost (vchází se do ní touto čtečkou)</label>
         <select asp-for="Reader.RoomId">
             <option value="">— žádná —</option>
