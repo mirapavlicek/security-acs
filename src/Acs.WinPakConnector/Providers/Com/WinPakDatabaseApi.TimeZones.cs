@@ -6,9 +6,9 @@ namespace Acs.WinPakConnector.Providers.Com;
 public sealed partial class WinPakDatabaseApi
 {
     public IReadOnlyList<TimeZoneDto> GetTimeZones()
-        => string.IsNullOrWhiteSpace(_options.AccountName)
+        => AccountNameOrNull is null
             ? CallList("GetAllTimezones", MapTimeZone, [null])
-            : CallList("GetTimeZonesByAccountName", MapTimeZone, _options.AccountName, null);
+            : CallList("GetTimeZonesByAccountName", MapTimeZone, AccountName, null);
 
     private static TimeZoneDto MapTimeZone(IComDispatch zone) => new(
         ComValue.ToStringOrEmpty(zone.GetProperty("TimeZoneID")),
@@ -33,7 +33,7 @@ public sealed partial class WinPakDatabaseApi
         var zone = _com.Create(_options.TimeZoneProgId);
         zone.SetProperty("TimeZoneName", request.Name);
         zone.SetProperty("TimeZoneDesc", request.Description ?? "");
-        zone.SetProperty("AccountName", _options.AccountName);
+        zone.SetProperty("AccountName", AccountName);
 
         var args = new object?[] { zone.Target, 0, 0 };
         App.Invoke("AddTimezone", args);
@@ -55,9 +55,9 @@ public sealed partial class WinPakDatabaseApi
         var zone = _com.Create(_options.TimeZoneProgId);
         zone.SetProperty("TimeZoneName", request.Name);
         zone.SetProperty("TimeZoneDesc", request.Description ?? "");
-        zone.SetProperty("AccountName", _options.AccountName);
+        zone.SetProperty("AccountName", AccountName);
 
-        var args = new object?[] { currentName, _options.AccountName, zone.Target, 0 };
+        var args = new object?[] { currentName, AccountName, zone.Target, 0 };
         App.Invoke("EditTimeZone", args);
         WinPakStatus.EnsureCardSucceeded("Úprava časové zóny", ComValue.ToInt(args[3]));
     }
@@ -108,13 +108,13 @@ public sealed partial class WinPakDatabaseApi
 
     /// <summary>Časové zóny dostupné pro čtečku v rámci účtu (<c>GetAvailableTimeZonesOfAccessReader</c>).</summary>
     public IReadOnlyList<TimeZoneDto> GetAvailableTimeZonesOfAccessReader(string readerName)
-        => CallList("GetAvailableTimeZonesOfAccessReader", MapTimeZone, _options.AccountName, readerName, null);
+        => CallList("GetAvailableTimeZonesOfAccessReader", MapTimeZone, AccountName, readerName, null);
 
     /// <summary>Časová zóna, kterou má čtečka v dané přístupové úrovni.</summary>
     public TimeZoneDto? GetAssociatedTimeZoneOfReader(string accessLevelName, string readerName)
     {
         var result = Call("GetAssociatedTimeZoneOfReader",
-            accessLevelName, _options.AccountName, readerName, null);
+            accessLevelName, AccountName, readerName, null);
         var raw = ComValue.AsEnumerable(result[3]).FirstOrDefault();
         return raw is null ? null : MapTimeZone(_com.Wrap(raw));
     }

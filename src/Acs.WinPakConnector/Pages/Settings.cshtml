@@ -95,7 +95,11 @@
         <h3>Účet</h3>
         <label for="comAccount">Účet</label>
         <input type="text" id="comAccount" asp-for="Input.Com.AccountName" autocomplete="off" />
-        <p class="hint">Karty i držitelé jsou mezi účty oddělení. Prázdné = čte se napříč účty (jen pro čtení číselníků).</p>
+        <p class="hint">
+            Čtečky, karty i držitelé jsou ve WIN-PAKu oddělení po účtech — dotaz za jiný účet vrátí prázdno.
+            Prázdné = použije se jediný účet WIN-PAKu; má-li WIN-PAK účtů víc, je potřeba jeden vybrat
+            (diagnostika vypíše, se kterým účtem se pracuje).
+        </p>
 
         <label for="comSubAccount">Podúčet</label>
         <input type="text" id="comSubAccount" asp-for="Input.Com.SubAccountName" autocomplete="off" />

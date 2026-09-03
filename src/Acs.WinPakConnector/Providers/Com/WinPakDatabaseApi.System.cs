@@ -33,21 +33,41 @@ public sealed partial class WinPakDatabaseApi
     public string? GetAccountEmails() => ComValue.ToStringOrNull(Call("GetAccountEmailIDs", AccountId, null)[1]);
 
     /// <summary>Souhrn všeho, co se o instalaci dá zjistit jedním voláním REST.</summary>
+    /// <summary>
+    /// Osm samostatných volání. Když jedno z nich WIN-PAK odmítne (instalace se liší
+    /// verzí i licencí), ostatní údaje se přesto vrátí a odmítnuté volání se vypíše
+    /// v <see cref="SystemInfoDto.Problems"/> — jinak by jediná chyba zakryla vše.
+    /// </summary>
     public SystemInfoDto GetSystemInfo()
     {
-        var (timeZone, daylightSaving) = GetServerTimeZone();
-        var (operatorId, operatorName) = GetCurrentOperator();
+        var problems = new List<string>();
+        T Try<T>(string what, Func<T> call, T fallback)
+        {
+            try
+            {
+                return call();
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                problems.Add($"{what}: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        var (timeZone, daylightSaving) = Try("časová zóna serveru", GetServerTimeZone, ((string?)null, false));
+        var (operatorId, operatorName) = Try("aktuální operátor", GetCurrentOperator, (0, ""));
 
         return new SystemInfoDto(
-            DataSourceName: GetDataSourceName(),
+            DataSourceName: Try("zdroj dat (DSN)", GetDataSourceName, null),
             ServerTimeZone: timeZone,
             DaylightSavingEnabled: daylightSaving,
-            ServerTimeZoneOffsetMinutes: GetServerTimeZoneOffset(),
-            MaxCardNumberLength: GetMaxCardNumberLength(),
-            CardNumbersAreNumeric: GetCardNumeric(),
-            AccessLevelType: GetAccessLevelType(),
+            ServerTimeZoneOffsetMinutes: Try("posun časové zóny", GetServerTimeZoneOffset, 0),
+            MaxCardNumberLength: Try("max. délka čísla karty", GetMaxCardNumberLength, 0),
+            CardNumbersAreNumeric: Try("číselnost karet", GetCardNumeric, false),
+            AccessLevelType: Try("typ přístupových úrovní", GetAccessLevelType, 0),
             CurrentOperator: operatorId > 0 ? new OperatorDto(operatorId, operatorName) : null,
-            Domains: GetConfiguredDomains());
+            Domains: Try("domény", GetConfiguredDomains, (IReadOnlyList<string>)[]),
+            Problems: problems.Count == 0 ? null : problems);
     }
 
     // ---------- Plány reportů a šablony ----------

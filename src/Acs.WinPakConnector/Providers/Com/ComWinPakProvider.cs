@@ -28,7 +28,27 @@ public sealed partial class ComWinPakProvider : WinPakProviderBase, IDisposable
     public override string Mode => "Com";
     public override bool SupportsWrite => true;
     public override bool SupportsDoorControl => _comm is not null;
-    public override string? AccountName => string.IsNullOrWhiteSpace(_options.AccountName) ? null : _options.AccountName;
+    /// <summary>Účet nebyl v konfiguraci a databázové API si ho doplnilo samo (jediný ve WIN-PAKu).</summary>
+    public bool AccountResolvedAutomatically => _database.AccountNameResolvedAutomatically;
+
+    /// <summary>Účet z konfigurace, nebo ten, který si databázové API doplnilo samo (jediný ve WIN-PAKu).</summary>
+    public override string? AccountName
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(_options.AccountName))
+                return _options.AccountName;
+
+            try
+            {
+                return _database.IsLoggedIn ? _database.AccountName : null;
+            }
+            catch (InvalidOperationException)
+            {
+                return null;
+            }
+        }
+    }
 
     public void Dispose()
     {

@@ -24,9 +24,14 @@ public sealed class FakeComDispatch(string name, FakeComFactory factory) : IComD
 
     public Dictionary<string, object?> Properties { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Metody, které mají selhat — WIN-PAK některá volání odmítá podle verze a licence.</summary>
+    public Dictionary<string, Exception> Throws { get; } = [];
+
     public object? Invoke(string method, object?[] args)
     {
         factory.Calls.Add(new ComCall(Name, method, [.. args]));
+        if (Throws.TryGetValue(method, out var failure))
+            throw failure;
 
         for (var i = 0; i < args.Length; i++)
         {

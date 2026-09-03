@@ -138,7 +138,9 @@ public record SystemInfoDto(
     bool CardNumbersAreNumeric,
     int AccessLevelType,
     OperatorDto? CurrentOperator,
-    IReadOnlyList<string> Domains);
+    IReadOnlyList<string> Domains,
+    /// <summary>Volání, která WIN-PAK odmítl — údaj pak chybí, ale zbytek se vrátí.</summary>
+    IReadOnlyList<string>? Problems = null);
 
 /// <summary>Plán reportu (objekt <c>NCIHelper.Schedule</c>).</summary>
 public record ScheduleDto(

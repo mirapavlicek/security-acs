@@ -152,8 +152,10 @@ V **Nastavení**:
 2. **Přihlášení operátora** — uživatel, heslo a doména z kroku 2. Doménu nechte
    prázdnou u lokálních účtů WIN-PAK.
 3. **Účet** — název účtu WIN-PAK, ve kterém jsou karty a držitelé, případně
-   i podúčet. Prázdný účet znamená čtení napříč účty a hodí se jen na číselníky;
-   pro zápis karet ho vyplňte.
+   i podúčet. Čtečky, karty i držitelé jsou po účtech oddělení, dotaz za jiný
+   účet vrátí prázdno. Prázdné pole znamená „použij jediný účet WIN-PAKu“;
+   má-li WIN-PAK účtů víc, musí se jeden vybrat. Diagnostika u kontroly „Účty“
+   vypíše, se kterým účtem konektor pracuje a jestli si ho doplnil sám.
 4. **Komunikační server** zapněte jen tehdy, když chcete ovládat dveře nebo
    odebírat události z panelů. Databázová část funguje i bez něj.
 5. **ProgID** neměňte, pokud instalace neregistruje objekty jinak než výchozí
@@ -179,8 +181,12 @@ Otevřete **Diagnostiku**. Všechny řádky mají mít zelené „ok“:
 | Systémové údaje | zdroj dat, časová zóna serveru, operátor, max. délka čísla karty |
 | Časové zóny, Panely | číselníky a hardware se čtou |
 
-Prázdné číselníky při zeleném spojení obvykle znamenají špatně zadaný účet.
-Když něco svítí červeně, hledejte hlášku v tabulce na konci tohoto dokumentu.
+Prázdné číselníky při zeleném spojení obvykle znamenají špatně zadaný účet —
+kontrola „Účty“ ukazuje, se kterým účtem se pracuje. Když něco svítí červeně,
+hláška začíná názvem volání, které WIN-PAK odmítl (`WIN-PAK IsConnected: …`),
+a u chyb COM nese i HRESULT; hledejte ji v tabulce na konci tohoto dokumentu.
+„Systémové údaje“ vrátí, co jde, a odmítnutá volání vypíše jmenovitě — instalace
+se liší verzí i licencí a ne každé volání příručky je všude k dispozici.
 
 Na **Přehledu** zkontrolujte, že „Zápis do WIN-PAK“ je **ano** — bez toho ACS
 přístupy nepředá.
@@ -239,7 +245,9 @@ z jednoho místa.
 | HTTP **501** | operaci neumí zvolený režim (typicky Mssql) | přepněte na režim Com |
 | HTTP **502** | konektor se nedostal k WIN-PAKu | podívejte se do Diagnostiky, hláška tam bude konkrétnější |
 | HTTP **422** | WIN-PAK zápis odmítl | hláška nese jeho stavový kód, např. „číslo karty už existuje“ nebo „neplatná přístupová úroveň“ |
-| Diagnostika zelená, ale číselníky prázdné | špatný název účtu nebo podúčtu | porovnejte s výsledkem kontroly „Účty“ |
+| Diagnostika zelená, ale číselníky prázdné | špatný název účtu nebo podúčtu | porovnejte s výsledkem kontroly „Účty“ — ta vypíše pracovní účet |
+| `WIN-PAK má více účtů a v konfiguraci konektoru není vybraný žádný` | WIN-PAK má víc účtů | vyberte účet v Nastavení; hláška vyjmenuje, které jsou k dispozici |
+| `WIN-PAK <metoda>: … (HRESULT 0x…)` | konkrétní volání COM odmítl WIN-PAK | text za dvojtečkou je původní hláška WIN-PAKu; u `IsConnected` a systémových údajů jde často o rozdíl verze API, zbytek funguje |
 | ACS hlásí „konektor je jen pro čtení“ | běží režim Mssql nebo Mock | přepněte na Com |
 
 Logy služby: Prohlížeč událostí → Windows Logs → Application, zdroj

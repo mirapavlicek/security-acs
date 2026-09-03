@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
 namespace Acs.WinPakConnector.Providers.Com;
@@ -50,7 +51,7 @@ public sealed class ComDispatch(object instance) : IComDispatch
         for (var i = 0; i < args.Length; i++)
             modifiers[i] = true;
 
-        return Instance.GetType().InvokeMember(
+        return Unwrap(method, () => Instance.GetType().InvokeMember(
             method,
             BindingFlags.InvokeMethod,
             binder: null,
@@ -58,14 +59,46 @@ public sealed class ComDispatch(object instance) : IComDispatch
             args: args,
             modifiers: args.Length > 0 ? [modifiers] : null,
             culture: null,
-            namedParameters: null);
+            namedParameters: null));
     }
 
     public object? GetProperty(string name)
-        => Instance.GetType().InvokeMember(name, BindingFlags.GetProperty, null, Instance, null);
+        => Unwrap(name, () => Instance.GetType().InvokeMember(name, BindingFlags.GetProperty, null, Instance, null));
 
     public void SetProperty(string name, object? value)
-        => Instance.GetType().InvokeMember(name, BindingFlags.SetProperty, null, Instance, [value]);
+        => Unwrap(name, () => Instance.GetType().InvokeMember(name, BindingFlags.SetProperty, null, Instance, [value]));
+
+    /// <summary>
+    /// <see cref="Type.InvokeMember(string, BindingFlags, Binder, object, object[])"/> balí
+    /// každou chybu volaného objektu do <see cref="TargetInvocationException"/> s textem
+    /// „Exception has been thrown by the target of an invocation“ — a ten nikomu nic
+    /// neřekne. Skutečná hláška WIN-PAKu (i HRESULT) je až ve vnitřní výjimce; ta se
+    /// vyhodí místo obalu a v textu se uvede, které volání selhalo.
+    /// </summary>
+    private static object? Unwrap(string member, Func<object?> call)
+    {
+        try
+        {
+            return call();
+        }
+        catch (TargetInvocationException ex) when (ex.InnerException is { } inner)
+        {
+            throw new ComCallException(member, inner);
+        }
+    }
+}
+
+/// <summary>Chyba konkrétního volání COM objektu WIN-PAKu s původní hláškou a HRESULT.</summary>
+public sealed class ComCallException(string member, Exception inner)
+    : InvalidOperationException(Describe(member, inner), inner)
+{
+    public string Member { get; } = member;
+
+    private static string Describe(string member, Exception inner)
+    {
+        var hresult = inner is COMException com ? $" (HRESULT 0x{com.HResult:X8})" : "";
+        return $"WIN-PAK {member}: {inner.Message}{hresult}";
+    }
 }
 
 /// <summary>Vytváří COM objekty podle ProgID na Windows.</summary>

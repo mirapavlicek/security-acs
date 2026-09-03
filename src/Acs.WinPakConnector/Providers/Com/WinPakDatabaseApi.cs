@@ -23,8 +23,61 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
 
     private IComDispatch? _app;
     private int _userId;
+    private string? _resolvedAccountName;
 
     public bool IsLoggedIn => _app is not null && _userId > 0;
+
+    /// <summary>
+    /// Účet WIN-PAK, se kterým se pracuje. Karty, držitelé i čtečky jsou po účtech
+    /// oddělení, takže dotaz s prázdným účtem vrátí prázdno — a přesně to se stalo
+    /// při prvním zprovoznění („0 čteček, 0 držitelů“ u účtu, který nikdo nevyplnil).
+    /// Když v konfiguraci účet není a WIN-PAK má jediný, použije se ten; při více
+    /// účtech se musí vybrat v konfiguraci.
+    /// </summary>
+    public string AccountName
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(_options.AccountName))
+                return _options.AccountName;
+
+            if (_resolvedAccountName is not null)
+                return _resolvedAccountName;
+
+            var accounts = GetAccounts();
+            return _resolvedAccountName = accounts.Count switch
+            {
+                0 => throw new InvalidOperationException("WIN-PAK nevrátil žádný účet."),
+                1 => accounts[0].Name,
+                _ => throw new InvalidOperationException(
+                    "WIN-PAK má více účtů a v konfiguraci konektoru není vybraný žádný: "
+                    + string.Join(", ", accounts.Select(a => a.Name))),
+            };
+        }
+    }
+
+    /// <summary>Byl účet doplněn automaticky (jediný ve WIN-PAKu), ne z konfigurace?</summary>
+    public bool AccountNameResolvedAutomatically
+        => string.IsNullOrWhiteSpace(_options.AccountName) && _resolvedAccountName is not null;
+
+    /// <summary>
+    /// Účet, když je jednoznačný; jinak null. Pro dotazy, které mají variantu
+    /// „za všechny účty“ (časové zóny, přístupové úrovně, svátky).
+    /// </summary>
+    public string? AccountNameOrNull
+    {
+        get
+        {
+            try
+            {
+                return AccountName;
+            }
+            catch (InvalidOperationException)
+            {
+                return null;
+            }
+        }
+    }
 
     private IComDispatch App => _app ?? throw new InvalidOperationException("Není přihlášeno k WIN-PAK.");
 
@@ -76,17 +129,31 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
 
         _app = null;
         _userId = 0;
+        _resolvedAccountName = null;
         _panelNames.Clear();
     }
 
+    /// <summary>
+    /// Příručka uvádí <c>IsConnected(out connected)</c> bez typu. Zkusí se číselný
+    /// [out] parametr a pak logický — COM při nesedícím typu odmítne volání, ne hodnotu.
+    /// </summary>
     public bool IsConnected()
     {
         if (_app is null)
             return false;
 
-        var args = new object?[] { false };
-        App.Invoke("IsConnected", args);
-        return ComValue.ToBool(args[0]);
+        try
+        {
+            var numeric = new object?[] { 0 };
+            App.Invoke("IsConnected", numeric);
+            return ComValue.ToBool(numeric[0]);
+        }
+        catch (ComCallException)
+        {
+            var boolean = new object?[] { false };
+            App.Invoke("IsConnected", boolean);
+            return ComValue.ToBool(boolean[0]);
+        }
     }
 
     // ---------- Sdílené pomůcky ----------
@@ -156,7 +223,7 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
     {
         var accounts = GetAccounts();
         var account = accounts.FirstOrDefault(a =>
-                          a.Name.Equals(_options.AccountName, StringComparison.OrdinalIgnoreCase))
+                          a.Name.Equals(AccountName, StringComparison.OrdinalIgnoreCase))
                       ?? accounts.FirstOrDefault()
                       ?? throw new InvalidOperationException("WIN-PAK nevrátil žádný účet.");
 
@@ -194,7 +261,7 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
     public IReadOnlyList<ReaderDto> GetReaders()
     {
         EnsureSession();
-        var args = new object?[] { _options.AccountName, null };
+        var args = new object?[] { AccountName, null };
         App.Invoke("GetReadersByAccountName", args);
 
         var readers = new List<ReaderDto>();
@@ -209,7 +276,7 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
                 Name: ComValue.ToStringOrEmpty(device.GetProperty("DeviceName")),
                 Description: ComValue.ToStringOrNull(device.GetProperty("DeviceDesc")),
                 PanelName: GetPanelName(deviceId),
-                AccountName: _options.AccountName,
+                AccountName: AccountName,
                 IsActive: true));
         }
 
@@ -234,7 +301,7 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
 
     /// <summary>Všechna hardwarová zařízení účtu, nejen čtečky (<c>GetADVDetailsByAccountName</c>).</summary>
     public IReadOnlyList<HardwareDeviceDto> GetHardwareDevices()
-        => CallList("GetADVDetailsByAccountName", MapHardwareDevice, _options.AccountName, null);
+        => CallList("GetADVDetailsByAccountName", MapHardwareDevice, AccountName, null);
 
     private static HardwareDeviceDto MapHardwareDevice(IComDispatch device) => new(
         Hid: ComValue.ToStringOrEmpty(device.GetProperty("HWDeviceID")),
