@@ -179,6 +179,8 @@ a skutečné COM objekty si v několika místech nerozumí:
 | `GetCardHolderSearchFieldsByAccountName` vrací objekty | vrací prostý seznam názvů | přijímá se obojí |
 | `GetNoteFieldTemplateDetailsByAccount` vrací definice polí | vrací **objekt držitele** jako šablonu, pole jsou v jeho `NoteFields` | rozbaluje se kolekce |
 | výstupní `String` parametry | `null` odmítá jako Type mismatch, chce `""` | naučený tvar argumentů v `ComDispatch` |
+| `GetPhotoSize(id, index, ByRef size As Long)` | výstupní parametr odmítá číslo (Type mismatch) — nejspíš `ByRef As Variant` | nevolá se, velikost se počítá z dat `GetPhoto`; nula v by-ref se obecně zkouší jako null |
+| po chybě volání objekt dál funguje | po chybě volání každé další volání visí až do restartu služby | konektor po chybě relaci zahodí, objekt uvolní a přihlásí se znovu |
 | id jako `Long` | 32bitové (VB6) | `long` se posílá jako `int` |
 
 Členy objektu držitele podle typové informace: `AccountName, SubAccountName,

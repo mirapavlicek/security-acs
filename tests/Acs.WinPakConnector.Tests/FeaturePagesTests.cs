@@ -451,4 +451,18 @@ public sealed class FeaturePagesTests(AdminUiFactory factory) : IClassFixture<Ad
         Assert.DoesNotContain("Načíst seznam držitelů", withList);
         Assert.Contains("Detail</a>", withList);
     }
+
+    [Fact]
+    public async Task Detail_drzitele_nenacita_fotku_dokud_o_ni_spravce_nepozada()
+    {
+        var client = await SignInAsync();
+        const string holderId = "CH-1001";
+
+        var detail = await client.GetStringAsync($"/ui/features/cards?holderId={holderId}");
+        Assert.Contains("Načíst fotku", detail);
+        Assert.DoesNotContain("Držitel nemá uloženou fotku", detail);
+
+        var withPhoto = await client.GetStringAsync($"/ui/features/cards?holderId={holderId}&showPhoto=true");
+        Assert.DoesNotContain("Načíst fotku", withPhoto);
+    }
 }

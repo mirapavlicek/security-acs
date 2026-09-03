@@ -51,7 +51,7 @@ public sealed class WinPakProviderCache(ConnectorSettingsStore store, ILogger<Wi
         }
     }
 
-    private static IWinPakProvider Create(ConnectorSettings settings)
+    private IWinPakProvider Create(ConnectorSettings settings)
     {
         switch (settings.Mode.ToLowerInvariant())
         {
@@ -79,8 +79,8 @@ public sealed class WinPakProviderCache(ConnectorSettingsStore store, ILogger<Wi
     }
 
     [SupportedOSPlatform("windows")]
-    private static IWinPakProvider CreateCom(ConnectorSettings settings)
-        => new ComWinPakProvider(Options.Create(settings.Com), new ComFactory());
+    private IWinPakProvider CreateCom(ConnectorSettings settings)
+        => new ComWinPakProvider(Options.Create(settings.Com), new ComFactory(), logger);
 
     public void Dispose() => Invalidate();
 }

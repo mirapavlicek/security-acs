@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Acs.WinPakConnector.Providers.Com;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -52,6 +53,27 @@ public sealed class CallTimeoutTests
         stuck.Set();
         await Task.Delay(100);
         Assert.Empty(await provider.GetReadersAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Po_chybe_volani_se_relace_zahodi_stary_objekt_uvolni_a_dalsi_volani_se_prihlasi_znovu()
+    {
+        // Na ostrém po chybě volání viselo všechno další a pomohl jen restart služby —
+        // tedy nový objekt. Provider ho založí sám.
+        var provider = CreateProvider();
+        App.Throws["GetCardbyCardNumber"] = new ComCallException("GetCardbyCardNumber", new COMException("Type mismatch.", unchecked((int)0x80020005)));
+
+        var error = await Assert.ThrowsAsync<ComCallException>(() => provider.GetCardAsync("26372", CancellationToken.None));
+        Assert.Contains("GetCardbyCardNumber", error.Message);
+        Assert.Equal(1, provider.RecycledSessions);
+
+        Assert.Empty(await provider.GetReadersAsync(CancellationToken.None));
+
+        await Task.Delay(100);
+        Assert.Equal(2, _com.Calls.Count(c => c.Method == "Login"));
+        Assert.Contains(_com.Calls, c => c.Method == "<release>");
+        // Uvolnění starého objektu nesmí být před tím, než se zahodí; nový Login je po zahození.
+        Assert.Null(provider.InFlight);
     }
 
     [Fact]

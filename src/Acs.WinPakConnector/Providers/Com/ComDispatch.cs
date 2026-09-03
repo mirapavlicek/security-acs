@@ -39,6 +39,28 @@ public interface IComFactory
 
     /// <summary>Obalí objekt vrácený z jiného COM volání (prvek kolekce, vnořený objekt).</summary>
     IComDispatch Wrap(object comObject);
+
+    /// <summary>
+    /// Uvolní COM objekt hned, ne až při GC. U WIN-PAKu tím zanikne relace operátora
+    /// i databázové spojení, které objekt držel — proto se volá při recyklaci relace.
+    /// </summary>
+    void Release(IComDispatch dispatch);
+}
+
+/// <summary>
+/// Který člen COM objektu se právě volá. Volání jdou za sebou pod jedním zámkem,
+/// takže stačí jedna hodnota; čte ji hlídání limitu, aby řeklo, ve kterém volání
+/// WIN-PAKu konektor uvázl — bez toho by se to na ostrém serveru nedalo zjistit.
+/// </summary>
+public static class ComCallTrace
+{
+    private static volatile string? _current;
+
+    public static string? Current
+    {
+        get => _current;
+        set => _current = value;
+    }
 }
 
 /// <summary>Skutečná pozdní vazba přes <see cref="Type.InvokeMember(string, BindingFlags, Binder, object, object[])"/>.</summary>
@@ -52,13 +74,21 @@ public sealed class ComDispatch(object instance) : IComDispatch
     /// <summary>DISP_E_TYPEMISMATCH — pozdní vazba odmítla typ argumentu, metoda se nespustila.</summary>
     private const int TypeMismatch = unchecked((int)0x80020005);
 
+    /// <summary>Jak se musí u dané metody upravit argument na dané pozici, aby ho WIN-PAK přijal.</summary>
+    private enum Shape
+    {
+        /// <summary>Výstupní řetězec (<c>ByRef As String</c>): místo null prázdný řetězec.</summary>
+        EmptyString,
+        /// <summary>Výstupní variant (<c>ByRef As Variant</c>): místo číselné nuly null.</summary>
+        NullVariant,
+    }
+
     /// <summary>
-    /// Které pozice argumentů musí být u dané metody prázdný řetězec místo null.
-    /// Naučí se při prvním „Type mismatch“ a pak se použije rovnou — jinak by
-    /// každé volání metody s výstupním řetězcem stálo dva COM roundtripy
-    /// (u 785 čteček by to bylo 785 zbytečných volání navíc).
+    /// Naučené tvary argumentů po metodách. Naučí se při prvním „Type mismatch“
+    /// a pak se použijí rovnou — jinak by každé volání metody s výstupním
+    /// parametrem stálo dva COM roundtripy (u 785 čteček 785 volání navíc).
     /// </summary>
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int[]> LearnedEmptyStrings = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (int Index, Shape Shape)[]> LearnedShapes = new();
 
     public object? Invoke(string method, object?[] args)
     {
@@ -70,33 +100,27 @@ public sealed class ComDispatch(object instance) : IComDispatch
                 args[i] = (int)l;
         }
 
-        if (LearnedEmptyStrings.TryGetValue(method, out var learned))
-        {
-            foreach (var index in learned)
-            {
-                if (index < args.Length && args[index] is null)
-                    args[index] = "";
-            }
-        }
+        if (LearnedShapes.TryGetValue(method, out var learned))
+            Apply(args, learned);
 
         try
         {
             return InvokeOnce(method, args);
         }
-        catch (ComCallException ex) when (IsTypeMismatch(ex) && args.Contains(null))
+        catch (ComCallException ex) when (IsTypeMismatch(ex) && RetryVariants(args).Any())
         {
-            // Výstupní řetězcový parametr (ByRef As String) nesmí přijít jako null —
-            // ten se přeloží na prázdný VARIANT a WIN-PAK volání odmítne. Výstupní
-            // kolekce (ByRef As Variant) null naopak snese. Které z nich to je,
-            // příručka neříká, takže se null postupně nahrazují prázdným řetězcem.
-            // Odmítnuté volání se neprovedlo, opakování je bezpečné i u zápisů.
-            foreach (var (candidate, replaced) in RetryVariants(args))
+            // Pozdní vazba odmítá by-ref argument, když nesedí typ přesně: výstupní
+            // řetězec (ByRef As String) nesmí být null, výstupní variant (ByRef As
+            // Variant) zase nesmí být číslo. Které z nich to je, příručka neříká,
+            // takže se zkouší postupně. Odmítnuté volání se neprovedlo, opakování je
+            // bezpečné i u zápisů.
+            foreach (var (candidate, shapes) in RetryVariants(args))
             {
                 try
                 {
                     var result = InvokeOnce(method, candidate);
                     Array.Copy(candidate, args, args.Length);
-                    LearnedEmptyStrings[method] = replaced;
+                    LearnedShapes[method] = shapes;
                     return result;
                 }
                 catch (ComCallException retry) when (IsTypeMismatch(retry))
@@ -105,6 +129,22 @@ public sealed class ComDispatch(object instance) : IComDispatch
             }
 
             throw;
+        }
+    }
+
+    private static void Apply(object?[] args, (int Index, Shape Shape)[] shapes)
+    {
+        foreach (var (index, shape) in shapes)
+        {
+            if (index >= args.Length)
+                continue;
+
+            args[index] = shape switch
+            {
+                Shape.EmptyString when args[index] is null => "",
+                Shape.NullVariant when args[index] is 0 => null,
+                _ => args[index],
+            };
         }
     }
 
@@ -128,26 +168,39 @@ public sealed class ComDispatch(object instance) : IComDispatch
     }
 
     /// <summary>
-    /// Nejdřív všechny null najednou (obvyklý případ: jeden výstupní řetězec), pak
-    /// každý zvlášť — pro volání, kde je vedle řetězce i výstupní kolekce.
+    /// Nejdřív všechny null → "" najednou (obvyklý případ: jeden výstupní řetězec),
+    /// pak každý zvlášť — pro volání, kde je vedle řetězce i výstupní kolekce.
+    /// Potom totéž pro číselné nuly → null (výstupní <c>ByRef As Variant</c>,
+    /// do kterého konektor posílal 0 jako místo pro výsledek).
     /// </summary>
-    private static IEnumerable<(object?[] Args, int[] Replaced)> RetryVariants(object?[] args)
+    private static IEnumerable<(object?[] Args, (int Index, Shape Shape)[] Shapes)> RetryVariants(object?[] args)
     {
-        var nullIndexes = Enumerable.Range(0, args.Length).Where(i => args[i] is null).ToArray();
+        foreach (var variant in VariantsFor(args, Shape.EmptyString, a => a is null, ""))
+            yield return variant;
+        foreach (var variant in VariantsFor(args, Shape.NullVariant, a => a is 0, null))
+            yield return variant;
+    }
 
-        var all = (object?[])args.Clone();
-        foreach (var i in nullIndexes)
-            all[i] = "";
-        yield return (all, nullIndexes);
-
-        if (nullIndexes.Length < 2)
+    private static IEnumerable<(object?[] Args, (int Index, Shape Shape)[] Shapes)> VariantsFor(
+        object?[] args, Shape shape, Func<object?, bool> matches, object? replacement)
+    {
+        var indexes = Enumerable.Range(0, args.Length).Where(i => matches(args[i])).ToArray();
+        if (indexes.Length == 0)
             yield break;
 
-        foreach (var index in nullIndexes)
+        var all = (object?[])args.Clone();
+        foreach (var i in indexes)
+            all[i] = replacement;
+        yield return (all, indexes.Select(i => (i, shape)).ToArray());
+
+        if (indexes.Length < 2)
+            yield break;
+
+        foreach (var index in indexes)
         {
             var single = (object?[])args.Clone();
-            single[index] = "";
-            yield return (single, [index]);
+            single[index] = replacement;
+            yield return (single, [(index, shape)]);
         }
     }
 
@@ -187,9 +240,12 @@ public sealed class ComDispatch(object instance) : IComDispatch
     /// </summary>
     private static object? Unwrap(string member, Func<object?> call)
     {
+        ComCallTrace.Current = member;
         try
         {
-            return call();
+            var result = call();
+            ComCallTrace.Current = null;
+            return result;
         }
         catch (TargetInvocationException ex) when (ex.InnerException is { } inner)
         {
@@ -249,4 +305,10 @@ public sealed class ComFactory : IComFactory
     }
 
     public IComDispatch Wrap(object comObject) => new ComDispatch(comObject);
+
+    public void Release(IComDispatch dispatch)
+    {
+        if (Marshal.IsComObject(dispatch.Target))
+            Marshal.FinalReleaseComObject(dispatch.Target);
+    }
 }

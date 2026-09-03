@@ -255,6 +255,8 @@ z jednoho místa.
 | `Method 'System.String.NoteFieldName' not found` | WIN-PAK vrátil pole vyhledávání jako prosté řetězce (do v1.12.3) | aktualizovat konektor; stránky Features od té verze při odmítnuté pomocné položce zobrazí zbytek |
 | `WIN-PAK NoteField: Number of parameters specified does not match the expected number` | poznámkové pole držitele je indexované | od v1.12.2 konektor čte první poznámkové pole; výpis držitelů kvůli poznámce nepadá |
 | Jeden dotaz „hledá a hledá“ a po něm visí každý další — až do restartu služby | volání do WIN-PAKu se nevrátilo a drželo zámek providera (do v1.12.6 bez limitu) | od v1.12.7 se volání po `WinPak:Com:CallTimeoutSeconds` (výchozí 90 s) opustí, relace zahodí a další dotaz se přihlásí znovu; hláška `WIN-PAK neodpověděl na … do 90 s` |
+| Po jakékoli chybě volání zamrzne celá administrace i API, pomůže jen restart služby | objekt WIN-PAKu zůstal po chybě ve stavu, kdy každé další volání visí (do v1.12.7) | od v1.12.8 konektor po chybě volání relaci zahodí, starý objekt uvolní a další volání se přihlásí k novému — to, co dělal restart služby; Diagnostika → Stav ukazuje „po chybě volání N× založena nová relace“ |
+| `WIN-PAK GetPhotoSize: Type mismatch` při detailu držitele | výstupní parametr `GetPhotoSize` je ve skutečnosti `ByRef As Variant` | od v1.12.8 se `GetPhotoSize` nevolá (velikost se počítá z dat) a fotka se načítá jen tlačítkem „Načíst fotku“; číselná nula v by-ref parametru se po `Type mismatch` obecně zkouší jako null |
 | Opuštěná volání se opakují (Diagnostika: „od startu opuštěno N volání“) | na WIN-PAK serveru visí COM+ komponenta `dllhost.exe` — typicky VB6 dialog na neviditelné ploše služby | Component Services → COM+ Applications → aplikace WIN-PAK → Shut down; případně restart služeb WIN-PAK |
 
 > **Bezpečnost:** `GetWPDSN` vrací ve skutečné instalaci celý připojovací řetězec
@@ -289,7 +291,9 @@ až desítky. Rozhoduje proto počet volání, ne velikost odpovědi:
   kliknutí — hledání karty je jedno krátké volání a nemá za nimi čekat.
   Uvázlé volání se po limitu (`CallTimeoutSeconds`, výchozí 90 s) opustí,
   aby nezablokovalo konektor; `GET /api/v1/status` vrací během dlouhého
-  volání `busy` s názvem operace místo čekání.
+  volání `busy` s názvem operace a právě běžícím COM voláním místo čekání.
+  Opuštěné volání i chyba volání jdou do Prohlížeče událostí (zdroj
+  `AcsWinPakConnector`) s názvem operace a COM metody.
 
 Když je dotaz pomalý i tak, podívejte se do Prohlížeče událostí na časy
 jednotlivých volání: pomalé bývá samo COM+ (vzdálený WIN-PAK, přetížený SQL),

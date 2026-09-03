@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Acs.WinPakConnector.Models;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Acs.WinPakConnector.Providers.Com;
@@ -19,11 +20,14 @@ public sealed partial class ComWinPakProvider : WinPakProviderBase, IProviderShu
     private readonly WinPakCommApi? _comm;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public ComWinPakProvider(IOptions<WinPakComOptions> options, IComFactory com)
+    private readonly ILogger _logger;
+
+    public ComWinPakProvider(IOptions<WinPakComOptions> options, IComFactory com, ILogger? logger = null)
     {
         _options = options.Value;
         _database = new WinPakDatabaseApi(com, _options);
         _comm = _options.EnableCommunicationServer ? new WinPakCommApi(com, _options) : null;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
     }
 
     public override string Mode => "Com";
@@ -106,6 +110,11 @@ public sealed partial class ComWinPakProvider : WinPakProviderBase, IProviderShu
 
     private int _abandonedCalls;
 
+    /// <summary>Kolikrát konektor po chybě volání zahodil relaci a založil novou.</summary>
+    public int RecycledSessions => _recycledSessions;
+
+    private int _recycledSessions;
+
     private TimeSpan CallTimeout => TimeSpan.FromSeconds(Math.Max(1, _options.CallTimeoutSeconds));
 
     /// <summary>
@@ -137,6 +146,17 @@ public sealed partial class ComWinPakProvider : WinPakProviderBase, IProviderShu
             {
                 return work();
             }
+            catch (ComCallException ex)
+            {
+                // Na ostrém serveru po chybě volání zůstal objekt WIN-PAKu ve stavu, kdy
+                // každé další volání viselo a pomohl jen restart služby. Nový objekt je
+                // to, co restart dělal — tak se založí rovnou, bez restartu.
+                Interlocked.Increment(ref _recycledSessions);
+                _database.RecycleSession();
+                _logger.LogWarning(ex, "WIN-PAK {Operation} selhalo v COM volání {Member}; relace zahozena, další volání se přihlásí znovu.",
+                    operation, ex.Member);
+                throw;
+            }
             finally
             {
                 if (Volatile.Read(ref released) == 0)
@@ -149,14 +169,18 @@ public sealed partial class ComWinPakProvider : WinPakProviderBase, IProviderShu
         if (finished == running)
             return await running;
 
+        var stuckIn = ComCallTrace.Current;
         Interlocked.Increment(ref _abandonedCalls);
         _inFlight = null;
-        _database.AbandonSession();
+        _database.RecycleSession();
         ReleaseOnce();
+        _logger.LogError("WIN-PAK neodpověděl na {Operation} do {Timeout} s (COM volání {Member}); volání opuštěno, relace zahozena.",
+            operation, CallTimeout.TotalSeconds, stuckIn ?? "?");
         throw new TimeoutException(
-            $"WIN-PAK neodpověděl na {operation} do {CallTimeout.TotalSeconds:0} s. Relace byla zahozena a další "
-            + "volání se přihlásí znovu; uvázlé volání dobíhá na pozadí. Pokud se to opakuje, na serveru WIN-PAK "
-            + "nejspíš visí COM+ komponenta (dllhost.exe, často na neviditelném dialogu) — restartujte COM+ aplikaci WIN-PAK.");
+            $"WIN-PAK neodpověděl na {operation} do {CallTimeout.TotalSeconds:0} s"
+            + (stuckIn is null ? "" : $" (uvázlo v COM volání {stuckIn})")
+            + ". Relace byla zahozena a další volání se přihlásí znovu; uvázlé volání dobíhá na pozadí. Pokud se to opakuje, "
+            + "na serveru WIN-PAK nejspíš visí COM+ komponenta (dllhost.exe, často na neviditelném dialogu) — restartujte COM+ aplikaci WIN-PAK.");
     }
 
     private Task RunAsync(Action work, CancellationToken ct, [CallerMemberName] string operation = "")
@@ -179,9 +203,11 @@ public sealed partial class ComWinPakProvider : WinPakProviderBase, IProviderShu
     {
         if (_inFlight is { } busy && (DateTime.UtcNow - busy.StartedUtc) > TimeSpan.FromSeconds(3))
         {
+            var member = ComCallTrace.Current;
             return new ConnectorStatusDto(_database.IsLoggedIn, [],
                 Error: null,
-                Busy: $"{busy.Operation} běží {(DateTime.UtcNow - busy.StartedUtc).TotalSeconds:0} s");
+                Busy: $"{busy.Operation} běží {(DateTime.UtcNow - busy.StartedUtc).TotalSeconds:0} s"
+                      + (member is null ? "" : $", právě v COM volání {member}"));
         }
 
         return await RunAsync(() =>
