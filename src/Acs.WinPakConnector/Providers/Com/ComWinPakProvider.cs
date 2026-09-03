@@ -62,6 +62,28 @@ public sealed partial class ComWinPakProvider : WinPakProviderBase, IProviderShu
         _gate.Dispose();
     }
 
+    /// <summary>
+    /// Krátká paměť pro číselníky, které se nemění minutu od minuty (čtečky, úrovně,
+    /// účty, zóny, panely). Stránky i diagnostika si je tahají opakovaně a každé
+    /// načtení je řada COM roundtripů; karty a držitelé se necachují, ty ACS mění.
+    /// Běží vždy pod zámkem <see cref="_gate"/>, takže bez další synchronizace.
+    /// </summary>
+    private static readonly TimeSpan CatalogTtl = TimeSpan.FromSeconds(60);
+    private readonly Dictionary<string, (DateTime Until, object Value)> _catalogCache = [];
+
+    private T Cached<T>(string key, Func<T> load) where T : class
+    {
+        if (_catalogCache.TryGetValue(key, out var entry) && entry.Until > DateTime.UtcNow)
+            return (T)entry.Value;
+
+        var value = load();
+        _catalogCache[key] = (DateTime.UtcNow + CatalogTtl, value);
+        return value;
+    }
+
+    /// <summary>Po zápisu, který může číselník změnit, se paměť zahodí.</summary>
+    internal void InvalidateCatalogCache() => _catalogCache.Clear();
+
     private async Task<T> RunAsync<T>(Func<T> work, CancellationToken ct)
     {
         await _gate.WaitAsync(ct);
@@ -77,6 +99,13 @@ public sealed partial class ComWinPakProvider : WinPakProviderBase, IProviderShu
 
     private Task RunAsync(Action work, CancellationToken ct)
         => RunAsync(() => { work(); return true; }, ct);
+
+    /// <summary>Zápis do číselníku: po provedení se zahodí cache, aby další čtení vidělo změnu.</summary>
+    private Task RunAsyncInvalidating(Action work, CancellationToken ct)
+        => RunAsync(() => { work(); InvalidateCatalogCache(); return true; }, ct);
+
+    private Task<T> RunAsyncInvalidating<T>(Func<T> work, CancellationToken ct)
+        => RunAsync(() => { var result = work(); InvalidateCatalogCache(); return result; }, ct);
 
     private WinPakCommApi Comm => _comm ?? throw NotSupported("ovládání dveří (vypnuté v konfiguraci konektoru)");
 
@@ -96,13 +125,13 @@ public sealed partial class ComWinPakProvider : WinPakProviderBase, IProviderShu
         }, ct);
 
     public override Task<IReadOnlyList<AccountDto>> GetAccountsAsync(CancellationToken ct)
-        => RunAsync(_database.GetAccounts, ct);
+        => RunAsync(() => Cached("accounts", _database.GetAccounts), ct);
 
     public override Task<IReadOnlyList<ReaderDto>> GetReadersAsync(CancellationToken ct)
-        => RunAsync(_database.GetReaders, ct);
+        => RunAsync(() => Cached("readers", _database.GetReaders), ct);
 
     public override Task<IReadOnlyList<AccessLevelDto>> GetAccessLevelsAsync(CancellationToken ct)
-        => RunAsync(_database.GetAccessLevels, ct);
+        => RunAsync(() => Cached("access-levels", _database.GetAccessLevels), ct);
 
     public override Task<IReadOnlyList<CardHolderDto>> SearchCardHoldersAsync(string? search, CancellationToken ct)
         => RunAsync<IReadOnlyList<CardHolderDto>>(() =>

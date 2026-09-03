@@ -264,6 +264,26 @@ z jednoho místa.
 Logy služby: Prohlížeč událostí → Windows Logs → Application, zdroj
 `AcsWinPakConnector`.
 
+## Výkon dotazů
+
+Každé volání WIN-PAKu jde přes COM+ a pozdní vazbu a stojí řádově milisekundy
+až desítky. Rozhoduje proto počet volání, ne velikost odpovědi:
+
+- **Čtečky**: jeden výpis čteček + jeden výpis zařízení (názvy panelů), ať je
+  čteček 8 nebo 785. Do v1.12.4 se název zařízení dotahoval pro každou čtečku
+  zvlášť, a po `Type mismatch` ještě jednou — u 785 čteček přes 1 500 volání.
+- **Držitelé**: jeden výpis držitelů + jeden výpis karet účtu, karty se přiřadí
+  podle `CardHolderID`. Dřív se pro každého držitele volaly zvlášť.
+- **Tvar argumentů** naučený při prvním `Type mismatch` se u dané metody použije
+  rovnou, opakování platí jednou.
+- **Číselníky** (účty, čtečky, přístupové úrovně, časové zóny, panely, zařízení)
+  si konektor drží 60 s v paměti; zápis do číselníku paměť zahodí. Karty
+  a držitelé se necachují — ty ACS mění.
+
+Když je dotaz pomalý i tak, podívejte se do Prohlížeče událostí na časy
+jednotlivých volání: pomalé bývá samo COM+ (vzdálený WIN-PAK, přetížený SQL),
+což konektor neovlivní.
+
 ## Aktualizace konektoru
 
 1. Stáhněte (nebo publikujte) novou verzi — viz krok 3.

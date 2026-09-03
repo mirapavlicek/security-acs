@@ -162,7 +162,8 @@ public sealed class WinPakDatabaseApiTests
             _com.Record("holder",
                 ("CardHolderID", 1001L), ("FirstName", "Jan"), ("LastName", "Novák"), ("NoteField", "IT")),
         };
-        App.OutValues["GetCardsByCHID#1"] = new object[]
+        // Karty se pro výpis držitelů berou jedním výpisem za účet, ne po držitelích.
+        App.OutValues["GetCardsByAccountName#2"] = new object[]
         {
             _com.Record("card1",
                 ("CardNumber", "100234"), ("CardID", 5L), ("CardHolderID", 1001L),
@@ -170,6 +171,9 @@ public sealed class WinPakDatabaseApiTests
             _com.Record("card2",
                 ("CardNumber", "100235"), ("CardID", 6L), ("CardHolderID", 1001L),
                 ("CardStatus", 1), ("AccessLevels", new object[] { 2L, 3L })),
+            _com.Record("card3",
+                ("CardNumber", "100999"), ("CardID", 7L), ("CardHolderID", 2002L),
+                ("CardStatus", 1), ("AccessLevels", new object[] { 9L })),
         };
 
         var holder = Assert.Single(CreateApi().GetCardHolders());
