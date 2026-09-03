@@ -162,6 +162,42 @@ public class WebAppTests(AcsWebFactory factory) : IClassFixture<AcsWebFactory>
         Assert.Contains("/Account/ChangePassword", userMenu);
     }
 
+    [Fact]
+    public async Task Stranky_pristupovych_urovni_se_otevrou_i_bez_konektoru()
+    {
+        const string knownPassword = "Znam3Heslo!Urovne";
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Acs.Infrastructure.Data.AcsDbContext>();
+            var admin = await db.Users.FirstAsync(u => u.UserName == "admin");
+            admin.PasswordHash = Acs.Infrastructure.Auth.PasswordHasher.Hash(knownPassword);
+            admin.MustChangePassword = false;
+            if (!await db.AccessLevels.AnyAsync(a => a.ExternalId == "77"))
+                db.AccessLevels.Add(new Acs.Domain.Entities.AccessLevel { ExternalId = "77", Name = "AL Test", Description = "z testu" });
+            await db.SaveChangesAsync();
+        }
+
+        var client = CreateClientWithCookies(allowRedirects: true);
+        var loginPage = await client.GetStringAsync("/Account/Login");
+        await client.PostAsync("/Account/Login", new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                ["UserName"] = "admin",
+                ["Password"] = knownPassword,
+                ["__RequestVerificationToken"] = ExtractAntiforgeryToken(loginPage),
+            }));
+
+        var index = await client.GetStringAsync("/Catalog/AccessLevels");
+        Assert.Contains("AL Test", index);
+        Assert.Contains("Synchronizovat z WIN-PAK", index);
+        Assert.Contains("/Catalog/AccessLevels", ExtractBlock(await client.GetStringAsync("/"), "class=\"mainnav\"", "</nav>"));
+
+        // Bez nakonfigurovaného konektoru se časové zóny nenačtou — stránka to řekne a uložení zablokuje, ale otevře se.
+        var edit = await client.GetStringAsync("/Catalog/AccessLevels/Edit");
+        Assert.Contains("Nová přístupová úroveň", edit);
+        Assert.Contains("Časové zóny se z WIN-PAKu nenačetly", edit);
+    }
+
     private static string ExtractBlock(string html, string start, string end)
     {
         var from = html.IndexOf(start, StringComparison.Ordinal);

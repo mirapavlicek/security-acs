@@ -17,6 +17,8 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
     public DbSet<Room> Rooms => Set<Room>();
     public DbSet<PlanDevice> PlanDevices => Set<PlanDevice>();
     public DbSet<Reader> Readers => Set<Reader>();
+    public DbSet<AccessLevel> AccessLevels => Set<AccessLevel>();
+    public DbSet<AccessLevelEntry> AccessLevelEntries => Set<AccessLevelEntry>();
     public DbSet<ReaderDependency> ReaderDependencies => Set<ReaderDependency>();
     public DbSet<ApprovalMatrix> ApprovalMatrices => Set<ApprovalMatrix>();
     public DbSet<ApprovalLevel> ApprovalLevels => Set<ApprovalLevel>();
@@ -71,6 +73,25 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
             e.HasOne(x => x.Room).WithMany(r => r.Readers).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.Corridor).WithMany(c => c.Readers).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.ApprovalMatrix).WithMany().OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<AccessLevel>(e =>
+        {
+            e.HasIndex(x => x.ExternalId).IsUnique();
+            e.Property(x => x.ExternalId).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(256);
+            e.Property(x => x.Description).HasMaxLength(1024);
+        });
+
+        modelBuilder.Entity<AccessLevelEntry>(e =>
+        {
+            e.HasIndex(x => x.ReaderExternalId);
+            e.Property(x => x.ReaderExternalId).HasMaxLength(64);
+            e.Property(x => x.ReaderName).HasMaxLength(256);
+            e.Property(x => x.TimeZoneExternalId).HasMaxLength(64);
+            e.Property(x => x.TimeZoneName).HasMaxLength(256);
+            e.HasOne(x => x.AccessLevel).WithMany(a => a.Entries)
+                .HasForeignKey(x => x.AccessLevelId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<BuildingSection>(e =>

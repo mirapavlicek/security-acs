@@ -6,6 +6,20 @@ namespace Acs.Infrastructure.WinPak;
 public record WinPakReader(string Id, string Name, string? Description, string? PanelName, string? AccountName, bool IsActive);
 public record WinPakAccessLevel(string Id, string Name, string? Description);
 
+public record WinPakTimeZone(string Id, string Name, string? Description, string? AccountName);
+
+/// <summary>
+/// Úplná definice přístupové úrovně pro zápis (<c>AddUpdateAL</c> ve WIN-PAKu):
+/// čtečky a k nim paralelně časové zóny, ve kterých na nich úroveň platí.
+/// </summary>
+public record WinPakAccessLevelDefinition(
+    string Name,
+    string? Description,
+    IReadOnlyList<string> ReaderIds,
+    IReadOnlyList<string> ReaderTimeZoneIds,
+    IReadOnlyList<string>? SubAccountIds = null,
+    IReadOnlyList<string>? ReaderGroupIds = null);
+
 public record WinPakInfo(string Version, string ProviderMode, bool SupportsWrite,
     bool SupportsDoorControl = false, string? AccountName = null);
 
@@ -87,6 +101,29 @@ public class WinPakClient(HttpClient httpClient, SettingsService settings)
 
     public async Task<IReadOnlyList<WinPakAccessLevel>> GetAccessLevelsAsync(CancellationToken ct = default)
         => await GetAsync<List<WinPakAccessLevel>>("api/v1/access-levels", ct) ?? [];
+
+    /// <summary>Strom přístupů úrovně (čtečky a časové zóny) tak, jak ho vrací WIN-PAK — text, jehož podobu určuje instalace.</summary>
+    public async Task<string?> GetAccessTreeAsync(string accessLevelName, CancellationToken ct = default)
+    {
+        var response = await GetAsync<AccessTreeResponse>($"api/v1/access-levels/{Uri.EscapeDataString(accessLevelName)}/tree", ct);
+        return response?.AccessTree;
+    }
+
+    private sealed record AccessTreeResponse(string? AccessTree);
+
+    public async Task<IReadOnlyList<WinPakTimeZone>> GetTimeZonesAsync(CancellationToken ct = default)
+        => await GetAsync<List<WinPakTimeZone>>("api/v1/time-zones", ct) ?? [];
+
+    /// <summary>
+    /// Založí (<paramref name="accessLevelId"/> null) nebo přepíše přístupovou úroveň
+    /// včetně čteček a časových zón jedním zápisem. WIN-PAK přepíše celou definici —
+    /// čtečky, které v seznamu nejsou, z úrovně zmizí.
+    /// </summary>
+    public Task UpsertAccessLevelAsync(string? accessLevelId, WinPakAccessLevelDefinition definition, CancellationToken ct = default)
+        => SendAsync(HttpMethod.Put, $"api/v1/access-levels/{Uri.EscapeDataString(accessLevelId ?? "0")}", definition, ct);
+
+    public Task DeleteAccessLevelAsync(string accessLevelName, CancellationToken ct = default)
+        => SendAsync(HttpMethod.Delete, $"api/v1/access-levels/{Uri.EscapeDataString(accessLevelName)}", null, ct);
 
     /// <summary>Načte držitele karet včetně jejich aktuálních access levelů (zpětná synchronizace).</summary>
     public async Task<IReadOnlyList<WinPakCardHolder>> GetCardHoldersAsync(CancellationToken ct = default)

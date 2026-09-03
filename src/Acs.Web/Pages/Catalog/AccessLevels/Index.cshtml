@@ -1,0 +1,87 @@
+@page
+@model Acs.Web.Pages.Catalog.AccessLevels.IndexModel
+@{
+    ViewData["Title"] = "Přístupové úrovně";
+}
+<h1>Přístupové úrovně (WIN-PAK)</h1>
+<p class="muted">
+    Úroveň je skupina oprávnění ve WIN-PAKu: čtečky a časové zóny, ve kterých na nich platí. Kartám se
+    přiděluje úroveň, ne čtečka — proto každá čtečka, kterou má ACS přidělovat, potřebuje „svou“ úroveň
+    (mapování v detailu čtečky; u úrovní s jedinou čtečkou se doplní samo). Úrovně se tu zakládají,
+    upravují i ruší — zápis jde přes konektor rovnou do WIN-PAKu.
+</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+@if (Model.ReadersWithoutLevel > 0)
+{
+    <div class="alert alert-error">
+        @Model.ReadersWithoutLevel aktivních čteček z WIN-PAKu nemá namapovanou úroveň — žádosti o ně ACS
+        do WIN-PAKu nezapíše. Založte jim úroveň tady, nebo doplňte mapování v detailu čtečky.
+    </div>
+}
+
+<div class="card filterbar">
+    <form method="post" asp-page-handler="Sync" class="inline-form">
+        <button class="btn btn-sm" type="submit">Synchronizovat z WIN-PAK</button>
+        <label style="display:inline"><input type="checkbox" name="refreshTrees" value="true" /> včetně složení všech úrovní (pomalejší)</label>
+    </form>
+    <a class="btn btn-sm btn-ghost" asp-page="Index" asp-route-showInactive="@(!Model.ShowInactive)">
+        @(Model.ShowInactive ? "Skrýt zrušené" : "Zobrazit i zrušené")
+    </a>
+    <a class="btn btn-sm" asp-page="Edit">Nová úroveň</a>
+</div>
+
+<div class="card">
+    <table class="data">
+        <thead>
+        <tr><th>Název</th><th>Popis</th><th>Čteček</th><th>Čtečky ACS s touto úrovní</th><th>WIN-PAK id</th><th>Synchronizováno</th><th></th></tr>
+        </thead>
+        <tbody>
+        @foreach (var level in Model.Levels)
+        {
+            <tr class="@(level.IsActive ? "" : "muted")">
+                <td>@level.Name @if (!level.IsActive) { <span class="badge">zrušena</span> }</td>
+                <td class="muted">@level.Description</td>
+                <td>
+                    @if (level.Entries.Count > 0)
+                    {
+                        @level.Entries.Select(e => e.ReaderExternalId ?? e.ReaderName).Distinct().Count()
+                    }
+                    else if (level.AccessTree is { Length: > 0 } && Acs.Infrastructure.Sync.AccessTreeParser.Parse(level.AccessTree) is null)
+                    {
+                        <span class="muted" title="Strom přístupů WIN-PAK vrátil, ale ACS mu nerozumí — viz detail.">?</span>
+                    }
+                    else
+                    {
+                        <span class="muted">0</span>
+                    }
+                </td>
+                <td>@Model.MappedReaders.GetValueOrDefault(level.ExternalId)</td>
+                <td class="mono muted">@level.ExternalId</td>
+                <td class="muted">@level.LastSyncedAt?.ToLocalTime().ToString("g")</td>
+                <td>
+                    <a class="btn btn-sm btn-ghost" asp-page="Edit" asp-route-id="@level.Id">Upravit</a>
+                    @if (level.IsActive)
+                    {
+                        <form method="post" asp-page-handler="Delete" asp-route-id="@level.Id" class="inline-form"
+                              onsubmit="return confirm('Zrušit úroveň „@level.Name“ ve WIN-PAKu? Karty, které ji mají, o ni přijdou.')">
+                            <button class="btn btn-sm btn-ghost" type="submit">Zrušit</button>
+                        </form>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Levels.Count == 0)
+    {
+        <p class="muted">Žádné úrovně — spusťte synchronizaci z WIN-PAK.</p>
+    }
+</div>

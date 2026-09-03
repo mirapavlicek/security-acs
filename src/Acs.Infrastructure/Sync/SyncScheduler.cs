@@ -70,6 +70,18 @@ public class SyncScheduler(IServiceScopeFactory scopeFactory, ILogger<SyncSchedu
             var result = await sync.SyncAsync("system", ct);
             await settings.SetAsync(ReadersLastRunKey, DateTime.UtcNow.ToString("O"), "system", ct);
             logger.LogInformation("Synchronizace čteček: {Result}", result);
+
+            // Přístupové úrovně patří ke čtečkám (mapování čtečka ↔ úroveň), jedou ve stejném rytmu.
+            try
+            {
+                var levels = scope.ServiceProvider.GetRequiredService<AccessLevelSyncService>();
+                var levelsResult = await levels.SyncAsync("system", ct: ct);
+                logger.LogInformation("Synchronizace přístupových úrovní: {Result}", levelsResult);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Synchronizace přístupových úrovní selhala; čtečky jsou synchronizované.");
+            }
         }
 
         if (employeesDue)

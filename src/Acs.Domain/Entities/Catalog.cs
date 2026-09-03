@@ -206,3 +206,51 @@ public class Employee
 
     public string FullName => $"{FirstName} {LastName}";
 }
+
+/// <summary>
+/// Přístupová úroveň WIN-PAKu (skupina oprávnění) zrcadlená do ACS. Nositelem
+/// oprávnění je ve WIN-PAKu karta a úroveň je to, co se jí přiděluje; ACS ji
+/// dosud jen četla a přidělovala. Zrcadlo umožňuje úrovně z ACS i zakládat,
+/// upravovat (čtečky a časové zóny) a rušit — zápis jde přes konektor, zrcadlo
+/// se po něm obnoví.
+/// </summary>
+public class AccessLevel
+{
+    public int Id { get; set; }
+
+    /// <summary>Id úrovně ve WIN-PAKu (<c>AccessLevelID</c>); pod ním se úroveň přiděluje kartám.</summary>
+    public required string ExternalId { get; set; }
+
+    public required string Name { get; set; }
+
+    public string? Description { get; set; }
+
+    /// <summary>Úroveň ve WIN-PAKu zmizela — v ACS zůstává kvůli historii, ale nepřiděluje se.</summary>
+    public bool IsActive { get; set; } = true;
+
+    /// <summary>Strom přístupů tak, jak ho WIN-PAK vrací (<c>GetAccessTreeByName</c>); podklad pro položky i pro kontrolu.</summary>
+    public string? AccessTree { get; set; }
+
+    public DateTime? LastSyncedAt { get; set; }
+
+    public List<AccessLevelEntry> Entries { get; set; } = [];
+}
+
+/// <summary>Jedna čtečka v přístupové úrovni včetně časové zóny, ve které platí.</summary>
+public class AccessLevelEntry
+{
+    public int Id { get; set; }
+
+    public int AccessLevelId { get; set; }
+    public AccessLevel? AccessLevel { get; set; }
+
+    /// <summary>Id čtečky ve WIN-PAKu (<c>HWDeviceID</c>), stejné jako <see cref="Reader.ExternalId"/>.</summary>
+    public string? ReaderExternalId { get; set; }
+
+    public string? ReaderName { get; set; }
+
+    public string? TimeZoneExternalId { get; set; }
+
+    public string? TimeZoneName { get; set; }
+}
+
