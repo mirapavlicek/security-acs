@@ -179,6 +179,7 @@ a skutečné COM objekty si v několika místech nerozumí:
 | `GetCardHolderSearchFieldsByAccountName` vrací objekty | vrací prostý seznam názvů | přijímá se obojí |
 | `GetNoteFieldTemplateDetailsByAccount` vrací definice polí | vrací **objekt držitele** jako šablonu, pole jsou v jeho `NoteFields` | rozbaluje se kolekce |
 | výstupní `String` parametry | `null` odmítá jako Type mismatch, chce `""` | naučený tvar argumentů v `ComDispatch` |
+| `GetConfiguredHolidayGroupsByPanel` vrací objekty skupin | vrací prostá čísla (`UInt32` id) | jméno se dohledá v `GetHolidayGroupsByAcctID` |
 | id jako `Long` | 32bitové (VB6) | `long` se posílá jako `int` |
 
 Členy objektu držitele podle typové informace: `AccountName, SubAccountName,

@@ -10,6 +10,13 @@ public static class ComValue
     /// WIN-PAK vrací kolekce jako VARIANT se SAFEARRAY; podle volání to může být
     /// pole objektů, jediný objekt, nebo nic.
     /// </summary>
+    /// <summary>
+    /// Prostá hodnota (řetězec, číslo libovolné šířky, datum, logická hodnota) na
+    /// rozdíl od COM objektu s vlastnostmi. WIN-PAK v seznamech obojí střídá
+    /// podle volání — třeba id skupin svátků panelu chodí jako <c>UInt32</c>.
+    /// </summary>
+    public static bool IsScalar(object? value) => value is string or IConvertible;
+
     public static IEnumerable<object> AsEnumerable(object? value)
     {
         switch (value)

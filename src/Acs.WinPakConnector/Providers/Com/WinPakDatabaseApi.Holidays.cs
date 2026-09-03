@@ -107,8 +107,23 @@ public sealed partial class WinPakDatabaseApi
         return ComValue.AsEnumerable(result[2]).Select(_com.Wrap).Select(MapPanel).ToList();
     }
 
+    /// <summary>
+    /// Skupiny svátků nastavené na panelu. Ostrý WIN-PAK je vrací jako prostá čísla
+    /// (<c>UInt32</c> id), ne jako objekty se jménem — jméno se dohledá v seznamu
+    /// skupin účtu. Objekty se přijímají také, kdyby je jiná verze vracela.
+    /// </summary>
     public IReadOnlyList<HolidayGroupDto> GetConfiguredHolidayGroupsOfPanel(long panelId)
-        => CallList("GetConfiguredHolidayGroupsByPanel", MapHolidayGroup, panelId, null);
+    {
+        Dictionary<string, HolidayGroupDto>? known = null;
+        HolidayGroupDto FromId(string id, int _)
+        {
+            known ??= GetHolidayGroups()
+                .GroupBy(g => g.Id).ToDictionary(g => g.Key, g => g.First());
+            return known.TryGetValue(id, out var group) ? group : new HolidayGroupDto(id, "", null);
+        }
+
+        return CallNamedList("GetConfiguredHolidayGroupsByPanel", FromId, MapHolidayGroup, panelId, null);
+    }
 
     public void ConfigurePanelHolidayGroups(long panelId, IReadOnlyList<string> holidayGroupIds)
         => CallCardWrite("Nastavení skupin svátků panelu", "ConfigurePanelHolidayGroup",

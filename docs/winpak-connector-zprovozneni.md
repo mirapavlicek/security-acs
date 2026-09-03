@@ -255,6 +255,7 @@ z jednoho místa.
 | `Method 'System.String.NoteFieldName' not found` | WIN-PAK vrátil pole vyhledávání jako prosté řetězce (do v1.12.3) | aktualizovat konektor; stránky Features od té verze při odmítnuté pomocné položce zobrazí zbytek |
 | `WIN-PAK NoteField: Number of parameters specified does not match the expected number` | poznámkové pole držitele je indexované | od v1.12.2 konektor čte první poznámkové pole; výpis držitelů kvůli poznámce nepadá |
 | Jeden dotaz „hledá a hledá“ a po něm visí každý další — až do restartu služby | volání do WIN-PAKu se nevrátilo a drželo zámek providera (do v1.12.6 bez limitu) | od v1.12.7 se volání po `WinPak:Com:CallTimeoutSeconds` (výchozí 90 s) opustí, relace zahodí a další dotaz se přihlásí znovu; hláška `WIN-PAK neodpověděl na … do 90 s` |
+| `WIN-PAK HolGrpID: Method 'System.UInt32.HolGrpID' not found` u panelu | skupiny svátků panelu chodí jako čísla, ne objekty (do v1.12.7) | od v1.12.8 se id doplní o jméno ze seznamu skupin; detail panelu načítá každou část zvlášť |
 | Opuštěná volání se opakují (Diagnostika: „od startu opuštěno N volání“) | na WIN-PAK serveru visí COM+ komponenta `dllhost.exe` — typicky VB6 dialog na neviditelné ploše služby | Component Services → COM+ Applications → aplikace WIN-PAK → Shut down; případně restart služeb WIN-PAK |
 
 > **Bezpečnost:** `GetWPDSN` vrací ve skutečné instalaci celý připojovací řetězec

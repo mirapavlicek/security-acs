@@ -278,7 +278,7 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
     {
         var result = Call(method, args);
         return ComValue.AsEnumerable(result[^1])
-            .Select((raw, position) => raw is string or int or long or double or decimal
+            .Select((raw, position) => ComValue.IsScalar(raw)
                 ? fromValue(ComValue.ToStringOrEmpty(raw), position + 1)
                 : fromObject(_com.Wrap(raw!)))
             .ToList();

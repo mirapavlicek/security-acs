@@ -32,20 +32,38 @@ public class PanelsModel(WinPakProviderCache providers) : FeaturePageModel(provi
 
     private async Task LoadDetailAsync(long panelId, CancellationToken ct)
     {
+        IWinPakCatalogApi catalog;
         try
         {
-            var catalog = RequireCatalog();
-            Outputs = await catalog.GetPanelOutputsAsync(panelId, ct);
-            Groups = await catalog.GetPanelGroupsAsync(panelId, ct);
-            ConfiguredTimeZones = await catalog.GetPanelTimeZonesAsync(panelId, configured: true, ct);
-            AvailableTimeZones = await catalog.GetPanelTimeZonesAsync(panelId, configured: false, ct);
-            ConfiguredHolidayGroups = await catalog.GetPanelHolidayGroupsAsync(panelId, ct);
-            AllHolidayGroups = await catalog.GetHolidayGroupsAsync(ct);
-            GroupCheck = (await catalog.LookupAsync(LookupKind.PanelGroupCheck, panelId.ToString(), ct)).Result;
+            catalog = RequireCatalog();
         }
         catch (Exception ex)
         {
             DetailError = ex.Message;
+            return;
+        }
+
+        // Každá část zvlášť: jedna odmítnutá (na ostrém třeba skupiny svátků)
+        // nemá skrýt výstupy, skupiny a časové zóny, kvůli kterým se sem chodí.
+        await LoadPartAsync("Výstupy", async () => Outputs = await catalog.GetPanelOutputsAsync(panelId, ct));
+        await LoadPartAsync("Skupiny", async () => Groups = await catalog.GetPanelGroupsAsync(panelId, ct));
+        await LoadPartAsync("Nastavené časové zóny", async () => ConfiguredTimeZones = await catalog.GetPanelTimeZonesAsync(panelId, configured: true, ct));
+        await LoadPartAsync("Dostupné časové zóny", async () => AvailableTimeZones = await catalog.GetPanelTimeZonesAsync(panelId, configured: false, ct));
+        await LoadPartAsync("Skupiny svátků panelu", async () => ConfiguredHolidayGroups = await catalog.GetPanelHolidayGroupsAsync(panelId, ct));
+        await LoadPartAsync("Skupiny svátků", async () => AllHolidayGroups = await catalog.GetHolidayGroupsAsync(ct));
+        await LoadPartAsync("Kontrola skupin", async ()
+            => GroupCheck = (await catalog.LookupAsync(LookupKind.PanelGroupCheck, panelId.ToString(), ct)).Result);
+    }
+
+    private async Task LoadPartAsync(string name, Func<Task> load)
+    {
+        try
+        {
+            await load();
+        }
+        catch (Exception ex)
+        {
+            DetailError = DetailError is null ? $"{name}: {ex.Message}" : $"{DetailError}\n{name}: {ex.Message}";
         }
     }
 
