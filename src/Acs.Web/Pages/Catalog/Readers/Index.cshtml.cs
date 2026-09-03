@@ -13,8 +13,13 @@ public class IndexModel(
     AcsDbContext db,
     ReaderSyncService readerSync,
     ReaderGroupService groupService,
+    ReaderCleanupService cleanup,
     AuditService audit) : PageModel
 {
+    /// <summary>Hodnoty filtru aktivity.</summary>
+    public const string ActiveOnlyFilter = "active";
+    public const string InactiveOnlyFilter = "inactive";
+
     /// <summary>Hodnota filtru matice, která znamená „čtečky bez matice“.</summary>
     public const string NoMatrixFilter = "none";
 
@@ -32,12 +37,17 @@ public class IndexModel(
     /// <summary>Prázdné = všechny, <see cref="NoMatrixFilter"/> = bez matice, jinak id matice.</summary>
     [BindProperty(SupportsGet = true)] public string? Matrix { get; set; }
 
+    /// <summary>Prázdné = všechny, <see cref="ActiveOnlyFilter"/> nebo <see cref="InactiveOnlyFilter"/>.</summary>
+    [BindProperty(SupportsGet = true)] public string? Active { get; set; }
+
     [TempData] public string? Message { get; set; }
     [TempData] public string? ErrorMessage { get; set; }
 
     public bool HasFilter =>
         !string.IsNullOrWhiteSpace(Search) || BuildingId is not null || FloorId is not null
-        || GroupId is not null || !string.IsNullOrWhiteSpace(Matrix);
+        || GroupId is not null || !string.IsNullOrWhiteSpace(Matrix) || !string.IsNullOrWhiteSpace(Active);
+
+    public int InactiveCount { get; private set; }
 
     public async Task OnGetAsync()
     {
@@ -51,6 +61,7 @@ public class IndexModel(
             .Include(r => r.Dependencies).ThenInclude(d => d.RequiresReader);
 
         Readers = await query.OrderBy(r => r.Name).ToListAsync();
+        InactiveCount = Readers.Count(r => !r.IsActive);
         Matrices = await db.ApprovalMatrices.Where(m => m.IsActive).OrderBy(m => m.Name).ToListAsync();
         Buildings = await db.Buildings.OrderBy(b => b.Name).ToListAsync();
         Floors = await db.Floors.Include(f => f.Building)
@@ -98,6 +109,11 @@ public class IndexModel(
             query = query.Where(r => r.ApprovalMatrixId == null);
         else if (int.TryParse(Matrix, out var matrixId))
             query = query.Where(r => r.ApprovalMatrixId == matrixId);
+
+        if (Active == ActiveOnlyFilter)
+            query = query.Where(r => r.IsActive);
+        else if (Active == InactiveOnlyFilter)
+            query = query.Where(r => !r.IsActive);
 
         return query;
     }
@@ -151,6 +167,34 @@ public class IndexModel(
         return RedirectToFilteredPage();
     }
 
+    /// <summary>Smaže označené čtečky — jen neaktivní bez vazeb, ostatní přeskočí s důvodem.</summary>
+    public async Task<IActionResult> OnPostDeleteAsync(int[] readerIds)
+    {
+        if (readerIds.Length == 0)
+        {
+            ErrorMessage = "Nevybrali jste žádnou čtečku.";
+            return RedirectToFilteredPage();
+        }
+
+        Message = (await cleanup.DeleteAsync(readerIds, User.Identity?.Name)).ToString();
+        return RedirectToFilteredPage();
+    }
+
+    /// <summary>Smaže všechny neaktivní čtečky bez vazeb, které odpovídají aktuálnímu filtru.</summary>
+    public async Task<IActionResult> OnPostDeleteFilteredAsync()
+    {
+        var query = await FilteredQueryAsync();
+        var ids = await query.Where(r => !r.IsActive).Select(r => r.Id).ToListAsync();
+        if (ids.Count == 0)
+        {
+            ErrorMessage = "Podle aktuálního filtru není žádná neaktivní čtečka.";
+            return RedirectToFilteredPage();
+        }
+
+        Message = (await cleanup.DeleteAsync(ids, User.Identity?.Name)).ToString();
+        return RedirectToFilteredPage();
+    }
+
     private async Task<ApprovalMatrix?> ResolveMatrixAsync(int? matrixId)
     {
         if (matrixId is null)
@@ -180,5 +224,6 @@ public class IndexModel(
         floorId = FloorId,
         groupId = GroupId,
         matrix = Matrix,
+        active = Active,
     });
 }

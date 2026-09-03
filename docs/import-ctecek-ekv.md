@@ -126,6 +126,15 @@ deaktivovaných, 4 založené části místností → **761 aktivních čteček 
 Vygenerované plány pak umístí 718 čteček (aktivní čtečky navázané na místnost
 nebo chodbu).
 
+## Úklid deaktivovaných čteček
+
+Deaktivované odhady z půdorysů v číselníku zůstávají (nekreslí se do plánů
+a nenabízejí v žádostech). Kdo je chce mít pryč: **Číselníky → Čtečky**, filtr
+**jen neaktivní**, tlačítko **Smazat neaktivní podle filtru**. Maže se jen to,
+co nemá historii — neaktivní čtečka bez žádosti, skupiny a závislosti. Cokoli
+s vazbou zůstane neaktivní a hláška to vypíše jmenovitě; u přístupu musí jít
+zpětně dohledat, ke které čtečce byl. Aktivní čtečky se takhle smazat nedají.
+
 ## Co zůstává na ruční dořešení
 
 Import vypíše místnosti, které v číselníku nenašel; čtečky k nim založí bez

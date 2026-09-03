@@ -5,6 +5,9 @@
     const rows = [...document.querySelectorAll('.row-check')];
     const count = document.getElementById('bulk-count');
     const assign = document.getElementById('bulk-assign');
+    // Druhá hromadná akce (mazání) má vlastní tlačítko a počet; na stránkách bez ní chybí.
+    const deleteCount = document.getElementById('bulk-delete-count');
+    const remove = document.getElementById('bulk-delete');
     if (!all || rows.length === 0) return;
 
     let last = null;
@@ -13,6 +16,8 @@
         const selected = rows.filter(r => r.checked).length;
         if (count) count.textContent = selected;
         if (assign) assign.disabled = selected === 0;
+        if (deleteCount) deleteCount.textContent = selected;
+        if (remove) remove.disabled = selected === 0;
         all.checked = selected > 0 && selected === rows.length;
         all.indeterminate = selected > 0 && selected < rows.length;
     }
