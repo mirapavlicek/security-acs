@@ -87,7 +87,9 @@ public record ServerStatusDto(string ServerId, string ServerName, bool Connected
 public record ConnectorStatusDto(
     bool DatabaseServerConnected,
     IReadOnlyList<ServerStatusDto> Servers,
-    string? Error);
+    string? Error,
+    /// <summary>WIN-PAK právě zpracovává jiné volání (název a doba); stav se za ně neřadí.</summary>
+    string? Busy = null);
 
 /// <summary>Informace o běžícím konektoru.</summary>
 public record ConnectorInfoDto(

@@ -37,8 +37,13 @@ public class DiagnosticsModel(WinPakProviderCache providers) : PageModel
             var status = await provider.GetStatusAsync(ct);
             if (status.Error is { Length: > 0 })
                 throw new InvalidOperationException(status.Error);
+            if (status.Busy is { Length: > 0 })
+                return $"WIN-PAK je zaneprázdněn: {status.Busy}";
+            var abandoned = provider is ComWinPakProvider { AbandonedCalls: > 0 } com
+                ? $"; od startu opuštěno {com.AbandonedCalls} volání, která WIN-PAK nedokončil v limitu"
+                : "";
             return $"databázový server {(status.DatabaseServerConnected ? "připojen" : "nepřipojen")}, "
-                   + $"serverů se stavem: {status.Servers.Count}";
+                   + $"serverů se stavem: {status.Servers.Count}{abandoned}";
         });
 
         await RunAsync("Účty", async () =>

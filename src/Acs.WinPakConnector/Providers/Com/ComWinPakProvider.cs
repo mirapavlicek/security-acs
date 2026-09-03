@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Acs.WinPakConnector.Models;
 using Microsoft.Extensions.Options;
 
@@ -73,44 +74,117 @@ public sealed partial class ComWinPakProvider : WinPakProviderBase, IProviderShu
 
     private T Cached<T>(string key, Func<T> load) where T : class
     {
-        if (_catalogCache.TryGetValue(key, out var entry) && entry.Until > DateTime.UtcNow)
-            return (T)entry.Value;
+        // Opuštěné volání může dobíhat na pozadí souběžně s novým — proto zámek.
+        lock (_catalogCache)
+        {
+            if (_catalogCache.TryGetValue(key, out var entry) && entry.Until > DateTime.UtcNow)
+                return (T)entry.Value;
+        }
 
         var value = load();
-        _catalogCache[key] = (DateTime.UtcNow + CatalogTtl, value);
+        lock (_catalogCache)
+            _catalogCache[key] = (DateTime.UtcNow + CatalogTtl, value);
         return value;
     }
 
     /// <summary>Po zápisu, který může číselník změnit, se paměť zahodí.</summary>
-    internal void InvalidateCatalogCache() => _catalogCache.Clear();
-
-    private async Task<T> RunAsync<T>(Func<T> work, CancellationToken ct)
+    internal void InvalidateCatalogCache()
     {
-        await _gate.WaitAsync(ct);
-        try
-        {
-            return work();
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        lock (_catalogCache)
+            _catalogCache.Clear();
     }
 
-    private Task RunAsync(Action work, CancellationToken ct)
-        => RunAsync(() => { work(); return true; }, ct);
+    /// <summary>Právě běžící volání do WIN-PAKu (název operace a začátek); null = nic neběží.</summary>
+    public InFlightCall? InFlight => _inFlight;
+
+    private volatile InFlightCall? _inFlight;
+
+    public sealed record InFlightCall(string Operation, DateTime StartedUtc);
+
+    /// <summary>Kolikrát konektor opustil volání, které WIN-PAK nedokončil v limitu.</summary>
+    public int AbandonedCalls => _abandonedCalls;
+
+    private int _abandonedCalls;
+
+    private TimeSpan CallTimeout => TimeSpan.FromSeconds(Math.Max(1, _options.CallTimeoutSeconds));
+
+    /// <summary>
+    /// Volání do WIN-PAKu pod zámkem a s časovým limitem. COM+ objekty nejsou bezpečné
+    /// pro souběžná volání, proto jde všechno přes jeden semafor — a právě proto
+    /// nesmí jedno uvázlé volání držet zámek napořád: na ostrém serveru po něm visel
+    /// každý další dotaz (stránka „hledá a hledá“) až do restartu služby.
+    ///
+    /// Po limitu se volání opustí: zámek se uvolní, relace zahodí (další volání se
+    /// přihlásí znovu k novému objektu) a volajícímu se vrátí srozumitelná chyba.
+    /// Uvázlé vlákno se v .NET přerušit nedá, dobíhá na pozadí a zámek už nesahá.
+    /// </summary>
+    private async Task<T> RunAsync<T>(Func<T> work, CancellationToken ct, [CallerMemberName] string operation = "")
+    {
+        await _gate.WaitAsync(ct);
+
+        var released = 0;
+        void ReleaseOnce()
+        {
+            if (Interlocked.Exchange(ref released, 1) == 0)
+                _gate.Release();
+        }
+
+        var started = DateTime.UtcNow;
+        _inFlight = new InFlightCall(operation, started);
+        var running = Task.Run(() =>
+        {
+            try
+            {
+                return work();
+            }
+            finally
+            {
+                if (Volatile.Read(ref released) == 0)
+                    _inFlight = null;
+                ReleaseOnce();
+            }
+        }, CancellationToken.None);
+
+        var finished = await Task.WhenAny(running, Task.Delay(CallTimeout, CancellationToken.None));
+        if (finished == running)
+            return await running;
+
+        Interlocked.Increment(ref _abandonedCalls);
+        _inFlight = null;
+        _database.AbandonSession();
+        ReleaseOnce();
+        throw new TimeoutException(
+            $"WIN-PAK neodpověděl na {operation} do {CallTimeout.TotalSeconds:0} s. Relace byla zahozena a další "
+            + "volání se přihlásí znovu; uvázlé volání dobíhá na pozadí. Pokud se to opakuje, na serveru WIN-PAK "
+            + "nejspíš visí COM+ komponenta (dllhost.exe, často na neviditelném dialogu) — restartujte COM+ aplikaci WIN-PAK.");
+    }
+
+    private Task RunAsync(Action work, CancellationToken ct, [CallerMemberName] string operation = "")
+        => RunAsync(() => { work(); return true; }, ct, operation);
 
     /// <summary>Zápis do číselníku: po provedení se zahodí cache, aby další čtení vidělo změnu.</summary>
-    private Task RunAsyncInvalidating(Action work, CancellationToken ct)
-        => RunAsync(() => { work(); InvalidateCatalogCache(); return true; }, ct);
+    private Task RunAsyncInvalidating(Action work, CancellationToken ct, [CallerMemberName] string operation = "")
+        => RunAsync(() => { work(); InvalidateCatalogCache(); return true; }, ct, operation);
 
-    private Task<T> RunAsyncInvalidating<T>(Func<T> work, CancellationToken ct)
-        => RunAsync(() => { var result = work(); InvalidateCatalogCache(); return result; }, ct);
+    private Task<T> RunAsyncInvalidating<T>(Func<T> work, CancellationToken ct, [CallerMemberName] string operation = "")
+        => RunAsync(() => { var result = work(); InvalidateCatalogCache(); return result; }, ct, operation);
 
     private WinPakCommApi Comm => _comm ?? throw NotSupported("ovládání dveří (vypnuté v konfiguraci konektoru)");
 
-    public override Task<ConnectorStatusDto> GetStatusAsync(CancellationToken ct)
-        => RunAsync(() =>
+    /// <summary>
+    /// Stav se nemá řadit za dlouhé volání: když WIN-PAK právě něco zpracovává,
+    /// vrátí se po chvíli „zaneprázdněn“ s názvem operace místo čekání do limitu.
+    /// </summary>
+    public override async Task<ConnectorStatusDto> GetStatusAsync(CancellationToken ct)
+    {
+        if (_inFlight is { } busy && (DateTime.UtcNow - busy.StartedUtc) > TimeSpan.FromSeconds(3))
+        {
+            return new ConnectorStatusDto(_database.IsLoggedIn, [],
+                Error: null,
+                Busy: $"{busy.Operation} běží {(DateTime.UtcNow - busy.StartedUtc).TotalSeconds:0} s");
+        }
+
+        return await RunAsync(() =>
         {
             try
             {
@@ -123,6 +197,7 @@ public sealed partial class ComWinPakProvider : WinPakProviderBase, IProviderShu
                 return new ConnectorStatusDto(false, [], ex.Message);
             }
         }, ct);
+    }
 
     public override Task<IReadOnlyList<AccountDto>> GetAccountsAsync(CancellationToken ct)
         => RunAsync(() => Cached("accounts", _database.GetAccounts), ct);
