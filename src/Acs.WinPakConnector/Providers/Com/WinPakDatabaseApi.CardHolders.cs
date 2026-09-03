@@ -7,7 +7,7 @@ public sealed partial class WinPakDatabaseApi
 {
     public IReadOnlyList<CardHolderDto> GetCardHolders()
         => CallList("GetCardHoldersByAccountName", MapCardHolder,
-            AccountName, _options.SubAccountName, null);
+            AccountName, SubAccountName, null);
 
     public CardHolderDto? GetCardHolder(string cardHolderId)
     {
@@ -73,8 +73,8 @@ public sealed partial class WinPakDatabaseApi
         holder.SetProperty("FirstName", request.FirstName);
         holder.SetProperty("LastName", request.LastName);
         holder.SetProperty("AccountName", AccountName);
-        if (!string.IsNullOrWhiteSpace(_options.SubAccountName))
-            holder.SetProperty("SubAccountName", _options.SubAccountName);
+        if (!string.IsNullOrWhiteSpace(SubAccountName))
+            holder.SetProperty("SubAccountName", SubAccountName);
         if (request.Note is not null)
             holder.SetProperty("NoteField", request.Note);
     }
@@ -85,7 +85,7 @@ public sealed partial class WinPakDatabaseApi
             field => new CardHolderSearchFieldDto(
                 ComValue.ToStringOrEmpty(field.GetProperty("NoteFieldName")),
                 ComValue.ToInt(field.GetProperty("FieldIndex"))),
-            AccountName, _options.SubAccountName, null);
+            AccountName, SubAccountName, null);
 
     /// <summary>Vyhledání držitelů přímo v databázi WIN-PAK (<c>GetCardHoldersOnSearch</c>).</summary>
     public IReadOnlyList<CardHolderDto> SearchCardHolders(CardHolderSearchRequest request)
@@ -95,7 +95,7 @@ public sealed partial class WinPakDatabaseApi
         var comparisons = request.Criteria.Select(object? (c) => c.ComparisonType).ToArray();
 
         return CallList("GetCardHoldersOnSearch", MapCardHolder,
-            AccountName, _options.SubAccountName, fields, values, comparisons, null);
+            AccountName, SubAccountName, fields, values, comparisons, null);
     }
 
     /// <summary>Šablony poznámkových polí účtu (<c>GetNoteFieldTemplateDetailsByAccount</c>).</summary>
@@ -105,7 +105,7 @@ public sealed partial class WinPakDatabaseApi
                 ComValue.ToStringOrEmpty(template.GetProperty("NoteFieldName")),
                 ComValue.ToInt(template.GetProperty("FieldIndex")),
                 ComValue.ToStringOrNull(template.GetProperty("FieldDefinition"))),
-            AccountName, _options.SubAccountName, null);
+            AccountName, SubAccountName, null);
 
     // ---------- Fotky a podpisy ----------
 

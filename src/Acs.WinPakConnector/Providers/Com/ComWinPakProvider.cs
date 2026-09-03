@@ -31,6 +31,11 @@ public sealed partial class ComWinPakProvider : WinPakProviderBase, IDisposable
     /// <summary>Účet nebyl v konfiguraci a databázové API si ho doplnilo samo (jediný ve WIN-PAKu).</summary>
     public bool AccountResolvedAutomatically => _database.AccountNameResolvedAutomatically;
 
+    /// <summary>Podúčet, se kterým se pracuje (z konfigurace, nebo jediný u účtu); prázdný = žádný.</summary>
+    public string EffectiveSubAccountName => _database.IsLoggedIn ? _database.SubAccountName : "";
+
+    public bool SubAccountResolvedAutomatically => _database.SubAccountNameResolvedAutomatically;
+
     /// <summary>Účet z konfigurace, nebo ten, který si databázové API doplnilo samo (jediný ve WIN-PAKu).</summary>
     public override string? AccountName
     {

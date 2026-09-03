@@ -97,6 +97,63 @@ public sealed class WinPakAccountResolutionTests
         Assert.Single(_com.Calls.Where(c => c.Method == "GetAccounts"));
     }
 
+    // ---------- Podúčet ----------
+
+    private void ArrangeSubAccounts(params string[] names)
+        => App.OutValues["GetSubAccountsByAccountID#1"] = names
+            .Select((name, i) => (object)_com.Record($"sub{i}", ("AccountID", (long)(i + 10)), ("AccountName", name)))
+            .ToArray();
+
+    [Fact]
+    public void Jediny_poducet_se_pouzije_pro_drzitele_i_pristupove_urovne()
+    {
+        ArrangeLogin("FN Motol");
+        ArrangeSubAccounts("FN Motol - hlavní");
+        App.OutValues["GetAccessLevelsByAccountName#2"] = new object[]
+        {
+            _com.Record("al", ("AccessLevelID", 1L), ("AccessLevelName", "Vše")),
+        };
+        var api = CreateApi(accountName: null);
+
+        api.GetCardHolders();
+        api.GetAccessLevels();
+
+        Assert.Equal(["FN Motol", "FN Motol - hlavní", null], _com.Call("GetCardHoldersByAccountName").Args);
+        Assert.Equal("FN Motol - hlavní", _com.Call("GetAccessLevelsByAccountName").Args[1]);
+        Assert.True(api.SubAccountNameResolvedAutomatically);
+    }
+
+    [Fact]
+    public void Vice_poductu_bez_vyberu_znamena_prazdny_poducet()
+    {
+        ArrangeLogin("FN Motol");
+        ArrangeSubAccounts("A", "B");
+        var api = CreateApi(accountName: null);
+
+        api.GetCardHolders();
+
+        Assert.Equal("", _com.Call("GetCardHoldersByAccountName").Args[1]);
+        Assert.False(api.SubAccountNameResolvedAutomatically);
+    }
+
+    [Fact]
+    public void Pristupove_urovne_bez_vysledku_za_ucet_se_vezmou_za_vsechny()
+    {
+        // Skutečný WIN-PAK: za účet 0 úrovní, za všechny 55 — úrovně nejsou vázané na účet.
+        ArrangeLogin("FN Motol");
+        ArrangeSubAccounts("Hlavní");
+        App.OutValues["GetAccessLevelsByAccountName#2"] = Array.Empty<object>();
+        App.OutValues["GetAllAccessLevels#0"] = new object[]
+        {
+            _com.Record("al", ("AccessLevelID", 1L), ("AccessLevelName", "Vše")),
+        };
+
+        var levels = CreateApi(accountName: null).GetAccessLevels();
+
+        Assert.Single(levels);
+        Assert.NotNull(_com.Call("GetAllAccessLevels"));
+    }
+
     // ---------- Systémové údaje ----------
 
     [Fact]
@@ -150,7 +207,94 @@ public sealed class WinPakAccountResolutionTests
         Assert.Equal("Broken", error.Member);
     }
 
+    [Fact]
+    public void Null_ve_vystupnim_retezci_se_po_Type_mismatch_zopakuje_s_prazdnym_retezcem()
+    {
+        // Přesně situace z první diagnostiky: GetWPDSN(out dsn) s null → DISP_E_TYPEMISMATCH.
+        var target = new StringOut();
+        var dispatch = new ComDispatch(target);
+        var args = new object?[] { null };
+
+        dispatch.Invoke("GetWPDSN", args);
+
+        Assert.Equal("WINPAK", args[0]);
+        Assert.Equal(2, target.Calls);
+    }
+
+    [Fact]
+    public void Kdyz_ani_opakovani_nepomuze_vyhodi_se_puvodni_chyba()
+    {
+        var dispatch = new ComDispatch(new AlwaysMismatch());
+
+        var error = Assert.Throws<ComCallException>(() => dispatch.Invoke("Anything", [null]));
+
+        Assert.Contains("HRESULT 0x80020005", error.Message);
+    }
+
+    [Fact]
+    public void Long_se_posila_jako_32bitove_cislo()
+    {
+        // VB6 Long je VT_I4; C# long by šel jako VT_I8 a WIN-PAK by ho odmítl.
+        var target = new IntParameter();
+        var dispatch = new ComDispatch(target);
+        var args = new object?[] { 4711L, null };
+
+        dispatch.Invoke("GetDevNameByDeviceID", args);
+
+        Assert.Equal(4711, target.ReceivedId);
+        Assert.Equal("Panel 4711", args[1]);
+    }
+
+    [Fact]
+    public void Long_mimo_rozsah_int_zustane_beze_zmeny()
+    {
+        var target = new LongParameter();
+        var dispatch = new ComDispatch(target);
+
+        dispatch.Invoke("Take", [1L << 40]);
+
+        Assert.Equal(1L << 40, target.Received);
+    }
 #pragma warning restore CA1416
+
+    /// <summary>Chová se jako WIN-PAK: null v ByRef String odmítne, prázdný řetězec přijme a přepíše.</summary>
+    public sealed class StringOut
+    {
+        public int Calls;
+
+        public void GetWPDSN(ref string? dsn)
+        {
+            Calls++;
+            if (dsn is null)
+                throw new COMException("Type mismatch.", unchecked((int)0x80020005));
+            dsn = "WINPAK";
+        }
+    }
+
+    public sealed class AlwaysMismatch
+    {
+        public void Anything(ref string? value) => throw new COMException("Type mismatch.", unchecked((int)0x80020005));
+    }
+
+    public sealed class IntParameter
+    {
+        public int ReceivedId;
+
+        public void GetDevNameByDeviceID(int id, ref string? name)
+        {
+            ReceivedId = id;
+            if (name is null)
+                throw new COMException("Type mismatch.", unchecked((int)0x80020005));
+            name = $"Panel {id}";
+        }
+    }
+
+    public sealed class LongParameter
+    {
+        public long Received;
+
+        public void Take(long value) => Received = value;
+    }
 
     public sealed class Failing
     {

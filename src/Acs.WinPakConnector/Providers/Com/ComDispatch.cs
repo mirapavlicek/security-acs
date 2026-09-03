@@ -43,7 +43,48 @@ public sealed class ComDispatch(object instance) : IComDispatch
 
     private object Instance => Target;
 
+    /// <summary>DISP_E_TYPEMISMATCH — pozdní vazba odmítla typ argumentu, metoda se nespustila.</summary>
+    private const int TypeMismatch = unchecked((int)0x80020005);
+
     public object? Invoke(string method, object?[] args)
+    {
+        // WIN-PAK je VB6/COM: jeho Long je 32bitový (VT_I4). C# long by šel jako
+        // VT_I8 a skončil „Type mismatch“, proto se identifikátory posílají jako int.
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (args[i] is long l && l is >= int.MinValue and <= int.MaxValue)
+                args[i] = (int)l;
+        }
+
+        try
+        {
+            return InvokeOnce(method, args);
+        }
+        catch (ComCallException ex) when (IsTypeMismatch(ex) && args.Contains(null))
+        {
+            // Výstupní řetězcový parametr (ByRef As String) nesmí přijít jako null —
+            // ten se přeloží na prázdný VARIANT a WIN-PAK volání odmítne. Výstupní
+            // kolekce (ByRef As Variant) null naopak snese. Které z nich to je,
+            // příručka neříká, takže se null postupně nahrazují prázdným řetězcem.
+            // Odmítnuté volání se neprovedlo, opakování je bezpečné i u zápisů.
+            foreach (var candidate in RetryVariants(args))
+            {
+                try
+                {
+                    var result = InvokeOnce(method, candidate);
+                    Array.Copy(candidate, args, args.Length);
+                    return result;
+                }
+                catch (ComCallException retry) when (IsTypeMismatch(retry))
+                {
+                }
+            }
+
+            throw;
+        }
+    }
+
+    private object? InvokeOnce(string method, object?[] args)
     {
         // Všechny parametry se předávají by-ref, jinak by se [out] hodnoty
         // nedostaly zpět do pole args.
@@ -61,6 +102,33 @@ public sealed class ComDispatch(object instance) : IComDispatch
             culture: null,
             namedParameters: null));
     }
+
+    /// <summary>
+    /// Nejdřív všechny null najednou (obvyklý případ: jeden výstupní řetězec), pak
+    /// každý zvlášť — pro volání, kde je vedle řetězce i výstupní kolekce.
+    /// </summary>
+    private static IEnumerable<object?[]> RetryVariants(object?[] args)
+    {
+        var nullIndexes = Enumerable.Range(0, args.Length).Where(i => args[i] is null).ToList();
+
+        var all = (object?[])args.Clone();
+        foreach (var i in nullIndexes)
+            all[i] = "";
+        yield return all;
+
+        if (nullIndexes.Count < 2)
+            yield break;
+
+        foreach (var index in nullIndexes)
+        {
+            var single = (object?[])args.Clone();
+            single[index] = "";
+            yield return single;
+        }
+    }
+
+    private static bool IsTypeMismatch(ComCallException ex)
+        => ex.InnerException is COMException { HResult: TypeMismatch };
 
     public object? GetProperty(string name)
         => Unwrap(name, () => Instance.GetType().InvokeMember(name, BindingFlags.GetProperty, null, Instance, null));
