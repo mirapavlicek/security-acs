@@ -167,6 +167,28 @@ přístupovou úroveň“ provádí jako: načti karty držitele → u každé a
 přepočítej seznam úrovní → `AddUpdateCard`. Navenek zůstává REST rozhraní
 orientované na držitele, protože tak o přístupech uvažuje schvalovací workflow.
 
+## Co se na ostré instalaci liší od příručky
+
+Poznatky z první instalace (FN Motol, WIN-PAK 4.9, režim Com) — příručka
+a skutečné COM objekty si v několika místech nerozumí:
+
+| Příručka | Skutečnost | Řešení v konektoru |
+| --- | --- | --- |
+| `GetWPDSN(out dsn)` vrací název zdroje | vrací celý připojovací XML včetně uživatele a hesla k databázi | ven jde jen `dsn`, server a databáze |
+| `NoteField` držitele je vlastnost | indexovaná vlastnost `NoteField(index)` + kolekce `NoteFields` | čte se první pole |
+| `GetCardHolderSearchFieldsByAccountName` vrací objekty | vrací prostý seznam názvů | přijímá se obojí |
+| `GetNoteFieldTemplateDetailsByAccount` vrací definice polí | vrací **objekt držitele** jako šablonu, pole jsou v jeho `NoteFields` | rozbaluje se kolekce |
+| výstupní `String` parametry | `null` odmítá jako Type mismatch, chce `""` | naučený tvar argumentů v `ComDispatch` |
+| id jako `Long` | 32bitové (VB6) | `long` se posílá jako `int` |
+
+Členy objektu držitele podle typové informace: `AccountName, SubAccountName,
+CardHolderID, FirstName, LastName, EmailID, ExtRefID, NoteField, NoteFields,
+Photo, Signature, SpareDW3, SpareDW4`. `ExtRefID` je místo pro osobní číslo
+z personálního systému — pro párování držitelů s ACS.
+
+Když WIN-PAK odmítne název členu, hláška konektoru vypíše skutečné členy
+objektu (`ComMembers.Describe`); doplňte je sem.
+
 ## Communication Server API (`ACCW.dll`)
 
 Konektor pokrývá všech 42 dokumentovaných funkcí.

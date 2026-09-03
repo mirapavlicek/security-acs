@@ -44,7 +44,10 @@ public sealed partial class WinPakDatabaseApi
             Note: ReadNote(holder),
             Cards: cards,
             // Držitel sám oprávnění nemá — ukazujeme sjednocení úrovní jeho karet.
-            AccessLevelIds: cards.SelectMany(c => c.AccessLevelIds).Distinct().ToList());
+            AccessLevelIds: cards.SelectMany(c => c.AccessLevelIds).Distinct().ToList(),
+            // Členy objektu držitele podle typové informace ostrého WIN-PAKu: EmailID, ExtRefID.
+            Email: ComValue.ToStringOrNull(ReadOptional(holder, "EmailID", "Email")),
+            ExternalRef: ComValue.ToStringOrNull(ReadOptional(holder, "ExtRefID", "ExternalRefID", "ExtRef")));
     }
 
     public string AddCardHolder(UpsertCardHolderRequest request)
@@ -182,15 +185,69 @@ public sealed partial class WinPakDatabaseApi
         }
     }
 
-    /// <summary>Šablony poznámkových polí účtu (<c>GetNoteFieldTemplateDetailsByAccount</c>).</summary>
+    /// <summary>
+    /// Šablony poznámkových polí účtu (<c>GetNoteFieldTemplateDetailsByAccount</c>).
+    ///
+    /// Skutečný WIN-PAK nevrací definice polí, ale <b>objekt držitele</b> sloužící jako
+    /// šablona (členy FirstName, LastName, NoteField, NoteFields, Photo…); vlastní pole
+    /// jsou v jeho kolekci <c>NoteFields</c>. Zjištěno z výpisu členů na ostrém serveru.
+    /// Přijímají se všechny tři podoby: prostý řetězec, objekt pole, objekt držitele.
+    /// </summary>
     public IReadOnlyList<NoteFieldTemplateDto> GetNoteFieldTemplates()
-        => CallNamedList("GetNoteFieldTemplateDetailsByAccount",
-            (name, index) => new NoteFieldTemplateDto(name, index, null),
-            template => new NoteFieldTemplateDto(
-                ComValue.ToStringOrEmpty(ComMembers.ReadAny(template, NoteFieldNameCandidates)),
-                ComValue.ToInt(ComMembers.ReadAny(template, FieldIndexCandidates)),
-                ComValue.ToStringOrNull(ReadOptional(template, "FieldDefinition", "Definition", "Template", "NoteFieldDefinition"))),
-            AccountName, SubAccountName, null);
+    {
+        var result = Call("GetNoteFieldTemplateDetailsByAccount", AccountName, SubAccountName, null);
+        var templates = new List<NoteFieldTemplateDto>();
+        var position = 0;
+
+        foreach (var raw in ComValue.AsEnumerable(result[^1]))
+        {
+            if (raw is string or int or long or double or decimal)
+            {
+                templates.Add(new NoteFieldTemplateDto(ComValue.ToStringOrEmpty(raw), ++position, null));
+                continue;
+            }
+
+            var item = _com.Wrap(raw);
+            var noteFields = TryReadCollection(item, "NoteFields");
+            if (noteFields is null)
+            {
+                templates.Add(MapNoteFieldTemplate(item, ++position));
+                continue;
+            }
+
+            foreach (var field in noteFields)
+            {
+                templates.Add(field is string or int or long
+                    ? new NoteFieldTemplateDto(ComValue.ToStringOrEmpty(field), ++position, null)
+                    : MapNoteFieldTemplate(_com.Wrap(field), ++position));
+            }
+        }
+
+        return templates;
+    }
+
+    private static NoteFieldTemplateDto MapNoteFieldTemplate(IComDispatch field, int position)
+    {
+        var index = ComValue.ToInt(ReadOptional(field, FieldIndexCandidates), position);
+        return new NoteFieldTemplateDto(
+            ComValue.ToStringOrEmpty(ComMembers.ReadAny(field, NoteFieldNameCandidates)),
+            index <= 0 ? position : index,
+            ComValue.ToStringOrNull(ReadOptional(field, "FieldDefinition", "Definition", "Template", "NoteFieldDefinition", "Value")));
+    }
+
+    /// <summary>Kolekce v dané vlastnosti, nebo null, když objekt takovou vlastnost nemá.</summary>
+    private static List<object>? TryReadCollection(IComDispatch target, string property)
+    {
+        try
+        {
+            var value = target.GetProperty(property);
+            return value is null or DBNull ? null : ComValue.AsEnumerable(value).ToList();
+        }
+        catch (ComCallException ex) when (ComMembers.IsUnknownName(ex))
+        {
+            return null;
+        }
+    }
 
     // ---------- Fotky a podpisy ----------
 
