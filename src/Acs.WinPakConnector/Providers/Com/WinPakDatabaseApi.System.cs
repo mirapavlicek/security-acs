@@ -11,8 +11,41 @@ public sealed partial class WinPakDatabaseApi
         return (ComValue.ToInt(result[0]), ComValue.ToStringOrEmpty(result[1]));
     }
 
-    /// <summary>Název ODBC zdroje, přes který WIN-PAK běží.</summary>
-    public string? GetDataSourceName() => ComValue.ToStringOrNull(Call("GetWPDSN", [null])[0]);
+    /// <summary>
+    /// Název zdroje dat, přes který WIN-PAK běží. Skutečný WIN-PAK vrací z <c>GetWPDSN</c>
+    /// celý připojovací XML včetně <c>&lt;user&gt;</c> a <c>&lt;password&gt;</c> k databázi —
+    /// ven jde jen název zdroje, serveru a databáze, nic z přihlašovacích údajů.
+    /// </summary>
+    public string? GetDataSourceName()
+        => DescribeDataSource(ComValue.ToStringOrNull(Call("GetWPDSN", [null])[0]));
+
+    internal static string? DescribeDataSource(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        if (!raw.TrimStart().StartsWith('<'))
+            return raw;
+
+        // XML se nečte parserem — WIN-PAK ho vrací bez kořenového prvku a s hodnotami,
+        // které nemusí být validní; stačí vytáhnout konkrétní prvky.
+        string? Element(string name)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(raw,
+                $"<{name}>(.*?)</{name}>", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
+            return match.Success && !string.IsNullOrWhiteSpace(match.Groups[1].Value) ? match.Groups[1].Value.Trim() : null;
+        }
+
+        var parts = new List<string>();
+        if (Element("dsn") is { } dsn)
+            parts.Add(dsn);
+        if (Element("ServerName") is { } server)
+            parts.Add($"server {server}");
+        if (Element("Database") is { } database)
+            parts.Add($"databáze {database}");
+
+        return parts.Count == 0 ? "(připojovací údaje skryty)" : string.Join(", ", parts);
+    }
 
     /// <summary>Časová zóna databázového serveru a zda má zapnutý letní čas.</summary>
     public (string? Name, bool DaylightSaving) GetServerTimeZone()

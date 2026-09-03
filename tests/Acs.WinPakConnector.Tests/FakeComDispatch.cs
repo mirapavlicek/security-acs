@@ -42,7 +42,31 @@ public sealed class FakeComDispatch(string name, FakeComFactory factory) : IComD
         return Returns.GetValueOrDefault(method);
     }
 
-    public object? GetProperty(string name) => Properties.GetValueOrDefault(name);
+    public object? GetProperty(string name)
+    {
+        if (Throws.TryGetValue(name, out var failure))
+            throw failure;
+        return Properties.GetValueOrDefault(name);
+    }
+
+    /// <summary>Indexovaná vlastnost se v atrapě ukládá pod klíčem „Název(index)“.</summary>
+    public object? GetProperty(string name, object?[] index)
+    {
+        var key = IndexedKey(name, index);
+        if (Throws.TryGetValue(key, out var failure))
+            throw failure;
+        return Properties.GetValueOrDefault(key);
+    }
+
+    public void SetProperty(string name, object?[] index, object? value)
+    {
+        var key = IndexedKey(name, index);
+        factory.Calls.Add(new ComCall(Name, $"set_{key}", [value]));
+        Properties[key] = value;
+    }
+
+    private static string IndexedKey(string name, object?[] index)
+        => $"{name}({string.Join(",", index.Select(i => i?.ToString()))})";
 
     public void SetProperty(string name, object? value)
     {

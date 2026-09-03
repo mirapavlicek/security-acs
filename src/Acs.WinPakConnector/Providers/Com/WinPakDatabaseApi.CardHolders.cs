@@ -25,7 +25,7 @@ public sealed partial class WinPakDatabaseApi
             Id: id,
             FirstName: ComValue.ToStringOrEmpty(holder.GetProperty("FirstName")),
             LastName: ComValue.ToStringOrEmpty(holder.GetProperty("LastName")),
-            Note: ComValue.ToStringOrNull(holder.GetProperty("NoteField")),
+            Note: ReadNote(holder),
             Cards: cards,
             // Držitel sám oprávnění nemá — ukazujeme sjednocení úrovní jeho karet.
             AccessLevelIds: cards.SelectMany(c => c.AccessLevelIds).Distinct().ToList());
@@ -76,7 +76,44 @@ public sealed partial class WinPakDatabaseApi
         if (!string.IsNullOrWhiteSpace(SubAccountName))
             holder.SetProperty("SubAccountName", SubAccountName);
         if (request.Note is not null)
-            holder.SetProperty("NoteField", request.Note);
+            WriteNote(holder, request.Note);
+    }
+
+    /// <summary>
+    /// Poznámka držitele. Skutečný WIN-PAK má <c>NoteField</c> indexované — držitel má
+    /// poznámkových polí několik a bez indexu volání odmítne („Number of parameters
+    /// specified does not match“). Bere se první pole; když není ani tak, poznámka
+    /// je jen prázdná a výpis držitelů kvůli ní nepadá.
+    /// </summary>
+    private static string? ReadNote(IComDispatch holder)
+    {
+        try
+        {
+            return ComValue.ToStringOrNull(holder.GetProperty("NoteField"));
+        }
+        catch (ComCallException)
+        {
+            try
+            {
+                return ComValue.ToStringOrNull(holder.GetProperty("NoteField", [1]));
+            }
+            catch (ComCallException)
+            {
+                return null;
+            }
+        }
+    }
+
+    private static void WriteNote(IComDispatch holder, string note)
+    {
+        try
+        {
+            holder.SetProperty("NoteField", note);
+        }
+        catch (ComCallException)
+        {
+            holder.SetProperty("NoteField", [1], note);
+        }
     }
 
     /// <summary>Pole, podle kterých umí WIN-PAK v tomto účtu vyhledávat držitele.</summary>

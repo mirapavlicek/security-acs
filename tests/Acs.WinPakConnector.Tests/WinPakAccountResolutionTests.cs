@@ -154,6 +154,75 @@ public sealed class WinPakAccountResolutionTests
         Assert.NotNull(_com.Call("GetAllAccessLevels"));
     }
 
+    // ---------- Poznámka držitele a DSN ----------
+
+    [Fact]
+    public void Indexovane_NoteField_se_precte_pres_prvni_index_a_vypis_drzitelu_nepada()
+    {
+        ArrangeLogin("FN Motol");
+        ArrangeSubAccounts("Default");
+        var holder = (FakeComDispatch)_com.Record("holder",
+            ("CardHolderID", 1001L), ("FirstName", "Jan"), ("LastName", "Novák"), ("NoteField(1)", "IT oddělení"));
+        // Skutečný WIN-PAK: NoteField bez indexu odmítne.
+        holder.Throws["NoteField"] = new ComCallException("NoteField",
+            new COMException("Number of parameters specified does not match the expected number.", unchecked((int)0x8002000E)));
+        App.OutValues["GetCardHoldersByAccountName#2"] = new object[] { holder };
+        App.OutValues["GetCardsByCHID#1"] = Array.Empty<object>();
+
+        var holders = CreateApi(accountName: null).GetCardHolders();
+
+        var single = Assert.Single(holders);
+        Assert.Equal("Novák", single.LastName);
+        Assert.Equal("IT oddělení", single.Note);
+    }
+
+    [Fact]
+    public void Kdyz_poznamka_nejde_precist_ani_s_indexem_je_prazdna()
+    {
+        ArrangeLogin("FN Motol");
+        ArrangeSubAccounts("Default");
+        var holder = (FakeComDispatch)_com.Record("holder", ("CardHolderID", 1001L), ("FirstName", "Jan"), ("LastName", "Novák"));
+        var failure = new ComCallException("NoteField", new COMException("nope", unchecked((int)0x8002000E)));
+        holder.Throws["NoteField"] = failure;
+        holder.Throws["NoteField(1)"] = failure;
+        App.OutValues["GetCardHoldersByAccountName#2"] = new object[] { holder };
+        App.OutValues["GetCardsByCHID#1"] = Array.Empty<object>();
+
+        var single = Assert.Single(CreateApi(accountName: null).GetCardHolders());
+
+        Assert.Null(single.Note);
+    }
+
+    [Theory]
+    [InlineData("WINPAK", "WINPAK")]
+    [InlineData(null, null)]
+    [InlineData("  ", null)]
+    public void Prosty_nazev_zdroje_projde_beze_zmeny(string? raw, string? expected)
+        => Assert.Equal(expected, WinPakDatabaseApi.DescribeDataSource(raw));
+
+    [Fact]
+    public void Pripojovaci_XML_z_GetWPDSN_nikdy_neprozradi_heslo()
+    {
+        // Přesně tvar, který vrátil skutečný WIN-PAK — včetně hesla k databázi v čitelné podobě.
+        const string raw = "<ServerName>SQL01</ServerName><Database>WinPak</Database><dsn>WIN-PAK Database</dsn>"
+                           + "<user>admin_wp</user><password>Tajne&Heslo@26</password>";
+
+        var described = WinPakDatabaseApi.DescribeDataSource(raw);
+
+        Assert.Equal("WIN-PAK Database, server SQL01, databáze WinPak", described);
+        Assert.DoesNotContain("admin_wp", described);
+        Assert.DoesNotContain("Tajne", described);
+        Assert.DoesNotContain("password", described, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void XML_bez_znamych_prvku_se_neprozradi_vubec()
+    {
+        var described = WinPakDatabaseApi.DescribeDataSource("<user>admin_wp</user><password>x</password>");
+
+        Assert.Equal("(připojovací údaje skryty)", described);
+    }
+
     // ---------- Systémové údaje ----------
 
     [Fact]
