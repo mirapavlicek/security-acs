@@ -52,6 +52,14 @@ public sealed class ComDispatch(object instance) : IComDispatch
     /// <summary>DISP_E_TYPEMISMATCH — pozdní vazba odmítla typ argumentu, metoda se nespustila.</summary>
     private const int TypeMismatch = unchecked((int)0x80020005);
 
+    /// <summary>
+    /// Které pozice argumentů musí být u dané metody prázdný řetězec místo null.
+    /// Naučí se při prvním „Type mismatch“ a pak se použije rovnou — jinak by
+    /// každé volání metody s výstupním řetězcem stálo dva COM roundtripy
+    /// (u 785 čteček by to bylo 785 zbytečných volání navíc).
+    /// </summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int[]> LearnedEmptyStrings = new();
+
     public object? Invoke(string method, object?[] args)
     {
         // WIN-PAK je VB6/COM: jeho Long je 32bitový (VT_I4). C# long by šel jako
@@ -60,6 +68,15 @@ public sealed class ComDispatch(object instance) : IComDispatch
         {
             if (args[i] is long l && l is >= int.MinValue and <= int.MaxValue)
                 args[i] = (int)l;
+        }
+
+        if (LearnedEmptyStrings.TryGetValue(method, out var learned))
+        {
+            foreach (var index in learned)
+            {
+                if (index < args.Length && args[index] is null)
+                    args[index] = "";
+            }
         }
 
         try
@@ -73,12 +90,13 @@ public sealed class ComDispatch(object instance) : IComDispatch
             // kolekce (ByRef As Variant) null naopak snese. Které z nich to je,
             // příručka neříká, takže se null postupně nahrazují prázdným řetězcem.
             // Odmítnuté volání se neprovedlo, opakování je bezpečné i u zápisů.
-            foreach (var candidate in RetryVariants(args))
+            foreach (var (candidate, replaced) in RetryVariants(args))
             {
                 try
                 {
                     var result = InvokeOnce(method, candidate);
                     Array.Copy(candidate, args, args.Length);
+                    LearnedEmptyStrings[method] = replaced;
                     return result;
                 }
                 catch (ComCallException retry) when (IsTypeMismatch(retry))
@@ -113,23 +131,23 @@ public sealed class ComDispatch(object instance) : IComDispatch
     /// Nejdřív všechny null najednou (obvyklý případ: jeden výstupní řetězec), pak
     /// každý zvlášť — pro volání, kde je vedle řetězce i výstupní kolekce.
     /// </summary>
-    private static IEnumerable<object?[]> RetryVariants(object?[] args)
+    private static IEnumerable<(object?[] Args, int[] Replaced)> RetryVariants(object?[] args)
     {
-        var nullIndexes = Enumerable.Range(0, args.Length).Where(i => args[i] is null).ToList();
+        var nullIndexes = Enumerable.Range(0, args.Length).Where(i => args[i] is null).ToArray();
 
         var all = (object?[])args.Clone();
         foreach (var i in nullIndexes)
             all[i] = "";
-        yield return all;
+        yield return (all, nullIndexes);
 
-        if (nullIndexes.Count < 2)
+        if (nullIndexes.Length < 2)
             yield break;
 
         foreach (var index in nullIndexes)
         {
             var single = (object?[])args.Clone();
             single[index] = "";
-            yield return single;
+            yield return (single, [index]);
         }
     }
 

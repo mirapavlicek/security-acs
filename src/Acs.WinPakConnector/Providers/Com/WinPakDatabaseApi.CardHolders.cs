@@ -5,9 +5,22 @@ namespace Acs.WinPakConnector.Providers.Com;
 /// <summary>Držitelé karet včetně vyhledávání, poznámkových polí, fotek a podpisů.</summary>
 public sealed partial class WinPakDatabaseApi
 {
+    /// <summary>
+    /// Všichni držitelé účtu. Karty se načtou jedním výpisem za celý účet a přiřadí
+    /// podle CardHolderID — dřív se pro každého držitele volaly zvlášť, což u tisíců
+    /// držitelů znamenalo tisíce COM roundtripů.
+    /// </summary>
     public IReadOnlyList<CardHolderDto> GetCardHolders()
-        => CallList("GetCardHoldersByAccountName", MapCardHolder,
+    {
+        var cardsByHolder = GetCards()
+            .Where(c => !string.IsNullOrEmpty(c.CardHolderId))
+            .GroupBy(c => c.CardHolderId!)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<CardDto>)g.ToList());
+
+        return CallList("GetCardHoldersByAccountName",
+            holder => MapCardHolder(holder, id => cardsByHolder.GetValueOrDefault(id) ?? []),
             AccountName, SubAccountName, null);
+    }
 
     public CardHolderDto? GetCardHolder(string cardHolderId)
     {
@@ -17,9 +30,12 @@ public sealed partial class WinPakDatabaseApi
     }
 
     private CardHolderDto MapCardHolder(IComDispatch holder)
+        => MapCardHolder(holder, GetCardsByCardHolder);
+
+    private static CardHolderDto MapCardHolder(IComDispatch holder, Func<string, IReadOnlyList<CardDto>> cardsOf)
     {
         var id = ComValue.ToStringOrEmpty(holder.GetProperty("CardHolderID"));
-        var cards = GetCardsByCardHolder(id);
+        var cards = cardsOf(id);
 
         return new CardHolderDto(
             Id: id,

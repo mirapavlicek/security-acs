@@ -308,10 +308,26 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
         var args = new object?[] { AccountName, null };
         App.Invoke("GetReadersByAccountName", args);
 
-        var readers = new List<ReaderDto>();
-        foreach (var raw in ComValue.AsEnumerable(args[1]))
+        var rawReaders = ComValue.AsEnumerable(args[1]).Select(_com.Wrap).ToList();
+
+        // Název zařízení podle DeviceID se dřív dotahoval pro každou čtečku zvlášť —
+        // u 785 čteček 785 COM roundtripů (a s opakováním po Type mismatch dvakrát
+        // tolik). Jeden výpis všech zařízení účtu dá totéž jedním voláním; na dotaz
+        // po jednom se sáhne jen u id, které ve výpisu chybí.
+        var deviceIds = rawReaders.Select(d => ComValue.ToLong(d.GetProperty("DeviceID"))).Where(id => id > 0).Distinct().ToList();
+        if (deviceIds.Any(id => !_panelNames.ContainsKey(id)))
         {
-            var device = _com.Wrap(raw);
+            foreach (var device in GetHardwareDevices())
+            {
+                var id = ComValue.ToLong(device.DeviceId);
+                if (id > 0 && !_panelNames.ContainsKey(id))
+                    _panelNames[id] = device.Name;
+            }
+        }
+
+        var readers = new List<ReaderDto>(rawReaders.Count);
+        foreach (var device in rawReaders)
+        {
             var deviceId = ComValue.ToLong(device.GetProperty("DeviceID"));
             readers.Add(new ReaderDto(
                 // Comm API adresuje zařízení přes HWDeviceID — používáme ho i jako id čtečky,
@@ -327,7 +343,7 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
         return readers;
     }
 
-    /// <summary>Název panelu se dotahuje podle DeviceID a cachuje — čteček bývají stovky.</summary>
+    /// <summary>Název zařízení podle DeviceID; po hromadném naplnění z výpisu zařízení už jen z paměti.</summary>
     private string? GetPanelName(long deviceId)
     {
         if (deviceId <= 0)

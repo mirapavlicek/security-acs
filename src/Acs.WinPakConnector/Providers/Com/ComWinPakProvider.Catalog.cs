@@ -29,7 +29,7 @@ public sealed partial class ComWinPakProvider : IWinPakCatalogApi
         => RunAsync(() => _database.ConfigureEntranceAccess(accessLevelName, request), ct);
 
     public Task DeleteAccessLevelAsync(string accessLevelName, CancellationToken ct)
-        => RunAsync(() => _database.DeleteAccessLevel(accessLevelName), ct);
+        => RunAsyncInvalidating(() => _database.DeleteAccessLevel(accessLevelName), ct);
 
     public Task<IReadOnlyList<CardDto>> IsolateAccessLevelAsync(string accessLevelName, CancellationToken ct)
         => RunAsync(() => _database.IsolateAccessLevel(accessLevelName), ct);
@@ -41,7 +41,7 @@ public sealed partial class ComWinPakProvider : IWinPakCatalogApi
         => RunAsync(() => _database.ReassignAccessLevel(accessLevelName, request), ct);
 
     public Task AddAccessLevelAsync(CreateAccessLevelRequest request, CancellationToken ct)
-        => RunAsync(() => _database.AddAccessLevel(request), ct);
+        => RunAsyncInvalidating(() => _database.AddAccessLevel(request), ct);
 
     public Task EditAccessLevelAsync(string currentName, CreateAccessLevelRequest request, CancellationToken ct)
         => RunAsync(() => _database.EditAccessLevel(currentName, request), ct);
@@ -109,13 +109,13 @@ public sealed partial class ComWinPakProvider : IWinPakCatalogApi
     // ---------- Časové zóny ----------
 
     public Task<IReadOnlyList<TimeZoneDto>> GetTimeZonesAsync(CancellationToken ct)
-        => RunAsync(_database.GetTimeZones, ct);
+        => RunAsync(() => Cached("time-zones", _database.GetTimeZones), ct);
 
     public Task<TimeZoneDto?> GetTimeZoneByNameAsync(string name, CancellationToken ct)
         => RunAsync(() => _database.GetTimeZoneByName(name), ct);
 
     public Task<string> AddTimeZoneAsync(UpsertTimeZoneRequest request, CancellationToken ct)
-        => RunAsync(() => _database.AddTimeZone(request), ct);
+        => RunAsyncInvalidating(() => _database.AddTimeZone(request), ct);
 
     public Task CreateTimeZoneAsync(UpsertTimeZoneRequest request, CancellationToken ct)
         => RunAsync(() => _database.CreateTimeZone(request), ct);
@@ -124,7 +124,7 @@ public sealed partial class ComWinPakProvider : IWinPakCatalogApi
         => RunAsync(() => _database.EditTimeZone(currentName, request), ct);
 
     public Task DeleteTimeZoneAsync(string timeZoneId, CancellationToken ct)
-        => RunAsync(() => _database.DeleteTimeZone(timeZoneId), ct);
+        => RunAsyncInvalidating(() => _database.DeleteTimeZone(timeZoneId), ct);
 
     public Task<IReadOnlyList<TimeZoneRangeDto>> GetTimeZoneRangesAsync(string timeZoneId, CancellationToken ct)
         => RunAsync(() => _database.GetTimeZoneRanges(timeZoneId), ct);
@@ -179,10 +179,10 @@ public sealed partial class ComWinPakProvider : IWinPakCatalogApi
     // ---------- Hardware ----------
 
     public Task<IReadOnlyList<HardwareDeviceDto>> GetHardwareDevicesAsync(CancellationToken ct)
-        => RunAsync(_database.GetHardwareDevices, ct);
+        => RunAsync(() => Cached("hardware", _database.GetHardwareDevices), ct);
 
     public Task<IReadOnlyList<PanelDto>> GetPanelsAsync(CancellationToken ct)
-        => RunAsync(_database.GetPanels, ct);
+        => RunAsync(() => Cached("panels", _database.GetPanels), ct);
 
     public Task<IReadOnlyList<PanelPointDto>> GetPanelOutputsAsync(long panelId, CancellationToken ct)
         => RunAsync(() => _database.GetPanelOutputs(panelId), ct);
