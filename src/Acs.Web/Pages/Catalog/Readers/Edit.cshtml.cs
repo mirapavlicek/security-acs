@@ -1,13 +1,14 @@
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Data;
+using Acs.Infrastructure.Sync;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 
 namespace Acs.Web.Pages.Catalog.Readers;
 
-public class EditModel(AcsDbContext db, AuditService audit) : PageModel
+public class EditModel(AcsDbContext db, AuditService audit, ReaderCleanupService cleanup) : PageModel
 {
     [BindProperty]
     public Reader Reader { get; set; } = new() { Name = "" };
@@ -19,6 +20,7 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
     public List<Reader> DependencyCandidates { get; private set; } = [];
 
     [TempData] public string? ErrorMessage { get; set; }
+    [TempData] public string? Message { get; set; }
 
     public async Task<IActionResult> OnGetAsync(int? id)
     {
@@ -71,6 +73,13 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
             await audit.LogAsync(User.Identity?.Name, "reader-updated", "Reader", existing.Id.ToString(), existing.Name);
         }
 
+        return RedirectToPage("Index");
+    }
+
+    /// <summary>Odstraní čtečku: bez vazeb smaže, s vazbami deaktivuje a skryje.</summary>
+    public async Task<IActionResult> OnPostDeleteAsync(int id)
+    {
+        Message = (await cleanup.RemoveAsync([id], User.Identity?.Name)).ToString();
         return RedirectToPage("Index");
     }
 

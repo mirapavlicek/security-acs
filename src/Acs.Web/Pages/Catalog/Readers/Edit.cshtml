@@ -57,6 +57,15 @@
         <button class="btn" type="submit">Uložit</button>
         <a class="btn btn-ghost" asp-page="Index">Zpět</a>
     </form>
+    @if (Model.Reader.Id != 0)
+    {
+        <form method="post" asp-page-handler="Delete" asp-route-id="@Model.Reader.Id" class="inline-form" style="margin-top:0.6rem">
+            <button class="btn btn-ghost" type="submit"
+                    onclick="return confirm('Odstranit čtečku @Model.Reader.Name? Bez vazeb se smaže; s žádostí, skupinou nebo závislostí se deaktivuje a skryje.')">
+                Odstranit čtečku
+            </button>
+        </form>
+    }
 </div>
 
 @if (Model.Reader.Id != 0)

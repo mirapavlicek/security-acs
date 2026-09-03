@@ -126,14 +126,27 @@ deaktivovaných, 4 založené části místností → **761 aktivních čteček 
 Vygenerované plány pak umístí 718 čteček (aktivní čtečky navázané na místnost
 nebo chodbu).
 
-## Úklid deaktivovaných čteček
+## Odstranění čteček z prvního importu
 
-Deaktivované odhady z půdorysů v číselníku zůstávají (nekreslí se do plánů
-a nenabízejí v žádostech). Kdo je chce mít pryč: **Číselníky → Čtečky**, filtr
-**jen neaktivní**, tlačítko **Smazat neaktivní podle filtru**. Maže se jen to,
-co nemá historii — neaktivní čtečka bez žádosti, skupiny a závislosti. Cokoli
-s vazbou zůstane neaktivní a hláška to vypíše jmenovitě; u přístupu musí jít
-zpětně dohledat, ke které čtečce byl. Aktivní čtečky se takhle smazat nedají.
+Kdo se chce odhadů z půdorysů zbavit úplně, nemusí čekat na import z dokumentace:
+**Číselníky → Čtečky → Odstranit podle filtru** (bez filtru = všechny). Na kartě
+jedné čtečky je tlačítko **Odstranit čtečku**.
+
+Správce nemusí řešit, co na čtečce visí — řeší to aplikace:
+
+- čtečka **bez vazeb se smaže**;
+- čtečka, na které je **žádost, členství ve skupině nebo závislost**, se
+  **deaktivuje a skryje** — zmizí ze seznamu, plánů, počtů v Budovách i z výběru
+  v nové žádosti, ale záznam zůstane, aby šlo zpětně dohledat, ke které čtečce
+  přístup byl. Hláška takové čtečky vypíše jmenovitě.
+
+Seznam čteček zobrazuje ve výchozím stavu jen aktivní; skryté ukáže filtr
+„včetně skrytých“ nebo „jen skryté (neaktivní)“.
+
+Pořadí při přechodu na dokumentaci EKV je pak libovolné: buď nejdřív odstranit
+odhady a pak importovat tabulky (všechny čtečky vzniknou nově), nebo importovat
+a nechat import odhady sjednotit a deaktivovat, a skryté pak odstranit filtrem
+„jen skryté“.
 
 ## Co zůstává na ruční dořešení
 
