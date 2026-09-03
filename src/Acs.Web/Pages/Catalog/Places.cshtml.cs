@@ -86,8 +86,9 @@ public class PlacesModel(AcsDbContext db, AuditService audit, PlanGenerationServ
             .GroupBy(c => c.FloorId).Select(g => new { g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count);
         var readers = await db.Readers
-            .Where(r => (r.Room != null && floorIds.Contains(r.Room.FloorId))
-                        || (r.Corridor != null && floorIds.Contains(r.Corridor.FloorId)))
+            .Where(r => r.IsActive
+                        && ((r.Room != null && floorIds.Contains(r.Room.FloorId))
+                            || (r.Corridor != null && floorIds.Contains(r.Corridor.FloorId))))
             .Select(r => r.Room != null ? r.Room.FloorId : r.Corridor!.FloorId)
             .ToListAsync();
         var readerCounts = readers.GroupBy(f => f).ToDictionary(g => g.Key, g => g.Count());
@@ -112,10 +113,10 @@ public class PlacesModel(AcsDbContext db, AuditService audit, PlanGenerationServ
         var rooms = await db.Rooms.Include(r => r.Corridor)
             .Where(r => r.FloorId == id).OrderBy(r => r.Name).ToListAsync();
 
-        var corridorReaders = await db.Readers.Where(r => r.CorridorId != null && r.Corridor!.FloorId == id)
+        var corridorReaders = await db.Readers.Where(r => r.IsActive && r.CorridorId != null && r.Corridor!.FloorId == id)
             .GroupBy(r => r.CorridorId!.Value).Select(g => new { g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count);
-        var roomReaders = await db.Readers.Where(r => r.RoomId != null && r.Room!.FloorId == id)
+        var roomReaders = await db.Readers.Where(r => r.IsActive && r.RoomId != null && r.Room!.FloorId == id)
             .GroupBy(r => r.RoomId!.Value).Select(g => new { g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count);
 

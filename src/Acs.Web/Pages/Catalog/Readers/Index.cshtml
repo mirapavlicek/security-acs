@@ -55,11 +55,11 @@
             }
         </select>
         <select name="active">
-            <option value="">— aktivní i neaktivní —</option>
-            <option value="@Acs.Web.Pages.Catalog.Readers.IndexModel.ActiveOnlyFilter"
-                    selected="@(Model.Active == Acs.Web.Pages.Catalog.Readers.IndexModel.ActiveOnlyFilter)">jen aktivní</option>
+            <option value="">— jen aktivní —</option>
+            <option value="@Acs.Web.Pages.Catalog.Readers.IndexModel.AllFilter"
+                    selected="@(Model.Active == Acs.Web.Pages.Catalog.Readers.IndexModel.AllFilter)">včetně skrytých</option>
             <option value="@Acs.Web.Pages.Catalog.Readers.IndexModel.InactiveOnlyFilter"
-                    selected="@(Model.Active == Acs.Web.Pages.Catalog.Readers.IndexModel.InactiveOnlyFilter)">jen neaktivní</option>
+                    selected="@(Model.Active == Acs.Web.Pages.Catalog.Readers.IndexModel.InactiveOnlyFilter)">jen skryté (neaktivní)</option>
         </select>
         <button class="btn btn-sm" type="submit">Filtrovat</button>
         @if (Model.HasFilter)
@@ -118,18 +118,22 @@
     </div>
 
     <div class="card bulkbar">
-        <strong>Úklid neaktivních čteček</strong>
+        <strong>Odstranění čteček</strong>
         <button class="btn btn-sm btn-ghost" type="submit" asp-page-handler="Delete" id="bulk-delete" disabled
-                onclick="return confirm('Smazat označené čtečky? Smažou se jen neaktivní bez žádostí, skupin a závislostí; ostatní zůstanou.')">
-            Smazat označené (<span id="bulk-delete-count">0</span>)
+                onclick="return confirm('Odstranit označené čtečky? Čtečky bez vazeb se smažou; ty s žádostí, skupinou nebo závislostí se deaktivují a skryjí.')">
+            Odstranit označené (<span id="bulk-delete-count">0</span>)
         </button>
         <button class="btn btn-sm btn-ghost" type="submit" asp-page-handler="DeleteFiltered"
-                onclick="return confirm('Smazat všech @Model.InactiveCount neaktivních čteček podle aktuálního filtru? Ty s žádostmi, skupinami nebo závislostmi zůstanou.')">
-            Smazat neaktivní podle filtru (@Model.InactiveCount)
+                onclick="return confirm('Odstranit všech @Model.Readers.Count čteček podle aktuálního filtru? Bez vazeb se smažou, s vazbami se deaktivují a skryjí.')">
+            Odstranit podle filtru (@Model.Readers.Count)
         </button>
         <span class="muted">
-            Maže se jen to, co nemá historii: neaktivní čtečka bez žádosti, skupiny a závislosti.
-            Odhady z výkresů deaktivované importem z tabulky EKV takhle zmizí, cokoli s vazbou zůstane neaktivní.
+            Čtečka bez vazeb se smaže. Čtečka, na které je žádost, skupina nebo závislost, se
+            deaktivuje a skryje — záznam zůstává kvůli dohledatelnosti přístupů.
+            @if (Model.HiddenCount > 0)
+            {
+                <text>Skrytých čteček: @Model.HiddenCount (zobrazí filtr „včetně skrytých“).</text>
+            }
         </span>
     </div>
 

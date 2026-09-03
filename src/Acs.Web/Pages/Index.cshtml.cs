@@ -27,7 +27,7 @@ public class IndexModel(
 
         UserCount = await db.Users.CountAsync();
         EmployeeCount = await db.Employees.CountAsync();
-        ReaderCount = await db.Readers.CountAsync();
+        ReaderCount = await db.Readers.CountAsync(r => r.IsActive);
 
         if (await settings.GetAsync(SettingKeys.WinPakBaseUrl) is null)
         {

@@ -16,8 +16,8 @@ public class IndexModel(
     ReaderCleanupService cleanup,
     AuditService audit) : PageModel
 {
-    /// <summary>Hodnoty filtru aktivity.</summary>
-    public const string ActiveOnlyFilter = "active";
+    /// <summary>Hodnoty filtru aktivity; prázdné = jen aktivní (neaktivní jsou skryté).</summary>
+    public const string AllFilter = "all";
     public const string InactiveOnlyFilter = "inactive";
 
     /// <summary>Hodnota filtru matice, která znamená „čtečky bez matice“.</summary>
@@ -37,7 +37,7 @@ public class IndexModel(
     /// <summary>Prázdné = všechny, <see cref="NoMatrixFilter"/> = bez matice, jinak id matice.</summary>
     [BindProperty(SupportsGet = true)] public string? Matrix { get; set; }
 
-    /// <summary>Prázdné = všechny, <see cref="ActiveOnlyFilter"/> nebo <see cref="InactiveOnlyFilter"/>.</summary>
+    /// <summary>Prázdné = jen aktivní, <see cref="AllFilter"/> = i skryté, <see cref="InactiveOnlyFilter"/> = jen skryté.</summary>
     [BindProperty(SupportsGet = true)] public string? Active { get; set; }
 
     [TempData] public string? Message { get; set; }
@@ -47,7 +47,8 @@ public class IndexModel(
         !string.IsNullOrWhiteSpace(Search) || BuildingId is not null || FloorId is not null
         || GroupId is not null || !string.IsNullOrWhiteSpace(Matrix) || !string.IsNullOrWhiteSpace(Active);
 
-    public int InactiveCount { get; private set; }
+    /// <summary>Kolik čteček je skrytých (neaktivních) — ať správce ví, že filtr něco schovává.</summary>
+    public int HiddenCount { get; private set; }
 
     public async Task OnGetAsync()
     {
@@ -61,7 +62,7 @@ public class IndexModel(
             .Include(r => r.Dependencies).ThenInclude(d => d.RequiresReader);
 
         Readers = await query.OrderBy(r => r.Name).ToListAsync();
-        InactiveCount = Readers.Count(r => !r.IsActive);
+        HiddenCount = await db.Readers.CountAsync(r => !r.IsActive);
         Matrices = await db.ApprovalMatrices.Where(m => m.IsActive).OrderBy(m => m.Name).ToListAsync();
         Buildings = await db.Buildings.OrderBy(b => b.Name).ToListAsync();
         Floors = await db.Floors.Include(f => f.Building)
@@ -110,10 +111,11 @@ public class IndexModel(
         else if (int.TryParse(Matrix, out var matrixId))
             query = query.Where(r => r.ApprovalMatrixId == matrixId);
 
-        if (Active == ActiveOnlyFilter)
-            query = query.Where(r => r.IsActive);
-        else if (Active == InactiveOnlyFilter)
+        // Neaktivní čtečky jsou skryté — jsou to odstraněné záznamy držené kvůli historii.
+        if (Active == InactiveOnlyFilter)
             query = query.Where(r => !r.IsActive);
+        else if (Active != AllFilter)
+            query = query.Where(r => r.IsActive);
 
         return query;
     }
@@ -167,7 +169,7 @@ public class IndexModel(
         return RedirectToFilteredPage();
     }
 
-    /// <summary>Smaže označené čtečky — jen neaktivní bez vazeb, ostatní přeskočí s důvodem.</summary>
+    /// <summary>Odstraní označené čtečky: bez vazeb smaže, s vazbami deaktivuje a skryje.</summary>
     public async Task<IActionResult> OnPostDeleteAsync(int[] readerIds)
     {
         if (readerIds.Length == 0)
@@ -176,22 +178,22 @@ public class IndexModel(
             return RedirectToFilteredPage();
         }
 
-        Message = (await cleanup.DeleteAsync(readerIds, User.Identity?.Name)).ToString();
+        Message = (await cleanup.RemoveAsync(readerIds, User.Identity?.Name)).ToString();
         return RedirectToFilteredPage();
     }
 
-    /// <summary>Smaže všechny neaktivní čtečky bez vazeb, které odpovídají aktuálnímu filtru.</summary>
+    /// <summary>Odstraní všechny čtečky odpovídající aktuálnímu filtru (i mimo obrazovku).</summary>
     public async Task<IActionResult> OnPostDeleteFilteredAsync()
     {
         var query = await FilteredQueryAsync();
-        var ids = await query.Where(r => !r.IsActive).Select(r => r.Id).ToListAsync();
+        var ids = await query.Select(r => r.Id).ToListAsync();
         if (ids.Count == 0)
         {
-            ErrorMessage = "Podle aktuálního filtru není žádná neaktivní čtečka.";
+            ErrorMessage = "Podle aktuálního filtru není žádná čtečka.";
             return RedirectToFilteredPage();
         }
 
-        Message = (await cleanup.DeleteAsync(ids, User.Identity?.Name)).ToString();
+        Message = (await cleanup.RemoveAsync(ids, User.Identity?.Name)).ToString();
         return RedirectToFilteredPage();
     }
 
