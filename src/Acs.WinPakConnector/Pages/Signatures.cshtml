@@ -1,0 +1,53 @@
+@page "/ui/signatures"
+@using Acs.WinPakConnector.Providers.Com.Signatures
+@model Acs.WinPakConnector.Pages.SignaturesModel
+@{
+    ViewData["Title"] = "Signatury API";
+}
+<h1>Signatury WIN-PAK API</h1>
+<p class="muted">
+    Porovnání všech volání, která konektor umí (přepis příručky WIN-PAK API), se skutečnými
+    signaturami COM objektů této instalace podle jejich typové informace. Do databáze WIN-PAKu
+    se přitom nevolá nic. Režim <span class="badge badge-primary">@Model.Mode</span>.
+</p>
+
+<div class="card">
+    @if (!Model.Ran)
+    {
+        <a class="btn" asp-page="/Signatures" asp-route-run="true">Zkontrolovat signatury</a>
+    }
+    else if (Model.Error is not null)
+    {
+        <div class="alert alert-error">@Model.Error</div>
+    }
+    else
+    {
+        <p>
+            <span class="badge badge-ok">sedí: @Model.Count(SignatureVerdict.Ok)</span>
+            <span class="badge badge-primary">vyrovná se za běhu: @Model.Count(SignatureVerdict.Learnable)</span>
+            <span class="badge badge-bad">rozdíl: @Model.Count(SignatureVerdict.Mismatch)</span>
+            <span class="badge badge-bad">chybí: @Model.Count(SignatureVerdict.Missing)</span>
+            <span class="badge">nelze ověřit: @Model.Count(SignatureVerdict.Unknown)</span>
+        </p>
+        <table class="data">
+            <thead><tr><th style="width:1%">Stav</th><th>Metoda</th><th>Konektor posílá</th><th>WIN-PAK má</th><th>Poznámka</th></tr></thead>
+            <tbody>
+            @foreach (var result in Model.Results.OrderBy(r => r.Verdict == SignatureVerdict.Ok).ThenBy(r => r.Method))
+            {
+                <tr>
+                    <td><span class="badge @SignaturesModel.Badge(result.Verdict)">@SignaturesModel.Label(result.Verdict)</span></td>
+                    <td class="mono">@result.Method<br /><span class="muted">@result.Origin</span></td>
+                    <td class="mono">@result.Sent</td>
+                    <td class="mono">@(result.Actual ?? "—")</td>
+                    <td class="muted">@result.Note</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (Model.AsText.Length > 0)
+        {
+            <h3>Rozdíly k zkopírování</h3>
+            <pre class="mono" style="white-space:pre-wrap">@Model.AsText</pre>
+        }
+    }
+</div>

@@ -465,4 +465,16 @@ public sealed class FeaturePagesTests(AdminUiFactory factory) : IClassFixture<Ad
         var withPhoto = await client.GetStringAsync($"/ui/features/cards?holderId={holderId}&showPhoto=true");
         Assert.DoesNotContain("Načíst fotku", withPhoto);
     }
+
+    [Fact]
+    public async Task Stranka_signatur_v_Mock_rezimu_rekne_ze_neni_co_popisovat()
+    {
+        var client = await SignInAsync();
+
+        var page = await client.GetStringAsync("/ui/signatures");
+        Assert.Contains("Zkontrolovat signatury", page);
+
+        var ran = await client.GetStringAsync("/ui/signatures?run=true");
+        Assert.Contains("nemá COM objekty", ran);
+    }
 }

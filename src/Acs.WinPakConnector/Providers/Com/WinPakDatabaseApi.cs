@@ -179,6 +179,17 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
         });
     }
 
+    /// <summary>
+    /// Pohled na samotný aplikační objekt (typová informace, členy) — bez volání do
+    /// databáze. Přihlásí se, když ještě není; objekt bez přihlášení má typovou
+    /// informaci stejnou, ale relace se stejně hodí pro další volání.
+    /// </summary>
+    public T InspectApplication<T>(Func<IComDispatch, T> inspect)
+    {
+        EnsureSession();
+        return inspect(_app!);
+    }
+
     /// <summary>Zahodí mrtvou relaci bez pokusu o odhlášení — server, který by ho přijal, už neběží.</summary>
     private void ResetSession()
     {
@@ -273,6 +284,13 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
         EnsureSession();
         App.Invoke(method, args);
         return args;
+    }
+
+    /// <summary>Volání, u kterého zajímá návratová hodnota (nebo doplněný výstupní parametr — viz <see cref="ComDispatch"/>).</summary>
+    private object? CallWithResult(string method, params object?[] args)
+    {
+        EnsureSession();
+        return App.Invoke(method, args);
     }
 
     /// <summary>Zavolá metodu, jejíž poslední parametr je <c>[out]</c> stavový kód zápisu karty.</summary>

@@ -63,16 +63,32 @@ public static class ComCallTrace
     }
 }
 
+/// <summary>Odkud se bere skutečná signatura metody; v testech se nahrazuje.</summary>
+public delegate ComMembers.ComMethodSignature? SignatureSource(IComDispatch target, string method);
+
 /// <summary>Skutečná pozdní vazba přes <see cref="Type.InvokeMember(string, BindingFlags, Binder, object, object[])"/>.</summary>
 [SupportedOSPlatform("windows")]
-public sealed class ComDispatch(object instance) : IComDispatch
+public sealed class ComDispatch(object instance, SignatureSource? signatures = null) : IComDispatch
 {
     public object Target { get; } = instance;
 
     private object Instance => Target;
 
+    private readonly SignatureSource _signatures = signatures ?? ComMembers.DescribeMethod;
+
     /// <summary>DISP_E_TYPEMISMATCH — pozdní vazba odmítla typ argumentu, metoda se nespustila.</summary>
     private const int TypeMismatch = unchecked((int)0x80020005);
+
+    /// <summary>DISP_E_BADPARAMCOUNT — metoda má jiný počet parametrů, než konektor poslal.</summary>
+    private const int BadParamCount = unchecked((int)0x8002000E);
+
+    /// <summary>
+    /// Parametry, které se u dané metody přidávají na konec, protože skutečná
+    /// signatura jich má víc než příručka. Naučí se z typové informace při prvním
+    /// „Number of parameters specified does not match“ (<c>AddUpdateCard</c> na ostrém).
+    /// Hodnoty jsou vzory, každé volání dostane kopii — by-ref parametry se přepisují.
+    /// </summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object?[]> LearnedExtensions = new();
 
     /// <summary>Jak se musí u dané metody upravit argument na dané pozici, aby ho WIN-PAK přijal.</summary>
     private enum Shape
@@ -103,6 +119,45 @@ public sealed class ComDispatch(object instance) : IComDispatch
         if (LearnedShapes.TryGetValue(method, out var learned))
             Apply(args, learned);
 
+        if (LearnedExtensions.TryGetValue(method, out var extension))
+            return InvokeExtended(method, args, extension);
+
+        try
+        {
+            return InvokeShaped(method, args);
+        }
+        catch (ComCallException ex) when (IsBadParamCount(ex))
+        {
+            // Příručka a skutečný WIN-PAK se liší v počtu parametrů. Typová informace
+            // objektu říká, kolik jich metoda má doopravdy a jakého jsou typu: chybějící
+            // na konci se doplní výchozími hodnotami (typicky výstupní stavový kód, který
+            // příručka neuvádí) a volání se zopakuje. Když má metoda parametrů míň,
+            // nic se neořezává — potichu vypuštěný seznam přístupových úrovní by byla
+            // horší chyba než odmítnuté volání; hláška vypíše skutečnou signaturu.
+            var signature = _signatures(this, method);
+            if (signature is null)
+                throw;
+
+            if (signature.Parameters.Count > args.Length)
+            {
+                var placeholders = signature.Parameters.Skip(args.Length).Select(Placeholder).ToArray();
+                var result = InvokeExtended(method, args, placeholders);
+                LearnedExtensions[method] = placeholders;
+                return result;
+            }
+
+            throw WithSignature(ex, signature, args.Length);
+        }
+        catch (ComCallException ex) when (IsTypeMismatch(ex))
+        {
+            var signature = _signatures(this, method);
+            throw signature is null ? ex : WithSignature(ex, signature, args.Length);
+        }
+    }
+
+    /// <summary>Volání s opakováním při „Type mismatch“ přes naučitelné tvary argumentů.</summary>
+    private object? InvokeShaped(string method, object?[] args)
+    {
         try
         {
             return InvokeOnce(method, args);
@@ -131,6 +186,54 @@ public sealed class ComDispatch(object instance) : IComDispatch
             throw;
         }
     }
+
+    /// <summary>
+    /// Volání s doplněnými parametry. Výstupní hodnoty původních pozic se vrátí
+    /// do <paramref name="args"/>; hodnota doplněného výstupního parametru (u
+    /// zápisů stavový kód) se vrátí jako výsledek, když metoda sama nic nevrací.
+    /// </summary>
+    private object? InvokeExtended(string method, object?[] args, object?[] extension)
+    {
+        var extended = new object?[args.Length + extension.Length];
+        args.CopyTo(extended, 0);
+        for (var i = 0; i < extension.Length; i++)
+            extended[args.Length + i] = extension[i] is Array array ? array.Clone() : extension[i];
+
+        var result = InvokeShaped(method, extended);
+        Array.Copy(extended, args, args.Length);
+
+        if (result is not null || extension.Length == 0)
+            return result;
+        return extension.Length == 1 ? extended[^1] : extended[args.Length..];
+    }
+
+    /// <summary>Výchozí hodnota parametru podle jeho typu tak, aby ji by-ref vazba přijala.</summary>
+    private static object? Placeholder(ComMembers.ComParameter parameter) => parameter.Type switch
+    {
+        "Long" or "UInt32" or "LongLong" => 0,
+        "Integer" => (short)0,
+        "Byte" => (byte)0,
+        "Single" => 0f,
+        "Double" => 0d,
+        "Currency" => 0m,
+        "Boolean" => false,
+        "String" => "",
+        "Date" => DateTime.Today,
+        "Long()" => Array.Empty<int>(),
+        "String()" => Array.Empty<string>(),
+        _ => null,
+    };
+
+    private static ComCallException WithSignature(ComCallException ex, ComMembers.ComMethodSignature signature, int sent)
+    {
+        var inner = ex.InnerException as COMException;
+        var text = $"{inner?.Message ?? ex.InnerException?.Message} — WIN-PAK má {signature.Parameters.Count} parametrů, "
+                   + $"konektor poslal {sent}. Skutečná signatura: {signature}";
+        return new ComCallException(ex.Member, new COMException(text, inner?.HResult ?? ex.HResult));
+    }
+
+    private static bool IsBadParamCount(ComCallException ex)
+        => ex.InnerException is COMException { HResult: BadParamCount };
 
     private static void Apply(object?[] args, (int Index, Shape Shape)[] shapes)
     {
