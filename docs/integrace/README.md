@@ -166,8 +166,10 @@ Co musí být v zadání ošetřené, protože jinak to v provozu selže:
 - **Zamítnutí se hlásí jako událost** s důvodem. Bez toho není dohledatelné, proč
   brána někoho nepustila, a každá stížnost je neřešitelná.
 - **Kdo o vjezd žádá.** Vjezd je oprávnění jako každé jiné — vzniká schválenou
-  žádostí v ACS, s platností a s tím, kdo ho schválil. To je proti dnešnímu
-  stavu, kdy jsou SPZ v ACS jen evidované.
+  žádostí v ACS, s platností a s tím, kdo ho schválil. V ACS to řeší
+  **parkovací povolení** (druhy povolení, areály, vlastní schvalovací
+  procesy); vydané povolení zapíše SPZ jako identifikátor zaměstnance
+  s platností, takže autorizační dotaz u brány má z čeho vycházet.
 
 ### 4.2 Systém pro stravování se skupinami strávníků
 
@@ -346,8 +348,14 @@ aby ACS neměl dvě cesty pro totéž.
 
 1. **GreenCenter** — co v areálu obsluhuje a má vlastní evidenci osob? Podle toho
    se vybere vzor (kapitola 4.3).
-2. **Vjezdy** — vzniká právo na vjezd žádostí se schválením jako přístup ke
-   dveřím, nebo se jen eviduje? Kdo ho schvaluje?
+2. **Vjezdy** — ~~vzniká právo na vjezd žádostí se schválením jako přístup ke
+   dveřím, nebo se jen eviduje? Kdo ho schvaluje?~~ Rozhodnuto a
+   implementováno: právo na vjezd vzniká **parkovacím povolením** (druh
+   povolení má vlastní schvalovací matici, areál volitelně další; viz
+   `docs/PLAN.md`, kapitola 5 F). Při vydání povolení se SPZ zapíší jako
+   identifikátory zaměstnance s platností povolení — přesně ty, na které se
+   ptá `POST /authorization-checks`. Zbývá rozhodnout, zda se SPZ do
+   parkovacího systému i propisují (vzor A), nebo stačí online dotaz (vzor C).
 3. **Stravování** — kdo je zdrojem cenových hladin: jídelna (a ACS jen páruje),
    nebo se definují v ACS?
 4. **Návštěvy a externisté** — mají vjezd a stravování řešit i pro osoby, které

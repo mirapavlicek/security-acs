@@ -144,6 +144,16 @@ ApprovalDecision  — kdo, kdy, jak, komentář (audit)
 CardAdminQueue    — pohled na Approved požadavky; akce „Předat do systému“
                     (volá WinPak Connector) nebo „Potvrzeno ručně“
 
+Site              — areál (Motol, Homolka…), volitelně vlastní matice
+ParkingPermitType — druh parkovacího povolení: vazba (SPZ / funkce),
+                    max. SPZ, výchozí platnost, matice, texty kartičky
+ParkingPermit     — povolení přidělené zaměstnanci: SPZ / funkce, areály
+                    (nebo všechny), platnost, číslo, vydání, odebrání;
+                    stav nese AccessRequestItem (třetí předmět položky):
+                    Pending → Approved (fronta parkování) → Issued
+                    → Revoked; SPZ se při vydání zapíší jako
+                    EmployeeIdentifier(LicensePlate)
+
 Setting           — všechna nastavení aplikace (klíč/hodnota, editace v GUI)
 AuditLog          — každá změna číselníků, rozhodnutí, přihlášení, sync
 ```
@@ -242,6 +252,37 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
 20. **CI** — build + testy na push/PR (GitHub Actions).
     ✅ Implementováno (`.github/workflows/ci.yml`).
 
+### F. Parkování a parkovací povolení
+Přístupy nejsou jen karty ke dveřím — druhým typem oprávnění je parkovací
+povolení. Schvalování používá **stejné jádro** jako přístupy (matice, úrovně,
+zástupy, řetěz fází, notifikace, připomínky); položka žádosti
+`AccessRequestItem` má vedle čtečky a skupiny třetí předmět —
+`ParkingPermit`.
+21. **Číselníky** — **areály** (`Site`: Motol, Homolka…, volitelně vlastní
+    matice) a **druhy povolení** (`ParkingPermitType`: např. „Vedení
+    nemocnice“, „Zaměstnanec“, „Dodavatel“; vazba na **SPZ** nebo na
+    **funkci**, max. počet SPZ, výchozí platnost, vlastní matice, texty
+    kartičky). ✅ Implementováno (`/Catalog/Parking/Sites`,
+    `/Catalog/Parking/PermitTypes`).
+22. **Žádost a schvalování** — povolení je přidělené konkrétnímu zaměstnanci,
+    platí pro jeden, více nebo všechny areály; řetěz fází = matice druhu →
+    matice zvolených areálů (bez matice rozhoduje administrátor, nic se
+    neschvaluje automaticky). Duplicity na stejný druh se odmítají, SPZ se
+    normalizují. ✅ Implementováno (`/Parking/New`,
+    `RequestWorkflowService.CreateParkingRequestAsync`; schvaluje se ve
+    společném inboxu `/Requests`).
+23. **Fronta správce parkování** — nová role `ParkingAdmin`; vydání povolení
+    přidělí číslo (`P-RRRR-NNNN`), zapíše SPZ jako identifikátory zaměstnance
+    (`EmployeeIdentifier` typu `LicensePlate` s platností povolení — připraveno
+    pro online autorizaci vjezdu přes integrační API) a umožní **tisk kartičky
+    za čelní sklo** (HTML + tiskové CSS, 150 × 70 mm, podle předlohy FNMH).
+    Odebrání: na žádost držitele (jde rovnou do fronty, bez schvalování) nebo
+    přímo správcem. ✅ Implementováno (`/Parking/Queue`, `/Parking/Permit`,
+    `/Parking/Print`, `ParkingAdminService`).
+24. **Automatizace a výstupy** — expirace platnosti a offboarding odebírají
+    vydaná povolení a deaktivují SPZ; report „Parkovací povolení“ s CSV;
+    přehled „Parkování“ pro zaměstnance. ✅ Implementováno.
+
 ---
 
 ## 6. Bezpečnost
@@ -267,7 +308,8 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
 | 3 | Schvalovací matice, zástupy, řetězce čteček, workflow žádostí, notifikace | funkční schvalování end-to-end |
 | 4 | Fronta správce karet, WinPak Connector (zápis), „Moje přístupy“, reporty | uzavřená smyčka do WIN-PAK |
 | 5 | Grafická schémata, témata GUI, ladění UX, zátěžové a failover testy | produkční verze 1.0 |
-| 6 | Napojení dalších systémů (vjezdy na SPZ, stravování) přes univerzální integrační API — [podklad do zadávačky](integrace/README.md) | jeden kontrakt, N konektorů místo integrace na míru |
+| 6 | Parkovací povolení — areály, druhy povolení, žádost a schvalování, fronta správce parkování, tisk kartičky za sklo (viz kapitola 5 F) | parkování schvalované stejným jádrem jako přístupy |
+| 7 | Napojení dalších systémů (vjezdy na SPZ, stravování) přes univerzální integrační API — [podklad do zadávačky](integrace/README.md) | jeden kontrakt, N konektorů místo integrace na míru; vydaná parkovací povolení už SPZ evidují jako identifikátory |
 
 ---
 
@@ -319,6 +361,18 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
 18. DB `winpak` na Galeře je určena čistě pro naši aplikaci (tabulky si
     vytvoříme migracemi), nebo v ní už něco je? Pozn.: Galera vyžaduje
     InnoDB a primární klíče — s EF Core migracemi zajistíme.
+
+**Parkování**
+19. Napojení na parkovací systém (GreenCenter): vydání povolení je zatím
+    ruční krok správce parkování; SPZ se ale už zapisují jako identifikátory
+    zaměstnance, takže online autorizace vjezdu přes integrační API na ně
+    může rovnou navázat. Má se SPZ do parkovacího systému propisovat
+    automaticky při vydání, nebo stačí dotaz u brány?
+20. Kartička za sklo: stačí tisk z prohlížeče (HTML, 150 × 70 mm), nebo je
+    potřeba PDF s pevnou šablonou / potisk plastových karet? Má na kartičce
+    být i jméno držitele u povolení na funkci?
+21. Má odebrání povolení na žádost držitele procházet schvalováním, nebo
+    stačí, že ho provede správce parkování (současný stav)?
 
 ---
 
