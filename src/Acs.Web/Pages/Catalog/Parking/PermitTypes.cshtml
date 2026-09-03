@@ -1,0 +1,69 @@
+@page
+@using Acs.Domain.Entities
+@model Acs.Web.Pages.Catalog.Parking.PermitTypesModel
+@{
+    ViewData["Title"] = "Druhy parkovacích povolení";
+}
+<h1>Druhy parkovacích povolení</h1>
+<p class="muted">
+    Každý druh (např. „Vedení nemocnice“, „Zaměstnanec“, „Dodavatel“) má vlastní schvalovací matici, vazbu
+    (na SPZ nebo na funkci) a podobu kartičky za čelní sklo.
+</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="card">
+    <table class="data">
+        <thead>
+        <tr><th>Název</th><th>Vazba</th><th>Matice</th><th>Platnost</th><th>Kartička</th><th>Aktivní</th><th></th></tr>
+        </thead>
+        <tbody>
+        @foreach (var type in Model.Types)
+        {
+            <tr>
+                <td>@type.Name <span class="muted">@type.Description</span></td>
+                <td>
+                    @if (type.Binding == PermitBinding.LicensePlate)
+                    {
+                        <span class="badge">SPZ</span> @:(max. @type.MaxPlates)
+                    }
+                    else
+                    {
+                        <span class="badge badge-primary">funkce</span>
+                    }
+                </td>
+                <td>@(type.ApprovalMatrix?.Name ?? "— (schvaluje admin)")</td>
+                <td>@(type.DefaultValidityMonths is { } m ? $"{m} měs." : "bez omezení")</td>
+                <td>@(type.PrintsWindshieldCard ? "ano" : "ne")</td>
+                <td>@(type.IsActive ? "ano" : "ne")</td>
+                <td><a class="btn btn-sm btn-ghost" asp-page="PermitTypeEdit" asp-route-id="@type.Id">Upravit</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Types.Count == 0)
+    {
+        <p class="muted">Zatím žádné druhy povolení.</p>
+    }
+</div>
+
+<div class="card" style="max-width:480px">
+    <h2 style="margin-top:0">Nový druh povolení</h2>
+    <form method="post" asp-page-handler="Create">
+        <label>Název</label>
+        <input type="text" name="name" placeholder="např. Vedení nemocnice" required />
+        <label>Vazba</label>
+        <select name="binding">
+            <option value="@((int)PermitBinding.LicensePlate)">na SPZ vozidla</option>
+            <option value="@((int)PermitBinding.Function)">na funkci (bez SPZ, přenosné)</option>
+        </select>
+        <button class="btn" type="submit">Vytvořit</button>
+    </form>
+</div>

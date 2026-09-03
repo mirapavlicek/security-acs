@@ -267,3 +267,97 @@ a:hover { text-decoration: underline; }
 }
 .hotspot-mine { background: var(--success); }
 .hotspot-inline { position: static; display: inline-block; margin: 0 0.2rem -3px 0; cursor: default; }
+
+/* ===== Parkovací povolení — kartička za čelní sklo =====
+   Pevné barvy nezávislé na tématu: kartička se tiskne, musí vypadat stejně všude. */
+.permit-card {
+  --pc-blue: #1f3f95;
+  --pc-blue-dark: #27409a;
+  position: relative;
+  display: flex;
+  width: 150mm;
+  height: 70mm;
+  max-width: 100%;
+  background: #ffffff;
+  color: var(--pc-blue-dark);
+  border: 0.6mm solid var(--pc-blue);
+  overflow: hidden;
+  font-family: "DejaVu Sans", "Segoe UI", Arial, sans-serif;
+  margin: 0.8rem 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  break-inside: avoid;
+}
+.permit-card-band {
+  flex: 0 0 24%;
+  background: var(--pc-blue);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.permit-card-band span { font-size: 34mm; font-weight: 800; line-height: 1; }
+.permit-card-body {
+  flex: 1;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 3mm 4mm 2.5mm;
+}
+.permit-card-logo { display: flex; align-items: center; gap: 2.5mm; margin-bottom: 2mm; text-align: left; }
+.permit-card-logo-mark { font-size: 7mm; font-weight: 800; line-height: 0.92; letter-spacing: 0.3mm; }
+.permit-card-logo-mark b { font-weight: 900; }
+.permit-card-logo-text { font-size: 3.3mm; line-height: 1.12; }
+.permit-card-title { margin-top: auto; font-size: 5.6mm; font-weight: 800; letter-spacing: 0.15mm; }
+.permit-card-type { font-size: 4.4mm; font-weight: 700; color: #1c2733; margin-top: 0.8mm; }
+.permit-card-function { font-size: 3.2mm; color: #1c2733; margin-top: 0.6mm; }
+.permit-card-scope { font-size: 2.9mm; color: #4a5563; margin-top: 1.6mm; }
+.permit-card-plate {
+  margin-top: 1.6mm;
+  padding: 0.6mm 3mm;
+  border: 0.4mm solid #1c2733;
+  border-radius: 1mm;
+  font-size: 5mm;
+  font-weight: 700;
+  letter-spacing: 0.6mm;
+  color: #1c2733;
+  background: #ffffff;
+}
+.permit-card-meta { display: flex; gap: 3mm; font-size: 2.6mm; color: #4a5563; margin-top: 1.4mm; }
+.permit-card-footer { margin-top: auto; font-size: 2.5mm; line-height: 1.25; color: #63707e; }
+.permit-card-watermark {
+  position: absolute;
+  right: 3mm;
+  top: 4mm;
+  font-size: 36mm;
+  font-weight: 800;
+  line-height: 0.85;
+  color: rgba(31, 63, 149, 0.07);
+  text-align: right;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Tisková stránka kartičky: bez rámu aplikace, jen kartička. */
+.permit-print-page { display: flex; flex-direction: column; align-items: flex-start; gap: 1rem; padding: 1rem; }
+.permit-print-actions { display: flex; gap: 0.5rem; }
+@media print {
+  .permit-print-actions, .no-print { display: none !important; }
+  .permit-print-page { padding: 0; }
+  .permit-card { box-shadow: none; margin: 0; }
+  @page { margin: 8mm; }
+}
+
+/* Formulář žádosti o povolení */
+.permit-type-options { display: grid; gap: 0.5rem; }
+.permit-type-option { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+.permit-type-option:has(input:checked) { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 6%, var(--surface)); }
+.permit-type-option input { margin-top: 0.25rem; }
+.permit-type-option label { margin: 0; color: var(--text); }
+.permit-plates input { margin-bottom: 0.3rem; text-transform: uppercase; }
+.status-pill { display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px; font-size: 0.78rem; border: 1px solid var(--border); }
+.status-pill.ok { border-color: var(--success); color: var(--success); }
+.status-pill.wait { border-color: var(--primary); color: var(--primary); }
+.status-pill.bad { border-color: var(--danger); color: var(--danger); }

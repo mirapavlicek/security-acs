@@ -1,0 +1,56 @@
+@page "{id:int}"
+@model Acs.Web.Pages.Catalog.Parking.SiteEditModel
+@{
+    ViewData["Title"] = $"Areál: {Model.Site.Name}";
+}
+<h1>@ViewData["Title"]</h1>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="card" style="max-width:560px">
+    <form method="post" asp-page-handler="Save">
+        <label>Název</label>
+        <input type="text" name="name" value="@Model.Site.Name" required />
+        <label>Kód (na kartičku)</label>
+        <input type="text" name="code" value="@Model.Site.Code" maxlength="32" />
+        <label>Popis</label>
+        <input type="text" name="description" value="@Model.Site.Description" />
+        <label>Pořadí</label>
+        <input type="number" name="sortOrder" value="@Model.Site.SortOrder" />
+        <label>Schvalovací matice areálu</label>
+        <select name="approvalMatrixId">
+            <option value="">— bez matice (areál do schvalování nevstupuje) —</option>
+            @foreach (var matrix in Model.Matrices)
+            {
+                <option value="@matrix.Id" selected="@(matrix.Id == Model.Site.ApprovalMatrixId)">@matrix.Name</option>
+            }
+        </select>
+        <div class="checkbox-row">
+            <input type="checkbox" id="isActive" name="isActive" value="true" checked="@Model.Site.IsActive" />
+            <label for="isActive">Aktivní</label>
+        </div>
+        <button class="btn" type="submit">Uložit</button>
+        <a class="btn btn-ghost" asp-page="Sites">Zpět</a>
+    </form>
+
+    @if (Model.PermitCount == 0)
+    {
+        <form method="post" asp-page-handler="Delete" style="margin-top:1rem"
+              onsubmit="return confirm('Smazat areál @Model.Site.Name?');">
+            <button class="btn btn-sm btn-danger" type="submit">Smazat areál</button>
+        </form>
+    }
+    else
+    {
+        <p class="muted" style="margin-top:1rem">
+            Na areál se odkazuje @Model.PermitCount povolení — nelze smazat, jen deaktivovat.
+        </p>
+    }
+</div>

@@ -1,0 +1,55 @@
+@page
+@model Acs.Web.Pages.Catalog.Parking.SitesModel
+@{
+    ViewData["Title"] = "Areály";
+}
+<h1>Areály</h1>
+<p class="muted">
+    Areály nemocnice (Motol, Homolka…), pro které se vydávají parkovací povolení. Areál může mít vlastní
+    schvalovací matici — žádost o povolení pak po matici druhu povolení prochází ještě maticemi zvolených areálů.
+</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="card">
+    <table class="data">
+        <thead>
+        <tr><th>Pořadí</th><th>Název</th><th>Kód</th><th>Matice areálu</th><th>Aktivní</th><th></th></tr>
+        </thead>
+        <tbody>
+        @foreach (var site in Model.Sites)
+        {
+            <tr>
+                <td>@site.SortOrder</td>
+                <td>@site.Name <span class="muted">@site.Description</span></td>
+                <td>@site.Code</td>
+                <td>@(site.ApprovalMatrix?.Name ?? "— (nevstupuje do schvalování)")</td>
+                <td>@(site.IsActive ? "ano" : "ne")</td>
+                <td><a class="btn btn-sm btn-ghost" asp-page="SiteEdit" asp-route-id="@site.Id">Upravit</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Sites.Count == 0)
+    {
+        <p class="muted">Zatím žádné areály. Založte např. „Motol“ a „Homolka“.</p>
+    }
+</div>
+
+<div class="card" style="max-width:480px">
+    <h2 style="margin-top:0">Nový areál</h2>
+    <form method="post" asp-page-handler="Create">
+        <label>Název</label>
+        <input type="text" name="name" placeholder="např. Motol" required />
+        <label>Kód (na kartičku, volitelné)</label>
+        <input type="text" name="code" placeholder="např. MOT" maxlength="32" />
+        <button class="btn" type="submit">Vytvořit</button>
+    </form>
+</div>
