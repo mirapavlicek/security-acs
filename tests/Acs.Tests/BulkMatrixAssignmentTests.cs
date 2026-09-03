@@ -86,6 +86,7 @@ public sealed class BulkMatrixAssignmentTests : IDisposable
                 new WinPakClient(new HttpClient(), new SettingsService(_pageDb, new EphemeralDataProtectionProvider())),
                 new AuditService(_pageDb)),
             new ReaderGroupService(_pageDb),
+            new ReaderCleanupService(_pageDb, new AuditService(_pageDb)),
             new AuditService(_pageDb))
         {
             PageContext = CreatePageContext(),

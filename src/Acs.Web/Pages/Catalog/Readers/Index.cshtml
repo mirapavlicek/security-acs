@@ -54,6 +54,13 @@
                 <option value="@matrix.Id" selected="@(Model.Matrix == matrix.Id.ToString())">@matrix.Name</option>
             }
         </select>
+        <select name="active">
+            <option value="">— aktivní i neaktivní —</option>
+            <option value="@Acs.Web.Pages.Catalog.Readers.IndexModel.ActiveOnlyFilter"
+                    selected="@(Model.Active == Acs.Web.Pages.Catalog.Readers.IndexModel.ActiveOnlyFilter)">jen aktivní</option>
+            <option value="@Acs.Web.Pages.Catalog.Readers.IndexModel.InactiveOnlyFilter"
+                    selected="@(Model.Active == Acs.Web.Pages.Catalog.Readers.IndexModel.InactiveOnlyFilter)">jen neaktivní</option>
+        </select>
         <button class="btn btn-sm" type="submit">Filtrovat</button>
         @if (Model.HasFilter)
         {
@@ -68,6 +75,7 @@
             @Html.Hidden("floorId", Model.FloorId)
             @Html.Hidden("groupId", Model.GroupId)
             @Html.Hidden("matrix", Model.Matrix)
+            @Html.Hidden("active", Model.Active)
             <button class="btn btn-sm btn-ghost" type="submit">Synchronizovat z WIN-PAK</button>
         </form>
     </div>
@@ -79,6 +87,7 @@
     @Html.Hidden("floorId", Model.FloorId)
     @Html.Hidden("groupId", Model.GroupId)
     @Html.Hidden("matrix", Model.Matrix)
+    @Html.Hidden("active", Model.Active)
 
     <div class="card bulkbar">
         <strong>Hromadné přiřazení matice</strong>
@@ -105,6 +114,22 @@
             {
                 <text>Bez filtru — druhé tlačítko změní všechny čtečky v katalogu.</text>
             }
+        </span>
+    </div>
+
+    <div class="card bulkbar">
+        <strong>Úklid neaktivních čteček</strong>
+        <button class="btn btn-sm btn-ghost" type="submit" asp-page-handler="Delete" id="bulk-delete" disabled
+                onclick="return confirm('Smazat označené čtečky? Smažou se jen neaktivní bez žádostí, skupin a závislostí; ostatní zůstanou.')">
+            Smazat označené (<span id="bulk-delete-count">0</span>)
+        </button>
+        <button class="btn btn-sm btn-ghost" type="submit" asp-page-handler="DeleteFiltered"
+                onclick="return confirm('Smazat všech @Model.InactiveCount neaktivních čteček podle aktuálního filtru? Ty s žádostmi, skupinami nebo závislostmi zůstanou.')">
+            Smazat neaktivní podle filtru (@Model.InactiveCount)
+        </button>
+        <span class="muted">
+            Maže se jen to, co nemá historii: neaktivní čtečka bez žádosti, skupiny a závislosti.
+            Odhady z výkresů deaktivované importem z tabulky EKV takhle zmizí, cokoli s vazbou zůstane neaktivní.
         </span>
     </div>
 
