@@ -248,6 +248,8 @@ z jednoho místa.
 | Diagnostika zelená, ale číselníky prázdné | špatný název účtu nebo podúčtu | porovnejte s výsledkem kontroly „Účty“ — ta vypíše pracovní účet |
 | `WIN-PAK má více účtů a v konfiguraci konektoru není vybraný žádný` | WIN-PAK má víc účtů | vyberte účet v Nastavení; hláška vyjmenuje, které jsou k dispozici |
 | `WIN-PAK <metoda>: … (HRESULT 0x…)` | konkrétní volání COM odmítl WIN-PAK | text za dvojtečkou je původní hláška WIN-PAKu; u `IsConnected` a systémových údajů jde často o rozdíl verze API, zbytek funguje |
+| `WIN-PAK <metoda>: Type mismatch. (0x80020005)` | typ argumentu při pozdní vazbě | konektor takové volání sám zopakuje s opravenými argumenty (výstupní řetězec místo null, 32bitové id); když hláška zůstane, pošlete název metody — signatura se v příručce liší |
+| Držitelé a přístupové úrovně 0, ale čtečky a časové zóny fungují | podúčet | držitelé i úrovně jsou pod podúčtem; konektor doplní jediný podúčet účtu sám, u více podúčtů ho vyberte v Nastavení |
 | ACS hlásí „konektor je jen pro čtení“ | běží režim Mssql nebo Mock | přepněte na Com |
 
 Logy služby: Prohlížeč událostí → Windows Logs → Application, zdroj

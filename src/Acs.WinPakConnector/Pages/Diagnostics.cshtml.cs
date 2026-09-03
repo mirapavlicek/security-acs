@@ -53,9 +53,16 @@ public class DiagnosticsModel(WinPakProviderCache providers) : PageModel
             var origin = provider is ComWinPakProvider { AccountResolvedAutomatically: true }
                 ? " (doplněn automaticky — jediný ve WIN-PAKu; v konfiguraci není vyplněný)"
                 : "";
+            var subAccount = "";
+            if (provider is ComWinPakProvider com && com.EffectiveSubAccountName is { Length: > 0 } sub)
+            {
+                subAccount = $", podúčet: {sub}"
+                             + (com.SubAccountResolvedAutomatically ? " (doplněn automaticky — jediný u účtu)" : "");
+            }
+
             return effective is null
                 ? $"{list} — pracovní účet není nastaven"
-                : $"{list} — pracovní účet: {effective}{origin}";
+                : $"{list} — pracovní účet: {effective}{origin}{subAccount}";
         });
 
         await RunAsync("Čtečky", async () => $"{(await provider.GetReadersAsync(ct)).Count} čteček");

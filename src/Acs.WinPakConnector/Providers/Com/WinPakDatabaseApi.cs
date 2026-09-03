@@ -24,6 +24,7 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
     private IComDispatch? _app;
     private int _userId;
     private string? _resolvedAccountName;
+    private string? _resolvedSubAccountName;
 
     public bool IsLoggedIn => _app is not null && _userId > 0;
 
@@ -59,6 +60,32 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
     /// <summary>Byl účet doplněn automaticky (jediný ve WIN-PAKu), ne z konfigurace?</summary>
     public bool AccountNameResolvedAutomatically
         => string.IsNullOrWhiteSpace(_options.AccountName) && _resolvedAccountName is not null;
+
+    /// <summary>
+    /// Podúčet, se kterým se pracuje. Držitelé a přístupové úrovně jsou ve WIN-PAKu
+    /// pod podúčtem; s prázdným podúčtem vrátil server nuly i u správného účtu
+    /// (čtečky a časové zóny, které podúčet neberou, přitom fungovaly). Když
+    /// podúčet v konfiguraci není a účet má jediný, použije se ten; jinak prázdný.
+    /// </summary>
+    public string SubAccountName
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(_options.SubAccountName))
+                return _options.SubAccountName;
+
+            if (_resolvedSubAccountName is not null)
+                return _resolvedSubAccountName;
+
+            var account = GetAccounts().FirstOrDefault(a =>
+                a.Name.Equals(AccountName, StringComparison.OrdinalIgnoreCase));
+            return _resolvedSubAccountName = account?.SubAccounts.Count == 1 ? account.SubAccounts[0].Name : "";
+        }
+    }
+
+    /// <summary>Byl podúčet doplněn automaticky (jediný u účtu)?</summary>
+    public bool SubAccountNameResolvedAutomatically
+        => string.IsNullOrWhiteSpace(_options.SubAccountName) && !string.IsNullOrEmpty(_resolvedSubAccountName);
 
     /// <summary>
     /// Účet, když je jednoznačný; jinak null. Pro dotazy, které mají variantu
@@ -130,6 +157,7 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
         _app = null;
         _userId = 0;
         _resolvedAccountName = null;
+        _resolvedSubAccountName = null;
         _panelNames.Clear();
     }
 
@@ -228,7 +256,7 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
                       ?? throw new InvalidOperationException("WIN-PAK nevrátil žádný účet.");
 
         var subAccount = account.SubAccounts.FirstOrDefault(s =>
-            s.Name.Equals(_options.SubAccountName, StringComparison.OrdinalIgnoreCase));
+            s.Name.Equals(SubAccountName, StringComparison.OrdinalIgnoreCase));
 
         return (ComValue.ToLong(account.Id), ComValue.ToLong(subAccount?.Id));
     }

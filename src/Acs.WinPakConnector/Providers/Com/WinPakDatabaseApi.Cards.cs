@@ -7,14 +7,14 @@ public sealed partial class WinPakDatabaseApi
 {
     public CardDto? GetCard(string cardNumber)
     {
-        var result = Call("GetCardbyCardNumber", cardNumber, AccountName, _options.SubAccountName, null);
+        var result = Call("GetCardbyCardNumber", cardNumber, AccountName, SubAccountName, null);
         var raw = ComValue.AsEnumerable(result[3]).FirstOrDefault();
         return raw is null ? null : MapCard(_com.Wrap(raw));
     }
 
     /// <summary>Všechny karty účtu (<c>GetCardsByAccountName</c>).</summary>
     public IReadOnlyList<CardDto> GetCards()
-        => CallList("GetCardsByAccountName", MapCard, AccountName, _options.SubAccountName, null);
+        => CallList("GetCardsByAccountName", MapCard, AccountName, SubAccountName, null);
 
     /// <summary>Karty, které zatím nemají držitele (<c>GetCardsWithoutCHIDByAcctID</c>).</summary>
     public IReadOnlyList<CardDto> GetCardsWithoutHolder()
@@ -67,7 +67,7 @@ public sealed partial class WinPakDatabaseApi
 
     public void DeleteCard(string cardNumber)
         => CallCardWrite("Zrušení karty", "DeleteCard",
-            cardNumber, AccountName, _options.SubAccountName, 0);
+            cardNumber, AccountName, SubAccountName, 0);
 
     /// <summary>Založí celý rozsah karet najednou (<c>BulkAddCards</c>).</summary>
     public void BulkAddCards(BulkAddCardsRequest request)
@@ -119,7 +119,7 @@ public sealed partial class WinPakDatabaseApi
         EnsureSession();
         var card = CreateCardObject(cardNumber, request);
 
-        var args = new object?[] { cardNumber, AccountName, _options.SubAccountName, card.Target, 0 };
+        var args = new object?[] { cardNumber, AccountName, SubAccountName, card.Target, 0 };
         App.Invoke("EditCard", args);
         WinPakStatus.EnsureCardSucceeded("Úprava karty", ComValue.ToInt(args[4]));
     }
@@ -129,8 +129,8 @@ public sealed partial class WinPakDatabaseApi
         var card = _com.Create(_options.CardProgId);
         card.SetProperty("CardNumber", cardNumber);
         card.SetProperty("AccountName", AccountName);
-        if (!string.IsNullOrWhiteSpace(_options.SubAccountName))
-            card.SetProperty("SubAccountName", _options.SubAccountName);
+        if (!string.IsNullOrWhiteSpace(SubAccountName))
+            card.SetProperty("SubAccountName", SubAccountName);
         card.SetProperty("Issue", request.Issue);
         card.SetProperty("ActivationDate", request.ActivationDate ?? DateTime.Today);
         card.SetProperty("ExpirationDate", request.ExpirationDate ?? NoExpiration);

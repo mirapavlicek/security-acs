@@ -6,10 +6,20 @@ namespace Acs.WinPakConnector.Providers.Com;
 public sealed partial class WinPakDatabaseApi
 {
     public IReadOnlyList<AccessLevelDto> GetAccessLevels()
+    {
         // Bez jednoznačného účtu (více účtů, žádný nevybraný) se vrátí úrovně všech účtů.
-        => AccountNameOrNull is null
-            ? CallList("GetAllAccessLevels", MapAccessLevel, [null])
-            : CallList("GetAccessLevelsByAccountName", MapAccessLevel, AccountName, _options.SubAccountName, null);
+        if (AccountNameOrNull is null)
+            return CallList("GetAllAccessLevels", MapAccessLevel, [null]);
+
+        var byAccount = CallList("GetAccessLevelsByAccountName", MapAccessLevel, AccountName, SubAccountName, null);
+        if (byAccount.Count > 0)
+            return byAccount;
+
+        // Proti skutečnému WIN-PAKu vrátil dotaz za účet nic, zatímco dotaz za všechny
+        // 55 úrovní — úrovně tam nejsou vázané na účet/podúčet. Číselník k mapování
+        // čteček raději širší než prázdný.
+        return CallList("GetAllAccessLevels", MapAccessLevel, [null]);
+    }
 
     private static AccessLevelDto MapAccessLevel(IComDispatch level) => new(
         ComValue.ToStringOrEmpty(level.GetProperty("AccessLevelID")),
