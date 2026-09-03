@@ -164,6 +164,39 @@ public sealed class WinPakCatalogApiTests
         Assert.Equal("Státní svátky", Assert.Single(groups).Name);
     }
 
+    [Fact]
+    public void Skupiny_svatku_panelu_jako_cisla_se_doplni_o_jmeno_ze_seznamu_skupin()
+    {
+        // Ostrý WIN-PAK: GetConfiguredHolidayGroupsByPanel vrací UInt32 id, ne objekty
+        // („Method 'System.UInt32.HolGrpID' not found“).
+        ArrangeAccounts();
+        App.OutValues["GetConfiguredHolidayGroupsByPanel#1"] = new object[] { 3u, 9u };
+        App.OutValues["GetHolidayGroupsByAcctID#1"] = new object[]
+        {
+            _com.Record("grp", ("HolGrpID", 3L), ("HolGrpName", "Státní svátky"), ("AccountId", 8L)),
+        };
+
+        var groups = CreateApi().GetConfiguredHolidayGroupsOfPanel(39);
+
+        Assert.Equal([("3", "Státní svátky"), ("9", "")], groups.Select(g => (g.Id, g.Name)));
+        Assert.Equal(1, _com.Calls.Count(c => c.Method == "GetHolidayGroupsByAcctID"));
+    }
+
+    [Fact]
+    public void Skupiny_svatku_panelu_jako_objekty_se_mapuji_primo()
+    {
+        ArrangeAccounts();
+        App.OutValues["GetConfiguredHolidayGroupsByPanel#1"] = new object[]
+        {
+            _com.Record("grp", ("HolGrpID", 3L), ("HolGrpName", "Státní svátky"), ("AccountId", 8L)),
+        };
+
+        var group = Assert.Single(CreateApi().GetConfiguredHolidayGroupsOfPanel(39));
+
+        Assert.Equal(("3", "Státní svátky"), (group.Id, group.Name));
+        Assert.DoesNotContain(_com.Calls, c => c.Method == "GetHolidayGroupsByAcctID");
+    }
+
     // ---------- Přístupové úrovně ----------
 
     [Fact]

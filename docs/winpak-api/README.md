@@ -182,6 +182,7 @@ a skutečné COM objekty si v několika místech nerozumí:
 | `GetPhotoSize(id, index, ByRef size As Long)` | výstupní parametr odmítá číslo (Type mismatch) — nejspíš `ByRef As Variant` | nevolá se, velikost se počítá z dat `GetPhoto`; nula v by-ref se obecně zkouší jako null |
 | `AddUpdateCard` má 14 parametrů | odmítá počet („Number of parameters specified does not match“) — má víc, nejspíš výstupní stavový kód, který příručka uvádí jen jako návratový stav | chybějící parametry na konci se doplní podle typové informace a stav se vyhodnotí; při jiném nesouladu hláška vypíše skutečnou signaturu |
 | po chybě volání objekt dál funguje | po chybě volání každé další volání visí až do restartu služby | konektor po chybě relaci zahodí, objekt uvolní a přihlásí se znovu |
+| `GetConfiguredHolidayGroupsByPanel` vrací objekty skupin | vrací prostá čísla (`UInt32` id) | jméno se dohledá v `GetHolidayGroupsByAcctID` |
 | id jako `Long` | 32bitové (VB6) | `long` se posílá jako `int` |
 
 Členy objektu držitele podle typové informace: `AccountName, SubAccountName,
