@@ -21,6 +21,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Ukázkové tabulky čteček EKV ve stejném rozvržení, jaké dodává projektant. -->
+    <None Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Acs.Web\Acs.Web.csproj" />
     <ProjectReference Include="..\..\src\Acs.Infrastructure\Acs.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Acs.Domain\Acs.Domain.csproj" />

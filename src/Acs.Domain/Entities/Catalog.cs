@@ -106,6 +106,14 @@ public class Reader
     /// <summary>Id čtečky ve WIN-PAK (u ručních záznamů null).</summary>
     public string? ExternalId { get; set; }
 
+    /// <summary>
+    /// Číslo čtečky z projektové dokumentace EKV (např. „362002“). Kóduje
+    /// rozvaděč (první tři číslice), dveře v rámci rozvaděče (další dvě) a stranu
+    /// dveří (poslední: 1 nebo 2). Je to klíč, podle kterého se čtečka spáruje
+    /// s tím, co je nakonfigurované ve WIN-PAK.
+    /// </summary>
+    public string? DeviceNumber { get; set; }
+
     public required string Name { get; set; }
     public string? Description { get; set; }
     public string? PanelName { get; set; }

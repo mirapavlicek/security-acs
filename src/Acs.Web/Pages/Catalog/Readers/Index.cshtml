@@ -5,6 +5,10 @@
     ViewData["Title"] = "Čtečky";
 }
 <h1>Čtečky</h1>
+<p class="muted">
+    Skutečná čísla čteček a jejich místnosti se plní z tabulky dokumentace skutečného provedení:
+    <a asp-page="/Admin/ImportReaders">Import čteček z tabulky EKV</a>.
+</p>
 
 @if (Model.Message is not null)
 {
@@ -17,7 +21,7 @@
 
 <div class="card">
     <form method="get" class="filterbar">
-        <input type="text" name="search" value="@Model.Search" placeholder="Hledat podle názvu, panelu…" style="max-width:240px" />
+        <input type="text" name="search" value="@Model.Search" placeholder="Hledat podle čísla čtečky, názvu, rozvaděče…" style="max-width:240px" />
         <select name="buildingId" onchange="this.form.submit()">
             <option value="">— budova —</option>
             @foreach (var building in Model.Buildings)
