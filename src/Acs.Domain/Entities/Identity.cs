@@ -15,6 +15,8 @@ public enum AppRole
     CardAdmin = 8,
     /// <summary>Běžný uživatel — žádosti a přehled vlastních přístupů.</summary>
     Employee = 16,
+    /// <summary>Správce parkování — fronta vydávání parkovacích povolení, tisk kartiček, odebírání.</summary>
+    ParkingAdmin = 32,
 }
 
 /// <summary>Uživatelský účet (lokální nebo mapovaný z Active Directory).</summary>

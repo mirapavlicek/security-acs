@@ -29,6 +29,11 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
     public DbSet<ReaderGroupMember> ReaderGroupMembers => Set<ReaderGroupMember>();
     public DbSet<AutoAssignmentRule> AutoAssignmentRules => Set<AutoAssignmentRule>();
     public DbSet<AccessRequestItemStage> AccessRequestItemStages => Set<AccessRequestItemStage>();
+    public DbSet<Site> Sites => Set<Site>();
+    public DbSet<ParkingPermitType> ParkingPermitTypes => Set<ParkingPermitType>();
+    public DbSet<ParkingPermit> ParkingPermits => Set<ParkingPermit>();
+    public DbSet<ParkingPermitSite> ParkingPermitSites => Set<ParkingPermitSite>();
+    public DbSet<ParkingPermitPlate> ParkingPermitPlates => Set<ParkingPermitPlate>();
     public DbSet<Setting> Settings => Set<Setting>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
@@ -153,6 +158,59 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
                 .HasForeignKey(x => x.ReaderId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.ReaderGroup).WithMany()
                 .HasForeignKey(x => x.ReaderGroupId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.ParkingPermit).WithMany()
+                .HasForeignKey(x => x.ParkingPermitId).OnDelete(DeleteBehavior.Restrict);
+            e.Ignore(x => x.IsParking);
+        });
+
+        modelBuilder.Entity<Site>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.Property(x => x.Code).HasMaxLength(32);
+            e.HasOne(x => x.ApprovalMatrix).WithMany().OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ParkingPermitType>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.Property(x => x.Code).HasMaxLength(32);
+            e.Property(x => x.CardTitle).HasMaxLength(128);
+            e.Property(x => x.CardScopeText).HasMaxLength(256);
+            e.HasOne(x => x.ApprovalMatrix).WithMany().OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ParkingPermit>(e =>
+        {
+            e.Property(x => x.FunctionTitle).HasMaxLength(128);
+            e.Property(x => x.PermitNumber).HasMaxLength(64);
+            e.HasIndex(x => x.PermitNumber);
+            e.HasIndex(x => x.EmployeeId);
+            e.HasOne(x => x.Employee).WithMany()
+                .HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.PermitType).WithMany()
+                .HasForeignKey(x => x.PermitTypeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.IssuedByUser).WithMany()
+                .HasForeignKey(x => x.IssuedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ParkingPermitSite>(e =>
+        {
+            e.HasIndex(x => new { x.PermitId, x.SiteId }).IsUnique();
+            e.HasOne(x => x.Permit).WithMany(p => p.Sites)
+                .HasForeignKey(x => x.PermitId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Site).WithMany()
+                .HasForeignKey(x => x.SiteId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ParkingPermitPlate>(e =>
+        {
+            e.Property(x => x.Value).HasMaxLength(32);
+            e.HasIndex(x => new { x.PermitId, x.Value }).IsUnique();
+            e.HasIndex(x => x.Value);
+            e.HasOne(x => x.Permit).WithMany(p => p.Plates)
+                .HasForeignKey(x => x.PermitId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.EmployeeIdentifier).WithMany()
+                .HasForeignKey(x => x.EmployeeIdentifierId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<AccessRequestItemStage>(e =>
