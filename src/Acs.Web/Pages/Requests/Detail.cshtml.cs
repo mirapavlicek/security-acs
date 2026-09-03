@@ -26,6 +26,9 @@ public class DetailModel(AcsDbContext db, RequestWorkflowService workflow) : Pag
             .Include(r => r.RequesterUser)
             .Include(r => r.Items).ThenInclude(i => i.Reader)
             .Include(r => r.Items).ThenInclude(i => i.ReaderGroup)
+            .Include(r => r.Items).ThenInclude(i => i.ParkingPermit!).ThenInclude(p => p.PermitType)
+            .Include(r => r.Items).ThenInclude(i => i.ParkingPermit!).ThenInclude(p => p.Plates)
+            .Include(r => r.Items).ThenInclude(i => i.ParkingPermit!).ThenInclude(p => p.Sites).ThenInclude(s => s.Site)
             .Include(r => r.Items).ThenInclude(i => i.Stages)
             .Include(r => r.Items).ThenInclude(i => i.Decisions).ThenInclude(d => d.ApproverUser)
             .FirstOrDefaultAsync(r => r.Id == id);
@@ -41,6 +44,7 @@ public class DetailModel(AcsDbContext db, RequestWorkflowService workflow) : Pag
             .Select(u => u.EmployeeId).FirstOrDefaultAsync();
         var canView = IsAdmin
             || User.IsInRole("CardAdmin")
+            || (User.IsInRole("ParkingAdmin") && request.Items.Any(i => i.IsParking))
             || request.RequesterUserId == CurrentUserId
             || (myEmployeeId is not null && request.TargetEmployeeId == myEmployeeId)
             || CanDecide.Count > 0;

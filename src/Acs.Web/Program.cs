@@ -81,6 +81,7 @@ builder.Services.AddScoped<Acs.Infrastructure.Notifications.AttentionService>();
 builder.Services.AddScoped<Acs.Infrastructure.Workflow.ReaderGroupService>();
 builder.Services.AddScoped<Acs.Infrastructure.Workflow.RequestWorkflowService>();
 builder.Services.AddScoped<Acs.Infrastructure.Workflow.CardAdminService>();
+builder.Services.AddScoped<Acs.Infrastructure.Workflow.ParkingAdminService>();
 
 // ---------- Autentizace a autorizace ----------
 builder.Services
@@ -133,6 +134,8 @@ builder.Services.AddAuthorization(options =>
         p => p.RequireRole(nameof(AppRole.Admin), nameof(AppRole.CatalogManager)));
     options.AddPolicy("CardAdmin",
         p => p.RequireRole(nameof(AppRole.Admin), nameof(AppRole.CardAdmin)));
+    options.AddPolicy("ParkingAdmin",
+        p => p.RequireRole(nameof(AppRole.Admin), nameof(AppRole.ParkingAdmin)));
 });
 
 // Antiforgery i přes hlavičku — pro JSON POSTy z interaktivního editoru plánů.

@@ -1,0 +1,141 @@
+@page
+@using Acs.Domain.Entities
+@using Acs.Web.Pages.Shared
+@model Acs.Web.Pages.Parking.IndexModel
+@{
+    ViewData["Title"] = "Parkování";
+    bool isParkingAdmin = User.IsInRole("Admin") || User.IsInRole("ParkingAdmin");
+}
+<h1>Parkování</h1>
+<p class="muted">
+    Parkovací povolení — vázaná na SPZ vozidla nebo na funkci, pro jeden, více nebo všechny areály.
+    Žádost prochází schvalováním podle druhu povolení a areálů; vydané povolení vytiskne správce parkování jako kartičku za čelní sklo.
+</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem">
+    @if (Model.HasTypes)
+    {
+        <a class="btn" asp-page="New">Požádat o parkovací povolení</a>
+    }
+    else
+    {
+        <span class="muted">Zatím není nastaven žádný druh povolení (Číselníky → Druhy povolení).</span>
+    }
+    @if (isParkingAdmin)
+    {
+        <a class="btn btn-ghost" asp-page="Queue">Fronta správce parkování</a>
+    }
+</div>
+
+@if (Model.Employee is null)
+{
+    <div class="card">
+        <p class="muted">Váš účet není navázaný na zaměstnance — vlastní povolení se nezobrazí. Žádat za jiné můžete, máte-li oprávnění.</p>
+    </div>
+}
+else
+{
+    <div class="card">
+        <h2 style="margin-top:0">Platná povolení (@Model.ActiveItems.Count)</h2>
+        <table class="data">
+            <thead><tr><th>Číslo</th><th>Druh</th><th>SPZ / funkce</th><th>Areály</th><th>Platnost</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var item in Model.ActiveItems)
+            {
+                var permit = item.ParkingPermit!;
+                <tr>
+                    <td><a asp-page="Permit" asp-route-id="@permit.Id">@(permit.PermitNumber ?? "—")</a></td>
+                    <td>@permit.PermitType?.Name</td>
+                    <td>@permit.SubjectText()</td>
+                    <td>@permit.SitesText()</td>
+                    <td class="muted">@permit.ValidFrom.ToString("d. M. yyyy") – @(permit.ValidTo?.ToString("d. M. yyyy") ?? "bez omezení")</td>
+                    <td style="white-space:nowrap">
+                        @if (permit.PermitType?.PrintsWindshieldCard == true)
+                        {
+                            <a class="btn btn-sm btn-ghost" asp-page="Print" asp-route-id="@permit.Id" target="_blank">Tisk kartičky</a>
+                        }
+                        @if (Model.RevokeRequested.Contains(permit.Id))
+                        {
+                            <span class="badge">odebrání požádáno</span>
+                        }
+                        else
+                        {
+                            <form method="post" asp-page-handler="Revoke" class="inline-form"
+                                  onsubmit="return confirm('Požádat o odebrání povolení @permit.PermitNumber?');">
+                                <input type="hidden" name="permitId" value="@permit.Id" />
+                                <button class="btn btn-sm btn-ghost" type="submit">Požádat o odebrání</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (Model.ActiveItems.Count == 0)
+        {
+            <p class="muted">Nemáte žádné platné parkovací povolení.</p>
+        }
+    </div>
+
+    <div class="card">
+        <h2 style="margin-top:0">Čekající žádosti (@Model.PendingItems.Count)</h2>
+        <table class="data">
+            <thead><tr><th>Žádost</th><th>Druh</th><th>SPZ / funkce</th><th>Areály</th><th>Stav</th></tr></thead>
+            <tbody>
+            @foreach (var item in Model.PendingItems)
+            {
+                var permit = item.ParkingPermit!;
+                <tr>
+                    <td><a asp-page="/Requests/Detail" asp-route-id="@item.RequestId">#@item.RequestId</a></td>
+                    <td>@permit.PermitType?.Name</td>
+                    <td>@permit.SubjectText()</td>
+                    <td>@permit.SitesText()</td>
+                    <td>
+                        <span class="@StatusText.PillClass(item.Status)">@StatusText.Label(item)</span>
+                        @if (item.Status == RequestStatus.Pending && item.Stages.Count > 1)
+                        {
+                            <span class="muted">fáze @item.CurrentStageOrder/@item.Stages.Count</span>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (Model.PendingItems.Count == 0)
+        {
+            <p class="muted">Nic nečeká.</p>
+        }
+    </div>
+
+    @if (Model.HistoryItems.Count > 0)
+    {
+        <div class="card">
+            <h2 style="margin-top:0">Historie</h2>
+            <table class="data">
+                <thead><tr><th>Žádost</th><th>Druh</th><th>SPZ / funkce</th><th>Stav</th><th>Kdy</th></tr></thead>
+                <tbody>
+                @foreach (var item in Model.HistoryItems)
+                {
+                    var permit = item.ParkingPermit!;
+                    <tr>
+                        <td><a asp-page="/Requests/Detail" asp-route-id="@item.RequestId">#@item.RequestId</a></td>
+                        <td>@permit.PermitType?.Name</td>
+                        <td>@permit.SubjectText()</td>
+                        <td><span class="@StatusText.PillClass(item.Status)">@StatusText.Label(item)</span></td>
+                        <td class="muted">@((permit.RevokedAt ?? item.DecidedAt)?.ToString("d. M. yyyy"))</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+}

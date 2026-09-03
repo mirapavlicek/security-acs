@@ -61,6 +61,30 @@
             <a class="btn" asp-page="/CardQueue">Otevřít frontu</a>
         </div>
     }
+    @if (User.IsInRole("Admin") || User.IsInRole("ParkingAdmin"))
+    {
+        <div class="card">
+            <h2 style="margin-top:0">
+                Fronta správce parkování
+                @if (Model.Attention.ParkingQueue > 0)
+                {
+                    <span class="nav-badge card-badge">@Model.Attention.ParkingQueue</span>
+                }
+            </h2>
+            <p class="muted">
+                @if (Model.Attention.ParkingQueue > 0)
+                {
+                    <span class="attention-dot"></span>
+                    <strong>@Model.Attention.ParkingQueue</strong> @:parkovacích povolení čeká na vydání nebo odebrání.
+                }
+                else
+                {
+                    @:Schválená parkovací povolení k vydání (kartička za sklo). Fronta je prázdná.
+                }
+            </p>
+            <a class="btn" asp-page="/Parking/Queue">Otevřít frontu</a>
+        </div>
+    }
     @if (User.IsInRole("Admin"))
     {
         <div class="card">

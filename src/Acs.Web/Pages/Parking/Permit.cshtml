@@ -1,0 +1,100 @@
+@page "{id:int}"
+@using Acs.Domain.Entities
+@using Acs.Web.Pages.Shared
+@model Acs.Web.Pages.Parking.PermitModel
+@{
+    ViewData["Title"] = $"Parkovací povolení {Model.Permit.PermitNumber ?? $"(žádost #{Model.Item.RequestId})"}";
+}
+<h1>@ViewData["Title"] <span class="@StatusText.PillClass(Model.Item.Status)">@StatusText.Label(Model.Item)</span></h1>
+
+<div class="settings-grid">
+<div class="card">
+    <h2 style="margin-top:0">Povolení</h2>
+    <table class="data">
+        <tr><td>Držitel</td><td>@Model.Item.Request?.TargetEmployee?.FullName <span class="muted">@Model.Item.Request?.TargetEmployee?.Department</span></td></tr>
+        <tr><td>Druh</td><td>@Model.Permit.PermitType?.Name</td></tr>
+        <tr><td>@(Model.Permit.PermitType?.Binding == PermitBinding.Function ? "Funkce" : "SPZ")</td><td>@Model.Permit.SubjectText()</td></tr>
+        <tr><td>Areály</td><td>@Model.Permit.SitesText()</td></tr>
+        <tr><td>Platnost</td><td>@Model.Permit.ValidFrom.ToString("d. M. yyyy") – @(Model.Permit.ValidTo?.ToString("d. M. yyyy") ?? "bez omezení")</td></tr>
+        <tr><td>Žádost</td><td><a asp-page="/Requests/Detail" asp-route-id="@Model.Item.RequestId">#@Model.Item.RequestId</a> — podal @(Model.Item.Request?.RequesterUser?.DisplayName ?? Model.Item.Request?.RequesterUser?.UserName), @Model.Item.Request?.CreatedAt.ToString("d. M. yyyy")</td></tr>
+        @if (Model.Permit.IssuedAt is not null)
+        {
+            <tr><td>Vydáno</td><td>@Model.Permit.IssuedAt?.ToString("d. M. yyyy HH:mm") UTC, @(Model.Permit.IssuedByUser?.DisplayName ?? Model.Permit.IssuedByUser?.UserName)</td></tr>
+        }
+        @if (Model.Permit.RevokedAt is not null)
+        {
+            <tr><td>Odebráno</td><td>@Model.Permit.RevokedAt?.ToString("d. M. yyyy HH:mm") UTC — @Model.Permit.RevokeReason</td></tr>
+        }
+    </table>
+    <div style="margin-top:0.8rem;display:flex;gap:0.5rem;flex-wrap:wrap">
+        @if (Model.CanPrint)
+        {
+            <a class="btn" asp-page="Print" asp-route-id="@Model.Permit.Id" target="_blank">Tisk kartičky</a>
+        }
+        <a class="btn btn-ghost" asp-page="Index">Zpět</a>
+    </div>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">
+        Schvalování
+        @if (Model.Item.Stages.Count > 1)
+        {
+            <span class="badge">fáze @Model.Item.CurrentStageOrder/@Model.Item.Stages.Count</span>
+        }
+    </h2>
+    @if (Model.Item.Stages.Count == 0)
+    {
+        <p class="muted">Bez schvalovací matice — rozhoduje administrátor.</p>
+    }
+    @if (Model.Item.Decisions.Count > 0)
+    {
+        <table class="data">
+            <thead><tr><th>Fáze/úroveň</th><th>Schvalovatel</th><th>Rozhodnutí</th><th>Komentář</th><th>Kdy</th></tr></thead>
+            <tbody>
+            @foreach (var decision in Model.Item.Decisions.OrderBy(d => d.DecidedAt))
+            {
+                var stage = Model.Item.Stages.FirstOrDefault(s => s.MatrixId == decision.MatrixId);
+                <tr>
+                    <td>@(stage is null ? "" : $"{stage.Order}/")@decision.LevelOrder</td>
+                    <td>
+                        @(decision.ApproverUser?.DisplayName ?? decision.ApproverUser?.UserName)
+                        @if (decision.OnBehalfOfUserId is not null)
+                        {
+                            <span class="badge">v zástupu</span>
+                        }
+                    </td>
+                    <td>@(decision.Approved ? "✔ schváleno" : "✖ zamítnuto")</td>
+                    <td class="muted">@decision.Comment</td>
+                    <td class="muted">@decision.DecidedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <p class="muted">Zatím žádné rozhodnutí.</p>
+    }
+    @if (Model.Item.Status == RequestStatus.Pending)
+    {
+        <p class="muted">Rozhodnout lze v <a asp-page="/Requests/Detail" asp-route-id="@Model.Item.RequestId">detailu žádosti</a>.</p>
+    }
+
+    @if (Model.RevokeItems.Count > 0)
+    {
+        <h3>Odebrání</h3>
+        <table class="data">
+            @foreach (var revoke in Model.RevokeItems)
+            {
+                <tr>
+                    <td><a asp-page="/Requests/Detail" asp-route-id="@revoke.RequestId">#@revoke.RequestId</a></td>
+                    <td>@(revoke.Request?.RequesterUser?.DisplayName ?? revoke.Request?.RequesterUser?.UserName)</td>
+                    <td class="muted">@revoke.Request?.Justification</td>
+                    <td><span class="@StatusText.PillClass(revoke.Status)">@(revoke.Status == RequestStatus.Approved ? "čeká na správce parkování" : StatusText.Label(revoke))</span></td>
+                </tr>
+            }
+        </table>
+    }
+</div>
+</div>

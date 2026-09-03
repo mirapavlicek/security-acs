@@ -1,12 +1,14 @@
 @page
 @using Acs.Domain.Entities
+@using Acs.Web.Pages.Shared
 @model Acs.Web.Pages.Requests.IndexModel
 @{
     ViewData["Title"] = "Žádosti";
 }
 <h1>Žádosti</h1>
 
-<a class="btn" asp-page="New">+ Nová žádost</a>
+<a class="btn" asp-page="New">+ Nová žádost o přístup</a>
+<a class="btn btn-ghost" asp-page="/Parking/New">+ Žádost o parkovací povolení</a>
 
 @if (Model.PendingForMe.Count > 0)
 {
@@ -14,7 +16,7 @@
     <div class="card">
         <table class="data">
             <thead>
-            <tr><th>Žádost</th><th>Zaměstnanec</th><th>Čtečka</th><th>Úroveň</th><th>Podal</th><th></th></tr>
+            <tr><th>Žádost</th><th>Zaměstnanec</th><th>Předmět</th><th>Úroveň</th><th>Podal</th><th></th></tr>
             </thead>
             <tbody>
             @foreach (var item in Model.PendingForMe)
@@ -22,7 +24,17 @@
                 <tr>
                     <td>#@item.RequestId</td>
                     <td>@item.Request?.TargetEmployee?.FullName</td>
-                    <td>@(item.Reader?.Name ?? $"Skupina: {item.ReaderGroup?.Name}") @(item.AutoAdded ? Html.Raw("<span class=\"badge\">řetězec</span>") : Html.Raw(""))</td>
+                    <td>
+                        @StatusText.ItemTitle(item)
+                        @if (item.IsParking)
+                        {
+                            <span class="badge badge-primary">parkování</span> <span class="muted">@item.ParkingPermit!.SitesText()</span>
+                        }
+                        @if (item.AutoAdded)
+                        {
+                            <span class="badge">řetězec</span>
+                        }
+                    </td>
                     <td>@item.CurrentLevelOrder</td>
                     <td class="muted">@(item.Request?.RequesterUser?.DisplayName ?? item.Request?.RequesterUser?.UserName)</td>
                     <td><a class="btn btn-sm" asp-page="Detail" asp-route-id="@item.RequestId">Rozhodnout</a></td>

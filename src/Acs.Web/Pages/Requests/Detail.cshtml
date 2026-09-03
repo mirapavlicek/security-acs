@@ -1,20 +1,9 @@
 @page "{id:int}"
 @using Acs.Domain.Entities
+@using Acs.Web.Pages.Shared
 @model Acs.Web.Pages.Requests.DetailModel
 @{
-    ViewData["Title"] = $"Žádost #{Model.Request.Id}";
-
-    string StatusLabel(RequestStatus status) => status switch
-    {
-        RequestStatus.Pending => "čeká na schválení",
-        RequestStatus.Approved => "schváleno — u správce karet",
-        RequestStatus.PushedToWinPak => "zapsáno do WIN-PAK",
-        RequestStatus.ManuallyConfirmed => "potvrzeno ručně",
-        RequestStatus.Rejected => "zamítnuto",
-        RequestStatus.Revoked => "odebráno",
-        RequestStatus.Cancelled => "zrušeno",
-        _ => status.ToString(),
-    };
+    ViewData["Title"] = $"Žádost #{Model.Request.Id}" + (Model.Request.Kind == RequestKind.Revoke ? " (odebrání)" : "");
 }
 <h1>@ViewData["Title"]</h1>
 
@@ -40,7 +29,7 @@
 {
     <div class="card">
         <h2 style="margin-top:0">
-            @(item.Reader?.Name ?? $"Skupina: {item.ReaderGroup?.Name}")
+            @StatusText.ItemTitle(item)
             @if (item.Stages.Count > 1)
             {
                 <span class="badge" title="Vnořené schvalování — položka prochází více maticemi">
@@ -51,12 +40,26 @@
             {
                 <span class="badge" title="Doplněno automaticky z řetězce čteček">řetězec</span>
             }
-            <span class="badge badge-primary">@StatusLabel(item.Status)</span>
+            <span class="badge badge-primary">@StatusText.Label(item)</span>
             @if (item.Status == RequestStatus.Pending)
             {
                 <span class="muted" style="font-size:0.85rem">— úroveň @item.CurrentLevelOrder</span>
             }
         </h2>
+
+        @if (item.ParkingPermit is { } permit)
+        {
+            <table class="data" style="margin-bottom:0.6rem">
+                <tr><td>Druh povolení</td><td>@permit.PermitType?.Name <span class="muted">@permit.PermitType?.Description</span></td></tr>
+                <tr><td>@(permit.PermitType?.Binding == PermitBinding.Function ? "Funkce" : "SPZ")</td><td>@permit.SubjectText()</td></tr>
+                <tr><td>Areály</td><td>@permit.SitesText()</td></tr>
+                <tr><td>Platnost</td><td>@permit.ValidFrom.ToString("d. M. yyyy") – @(permit.ValidTo?.ToString("d. M. yyyy") ?? "bez omezení")</td></tr>
+                @if (permit.PermitNumber is not null)
+                {
+                    <tr><td>Číslo povolení</td><td><a asp-page="/Parking/Permit" asp-route-id="@permit.Id">@permit.PermitNumber</a></td></tr>
+                }
+            </table>
+        }
 
         @if (item.Decisions.Count > 0)
         {
