@@ -437,4 +437,18 @@ public sealed class FeaturePagesTests(AdminUiFactory factory) : IClassFixture<Ad
 
         Assert.Contains("Uložení plánu reportu 7 — hotovo", html);
     }
+
+    [Fact]
+    public async Task Karty_nenacitaji_vsechny_drzitele_dokud_si_o_ne_spravce_nerekne()
+    {
+        var client = await SignInAsync();
+
+        var withoutList = await client.GetStringAsync("/ui/features/cards?cardNumber=26372");
+        Assert.Contains("Načíst seznam držitelů", withoutList);
+        Assert.DoesNotContain("<h3>Seznam</h3>\n    <table", withoutList);
+
+        var withList = await client.GetStringAsync("/ui/features/cards?list=true");
+        Assert.DoesNotContain("Načíst seznam držitelů", withList);
+        Assert.Contains("Detail</a>", withList);
+    }
 }

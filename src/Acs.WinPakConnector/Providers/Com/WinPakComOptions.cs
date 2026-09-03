@@ -50,4 +50,11 @@ public sealed class WinPakComOptions
 
     /// <summary>Kolik posledních událostí z komunikačního serveru se drží v paměti pro <c>GET /api/v1/events</c>.</summary>
     public int EventBufferSize { get; set; } = 500;
+
+    /// <summary>
+    /// Nejdelší doba jednoho volání do WIN-PAKu. Po jejím uplynutí konektor volání
+    /// opustí, zahodí relaci a další požadavek se přihlásí znovu — jinak by jedno
+    /// uvázlé COM volání zablokovalo konektor až do restartu služby.
+    /// </summary>
+    public int CallTimeoutSeconds { get; set; } = 90;
 }

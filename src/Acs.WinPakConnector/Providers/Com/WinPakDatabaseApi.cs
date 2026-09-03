@@ -151,6 +151,13 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
         }
     }
 
+    /// <summary>
+    /// Opustí relaci, na které visí nedokončené volání: objekt se nechá uvázlému vláknu
+    /// a další volání si vytvoří nový. Neodhlašuje se — na zablokovaném serveru by
+    /// to viselo stejně.
+    /// </summary>
+    public void AbandonSession() => ResetSession();
+
     /// <summary>Zahodí mrtvou relaci bez pokusu o odhlášení — server, který by ho přijal, už neběží.</summary>
     private void ResetSession()
     {

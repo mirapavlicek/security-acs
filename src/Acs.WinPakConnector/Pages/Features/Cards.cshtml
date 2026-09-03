@@ -131,7 +131,7 @@
                 onclick="return confirm('Opravdu zrušit celý rozsah karet?')">Zrušit rozsah karet</button>
     </form>
 
-    @if (Model.CardsWithoutHolder.Count > 0)
+    @if (Model.List && Model.CardsWithoutHolder.Count > 0)
     {
         <h3>Karty bez držitele (@Model.CardsWithoutHolder.Count)</h3>
         <table class="data">
@@ -179,6 +179,13 @@
     </form>
 
     <h3>Seznam</h3>
+    @if (!Model.List)
+    {
+        <p class="hint">Seznam všech držitelů (i s jejich kartami) a karet bez držitele jsou nejdelší dotazy do WIN-PAKu — načítají se jen na vyžádání, aby hledání karty nečekalo za nimi.</p>
+        <a class="btn btn-ghost" asp-page="/Features/Cards" asp-route-list="true" asp-route-cardNumber="@Model.CardNumber" asp-route-holderId="@Model.HolderId">Načíst seznam držitelů a karet bez držitele</a>
+    }
+    else
+    {
     <table class="data">
         <thead><tr><th>Id</th><th>Jméno</th><th>Poznámka</th><th>Karet</th><th>Úrovně</th><th></th></tr></thead>
         <tbody>
@@ -198,6 +205,7 @@
     @if (Model.CardHolders.Count == 0)
     {
         <p class="muted">Žádní držitelé se nenačetli.</p>
+    }
     }
 </div>
 

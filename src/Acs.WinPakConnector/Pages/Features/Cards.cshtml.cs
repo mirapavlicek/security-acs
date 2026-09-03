@@ -16,6 +16,9 @@ public class CardsModel(WinPakProviderCache providers) : FeaturePageModel(provid
     [BindProperty(SupportsGet = true)] public string? CardNumber { get; set; }
     [BindProperty(SupportsGet = true)] public string? HolderId { get; set; }
 
+    /// <summary>Seznam držitelů a karet bez držitele se načítá jen na vyžádání — jsou to nejdelší volání do WIN-PAKu.</summary>
+    [BindProperty(SupportsGet = true)] public bool List { get; set; }
+
     public CardDto? Card { get; private set; }
     public CardHolderDto? Holder { get; private set; }
     public CardHolderImageDto? Photo { get; private set; }
@@ -23,15 +26,23 @@ public class CardsModel(WinPakProviderCache providers) : FeaturePageModel(provid
 
     public async Task OnGetAsync(CancellationToken ct)
     {
-        await LoadAsync(async () => CardHolders = await Provider.SearchCardHoldersAsync(null, ct));
+        // Detail hledané karty nebo držitele jde první — kvůli němu se sem chodí
+        // a je to jedno krátké volání; nemá čekat za seznamy.
+        await LoadDetailAsync(ct);
+
         await LoadAsync(async () => AccessLevels = await Provider.GetAccessLevelsAsync(ct));
         // Každá pomocná položka zvlášť — jedna odmítnutá (třeba pole vyhledávání)
         // nemá shodit karty ani držitele, kvůli kterým se sem chodí.
         await LoadAsync(async () => SearchFields = await RequireCatalog().GetCardHolderSearchFieldsAsync(ct));
         await LoadAsync(async () => NoteFields = await RequireCatalog().GetNoteFieldTemplatesAsync(ct));
-        await LoadAsync(async () => CardsWithoutHolder = await RequireCatalog().GetCardsAsync(onlyWithoutHolder: true, ct));
 
-        await LoadDetailAsync(ct);
+        if (!List)
+            return;
+
+        // Všichni držitelé se všemi kartami a karty bez držitele: na ostrých datech
+        // desítky sekund, proto jen na kliknutí a ne při každém hledání karty.
+        await LoadAsync(async () => CardHolders = await Provider.SearchCardHoldersAsync(null, ct));
+        await LoadAsync(async () => CardsWithoutHolder = await RequireCatalog().GetCardsAsync(onlyWithoutHolder: true, ct));
     }
 
     private async Task LoadDetailAsync(CancellationToken ct)

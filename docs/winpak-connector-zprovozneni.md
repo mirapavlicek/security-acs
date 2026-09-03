@@ -254,6 +254,8 @@ z jednoho místa.
 | `WIN-PAK <vlastnost>: Unknown name … objekt má členy: …` | vlastnost se ve skutečné instalaci jmenuje jinak než v příručce | pošlete hlášku — vypisuje skutečné členy objektu, název se doplní do konektoru |
 | `Method 'System.String.NoteFieldName' not found` | WIN-PAK vrátil pole vyhledávání jako prosté řetězce (do v1.12.3) | aktualizovat konektor; stránky Features od té verze při odmítnuté pomocné položce zobrazí zbytek |
 | `WIN-PAK NoteField: Number of parameters specified does not match the expected number` | poznámkové pole držitele je indexované | od v1.12.2 konektor čte první poznámkové pole; výpis držitelů kvůli poznámce nepadá |
+| Jeden dotaz „hledá a hledá“ a po něm visí každý další — až do restartu služby | volání do WIN-PAKu se nevrátilo a drželo zámek providera (do v1.12.6 bez limitu) | od v1.12.7 se volání po `WinPak:Com:CallTimeoutSeconds` (výchozí 90 s) opustí, relace zahodí a další dotaz se přihlásí znovu; hláška `WIN-PAK neodpověděl na … do 90 s` |
+| Opuštěná volání se opakují (Diagnostika: „od startu opuštěno N volání“) | na WIN-PAK serveru visí COM+ komponenta `dllhost.exe` — typicky VB6 dialog na neviditelné ploše služby | Component Services → COM+ Applications → aplikace WIN-PAK → Shut down; případně restart služeb WIN-PAK |
 
 > **Bezpečnost:** `GetWPDSN` vrací ve skutečné instalaci celý připojovací řetězec
 > k databázi WIN-PAKu včetně uživatele a hesla. Do v1.12.1 ho konektor zobrazoval
@@ -280,6 +282,14 @@ až desítky. Rozhoduje proto počet volání, ne velikost odpovědi:
 - **Číselníky** (účty, čtečky, přístupové úrovně, časové zóny, panely, zařízení)
   si konektor drží 60 s v paměti; zápis do číselníku paměť zahodí. Karty
   a držitelé se necachují — ty ACS mění.
+
+- **Volání jdou za sebou** (COM+ objekty WIN-PAKu nejsou bezpečné pro souběh):
+  dlouhý dotaz zdrží všechny za ním. Proto stránka Karty a držitelé nenačítá
+  všechny držitele a karty bez držitele při každém otevření, ale jen na
+  kliknutí — hledání karty je jedno krátké volání a nemá za nimi čekat.
+  Uvázlé volání se po limitu (`CallTimeoutSeconds`, výchozí 90 s) opustí,
+  aby nezablokovalo konektor; `GET /api/v1/status` vrací během dlouhého
+  volání `busy` s názvem operace místo čekání.
 
 Když je dotaz pomalý i tak, podívejte se do Prohlížeče událostí na časy
 jednotlivých volání: pomalé bývá samo COM+ (vzdálený WIN-PAK, přetížený SQL),

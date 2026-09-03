@@ -30,9 +30,14 @@ public sealed class FakeComDispatch(string name, FakeComFactory factory) : IComD
     /// <summary>Metody, které mají selhat jen napoprvé — pád COM+ serveru s následnou obnovou.</summary>
     public Dictionary<string, Queue<Exception>> ThrowsOnce { get; } = [];
 
+    /// <summary>Metody, které visí, dokud test událost nenastaví — uvázlý COM+ server.</summary>
+    public Dictionary<string, ManualResetEventSlim> Blocks { get; } = [];
+
     public object? Invoke(string method, object?[] args)
     {
         factory.Calls.Add(new ComCall(Name, method, [.. args]));
+        if (Blocks.TryGetValue(method, out var block))
+            block.Wait();
         if (Throws.TryGetValue(method, out var failure))
             throw failure;
         if (ThrowsOnce.TryGetValue(method, out var queue) && queue.Count > 0)
