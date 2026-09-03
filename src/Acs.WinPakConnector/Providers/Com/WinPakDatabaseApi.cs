@@ -275,6 +275,13 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
         return args;
     }
 
+    /// <summary>Volání, u kterého zajímá návratová hodnota (nebo doplněný výstupní parametr — viz <see cref="ComDispatch"/>).</summary>
+    private object? CallWithResult(string method, params object?[] args)
+    {
+        EnsureSession();
+        return App.Invoke(method, args);
+    }
+
     /// <summary>Zavolá metodu, jejíž poslední parametr je <c>[out]</c> stavový kód zápisu karty.</summary>
     private void CallCardWrite(string operation, string method, params object?[] args)
     {

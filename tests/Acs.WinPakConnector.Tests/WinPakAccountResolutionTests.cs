@@ -434,6 +434,58 @@ public sealed class WinPakAccountResolutionTests
     }
 
     [Fact]
+    public void Chybejici_parametry_na_konci_se_doplni_podle_skutecne_signatury_a_vystup_se_vrati()
+    {
+        // AddUpdateCard na ostrém: „Number of parameters specified does not match the
+        // expected number“ — příručka neuvádí výstupní stavový kód.
+        var target = new StatusOut();
+        var signature = new ComMembers.ComMethodSignature("AddUpdateCard",
+        [
+            new("dwRecordID", "Long", false, false),
+            new("sCardNo", "String", false, false),
+            new("lStatus", "Long", true, false),
+        ], null);
+        var dispatch = new ComDispatch(target, (_, _) => signature);
+        var args = new object?[] { 0, "176025930" };
+
+        var result = dispatch.Invoke("AddUpdateCard", args);
+
+        Assert.Equal(101, result);
+        Assert.Equal(2, target.Calls);
+
+        // Naučeno: další volání jde rovnou s doplněným parametrem, bez odmítnutého pokusu.
+        Assert.Equal(101, dispatch.Invoke("AddUpdateCard", [0, "176025931"]));
+        Assert.Equal(3, target.Calls);
+    }
+
+    [Fact]
+    public void Kdyz_ma_metoda_parametru_min_nic_se_neoreze_a_hlaska_vypise_signaturu()
+    {
+        // Jiný název metody než v předchozím testu: naučené tvary jsou statické po metodách.
+        var signature = new ComMembers.ComMethodSignature("DeleteCardShort",
+            [new("dwRecordID", "Long", false, false)], "Long");
+        var dispatch = new ComDispatch(new StatusOut(), (_, _) => signature);
+
+        var error = Assert.Throws<ComCallException>(() => dispatch.Invoke("DeleteCardShort", [0, "1"]));
+
+        Assert.Contains("WIN-PAK má 1 parametrů, konektor poslal 2", error.Message);
+        Assert.Contains("DeleteCardShort(ByVal dwRecordID As Long) As Long", error.Message);
+        Assert.Contains("HRESULT 0x8002000E", error.Message);
+    }
+
+    [Fact]
+    public void Type_mismatch_bez_napravy_vypise_skutecnou_signaturu()
+    {
+        var signature = new ComMembers.ComMethodSignature("Anything",
+            [new("value", "Variant", true, false)], null);
+        var dispatch = new ComDispatch(new AlwaysMismatch(), (_, _) => signature);
+
+        var error = Assert.Throws<ComCallException>(() => dispatch.Invoke("Anything", [null]));
+
+        Assert.Contains("Skutečná signatura: Anything(ByRef value As Variant)", error.Message);
+    }
+
+    [Fact]
     public void Long_se_posila_jako_32bitove_cislo()
     {
         // VB6 Long je VT_I4; C# long by šel jako VT_I8 a WIN-PAK by ho odmítl.
@@ -485,6 +537,30 @@ public sealed class WinPakAccountResolutionTests
                 throw new COMException("Type mismatch.", unchecked((int)0x80020005));
             size = 3;
         }
+    }
+
+    /// <summary>
+    /// Chová se jako ostrý AddUpdateCard: se dvěma parametry odmítne počet, se třemi
+    /// (výstupní stavový kód navíc) projde a stav vrátí.
+    /// </summary>
+    public sealed class StatusOut
+    {
+        public int Calls;
+
+        public void AddUpdateCard(int recordId, string cardNo)
+        {
+            Calls++;
+            throw new COMException("Number of parameters specified does not match the expected number.", unchecked((int)0x8002000E));
+        }
+
+        public void AddUpdateCard(int recordId, string cardNo, ref int status)
+        {
+            Calls++;
+            status = 101;
+        }
+
+        public void DeleteCardShort(int recordId, string cardNo)
+            => throw new COMException("Number of parameters specified does not match the expected number.", unchecked((int)0x8002000E));
     }
 
     public sealed class AlwaysMismatch

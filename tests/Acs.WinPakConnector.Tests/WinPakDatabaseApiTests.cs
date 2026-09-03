@@ -214,6 +214,21 @@ public sealed class WinPakDatabaseApiTests
     }
 
     [Fact]
+    public void Stavovy_kod_vraceny_z_AddUpdateCard_se_vyhodnoti()
+    {
+        // Ostrý WIN-PAK má u AddUpdateCard výstupní stavový kód navíc; ComDispatch ho
+        // doplní a vrátí jako výsledek volání — 101 = číslo karty už existuje.
+        ArrangeSuccessfulLogin();
+        App.OutValues["GetCardbyCardNumber#3"] = Array.Empty<object>();
+        App.Returns["AddUpdateCard"] = 101;
+
+        var error = Assert.Throws<WinPakOperationException>(() => CreateApi().UpsertCard("100234",
+            new UpsertCardRequest(CardHolderId: "1001", Status: CardStatus.Active), accountId: 1, subAccountId: 2));
+
+        Assert.Contains("existuje", error.Message);
+    }
+
+    [Fact]
     public void AddUpdateCard_ma_14_parametru_v_poradi_podle_prirucky()
     {
         ArrangeSuccessfulLogin();

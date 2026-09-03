@@ -48,7 +48,9 @@ public sealed partial class WinPakDatabaseApi
         var existing = GetCard(cardNumber);
         var accessLevelIds = ToIds(request.AccessLevelIds ?? existing?.AccessLevelIds);
 
-        Call("AddUpdateCard",
+        // Příručka u AddUpdateCard neuvádí výstupní stavový kód, ostrý WIN-PAK ho má:
+        // ComDispatch ho podle typové informace doplní a vrátí jako výsledek volání.
+        var status = CallWithResult("AddUpdateCard",
             ComValue.ToLong(existing?.RecordId),                                  // dwRecordID (0 = nová karta)
             cardNumber,                                                           // sCardNo
             accountId,                                                            // lAccountID
@@ -63,6 +65,14 @@ public sealed partial class WinPakDatabaseApi
             0,                                                                    // Backdrop2ID
             accessLevelIds.Length > 1,                                            // bMultiple
             accessLevelIds);                                                      // alAccessLevelIDs
+        EnsureWriteSucceeded($"Uložení karty {cardNumber}", status);
+    }
+
+    /// <summary>Stavový kód zápisu, pokud ho WIN-PAK vrátil (návratovou hodnotou nebo doplněným výstupním parametrem).</summary>
+    private static void EnsureWriteSucceeded(string operation, object? status)
+    {
+        if (status is int or short or long or byte or uint)
+            WinPakStatus.EnsureCardSucceeded(operation, ComValue.ToInt(status));
     }
 
     public void DeleteCard(string cardNumber)
@@ -154,7 +164,7 @@ public sealed partial class WinPakDatabaseApi
         var existing = GetCard(cardNumber);
         var accessLevelIds = ToIds(request.AccessLevelIds ?? existing?.AccessLevelIds);
 
-        Call("AddUpdateCardEx",
+        var status = CallWithResult("AddUpdateCardEx",
             ComValue.ToLong(existing?.RecordId),
             cardNumber,
             accountId,
@@ -174,6 +184,7 @@ public sealed partial class WinPakDatabaseApi
             (short)netAxs.UsageLimit,
             netAxs.LimitedCard,
             netAxs.Trigger);
+        EnsureWriteSucceeded($"Uložení karty {cardNumber} s NetAXS volbami", status);
     }
 
     /// <summary>Maximální povolená délka čísla karty v této instalaci.</summary>

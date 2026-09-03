@@ -180,6 +180,7 @@ a skutečné COM objekty si v několika místech nerozumí:
 | `GetNoteFieldTemplateDetailsByAccount` vrací definice polí | vrací **objekt držitele** jako šablonu, pole jsou v jeho `NoteFields` | rozbaluje se kolekce |
 | výstupní `String` parametry | `null` odmítá jako Type mismatch, chce `""` | naučený tvar argumentů v `ComDispatch` |
 | `GetPhotoSize(id, index, ByRef size As Long)` | výstupní parametr odmítá číslo (Type mismatch) — nejspíš `ByRef As Variant` | nevolá se, velikost se počítá z dat `GetPhoto`; nula v by-ref se obecně zkouší jako null |
+| `AddUpdateCard` má 14 parametrů | odmítá počet („Number of parameters specified does not match“) — má víc, nejspíš výstupní stavový kód, který příručka uvádí jen jako návratový stav | chybějící parametry na konci se doplní podle typové informace a stav se vyhodnotí; při jiném nesouladu hláška vypíše skutečnou signaturu |
 | po chybě volání objekt dál funguje | po chybě volání každé další volání visí až do restartu služby | konektor po chybě relaci zahodí, objekt uvolní a přihlásí se znovu |
 | id jako `Long` | 32bitové (VB6) | `long` se posílá jako `int` |
 
@@ -189,7 +190,11 @@ Photo, Signature, SpareDW3, SpareDW4`. `ExtRefID` je místo pro osobní číslo
 z personálního systému — pro párování držitelů s ACS.
 
 Když WIN-PAK odmítne název členu, hláška konektoru vypíše skutečné členy
-objektu (`ComMembers.Describe`); doplňte je sem.
+objektu (`ComMembers.Describe`); doplňte je sem. Když odmítne počet nebo typ
+parametrů, hláška vypíše skutečnou signaturu metody z typové informace
+(`ComMembers.DescribeMethod`), např.
+`AddUpdateCard(ByVal dwRecordID As Long, …, ByRef lStatus As Long)` —
+tu sem doplňte také, aby se konektor příště nemusel učit za běhu.
 
 ## Communication Server API (`ACCW.dll`)
 
