@@ -143,8 +143,8 @@ public sealed partial class WinPakDatabaseApi
         => CallNamedList("GetCardHolderSearchFieldsByAccountName",
             (name, index) => new CardHolderSearchFieldDto(name, index),
             field => new CardHolderSearchFieldDto(
-                ComValue.ToStringOrEmpty(field.GetProperty("NoteFieldName")),
-                ComValue.ToInt(field.GetProperty("FieldIndex"))),
+                ComValue.ToStringOrEmpty(ComMembers.ReadAny(field, NoteFieldNameCandidates)),
+                ComValue.ToInt(ComMembers.ReadAny(field, FieldIndexCandidates))),
             AccountName, SubAccountName, null);
 
     /// <summary>Vyhledání držitelů přímo v databázi WIN-PAK (<c>GetCardHoldersOnSearch</c>).</summary>
@@ -158,14 +158,38 @@ public sealed partial class WinPakDatabaseApi
             AccountName, SubAccountName, fields, values, comparisons, null);
     }
 
+    /// <summary>
+    /// Názvy vlastností objektu poznámkového pole. Příručka uvádí <c>NoteFieldName</c>
+    /// a <c>FieldIndex</c>; skutečný WIN-PAK první z nich nezná („Unknown name“),
+    /// proto se zkouší i obvyklé varianty. Když nesedí žádná, hláška vypíše skutečné
+    /// členy objektu a název se doplní sem.
+    /// </summary>
+    private static readonly string[] NoteFieldNameCandidates =
+        ["NoteFieldName", "FieldName", "Name", "NoteName", "NoteFieldTitle", "Title", "Caption"];
+
+    private static readonly string[] FieldIndexCandidates =
+        ["FieldIndex", "Index", "NoteFieldIndex", "FieldNo", "FieldNumber", "NoteFieldID", "ID"];
+
+    private static object? ReadOptional(IComDispatch target, params string[] candidates)
+    {
+        try
+        {
+            return ComMembers.ReadAny(target, candidates);
+        }
+        catch (ComCallException ex) when (ComMembers.IsUnknownName(ex))
+        {
+            return null;
+        }
+    }
+
     /// <summary>Šablony poznámkových polí účtu (<c>GetNoteFieldTemplateDetailsByAccount</c>).</summary>
     public IReadOnlyList<NoteFieldTemplateDto> GetNoteFieldTemplates()
         => CallNamedList("GetNoteFieldTemplateDetailsByAccount",
             (name, index) => new NoteFieldTemplateDto(name, index, null),
             template => new NoteFieldTemplateDto(
-                ComValue.ToStringOrEmpty(template.GetProperty("NoteFieldName")),
-                ComValue.ToInt(template.GetProperty("FieldIndex")),
-                ComValue.ToStringOrNull(template.GetProperty("FieldDefinition"))),
+                ComValue.ToStringOrEmpty(ComMembers.ReadAny(template, NoteFieldNameCandidates)),
+                ComValue.ToInt(ComMembers.ReadAny(template, FieldIndexCandidates)),
+                ComValue.ToStringOrNull(ReadOptional(template, "FieldDefinition", "Definition", "Template", "NoteFieldDefinition"))),
             AccountName, SubAccountName, null);
 
     // ---------- Fotky a podpisy ----------
