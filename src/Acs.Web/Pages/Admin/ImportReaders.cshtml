@@ -1,0 +1,61 @@
+@page
+@model Acs.Web.Pages.Admin.ImportReadersModel
+@{
+    ViewData["Title"] = "Import čteček z tabulky EKV";
+}
+<h1>Import čteček z tabulky EKV</h1>
+<p class="muted">
+    Tabulka „čtečky EKV“ z dokumentace skutečného provedení (DSPS). Každá čtečka
+    v ní má <strong>skutečné číslo</strong> (např. 362002), místnost, do které
+    vstupuje, a rozvaděč — je pro čtečky autoritativní. Výkresy měly jen kód
+    rozvaděče a místnost odhadnutou podle nejbližšího popisku.
+</p>
+<p class="muted">
+    Import čtečky z výkresů nemaže, ale <strong>sjednocuje</strong>: kde se shoduje
+    rozvaděč i místnost, převezme stávající záznam (žádosti na něj zůstanou),
+    doplní mu číslo a přejmenuje ho. Co v tabulce protějšek nemá, byl odhad,
+    který neseděl — takové čtečky se deaktivují a vypíšou. Dveřní i výtahovou
+    tabulku lze nahrát postupně; import je idempotentní.
+</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success" style="white-space:pre-line">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error" style="white-space:pre-line">@Model.ErrorMessage</div>
+}
+
+<div class="card" style="max-width:760px">
+    <form method="post" enctype="multipart/form-data">
+        <label>Název budovy (musí už být v číselníku)</label>
+        <input type="text" name="buildingName" value="MOC" required />
+
+        <label>Tabulka čteček EKV (.xlsx) — dveřní nebo výtahová</label>
+        <input type="file" name="file"
+               accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx" required />
+
+        <label>Polohy čteček z výkresů EKV — <code>ekv-readers.json</code> (volitelné)</label>
+        <input type="file" name="positionsFile" accept="application/json,.json" />
+        <p class="hint">
+            Výstup skriptu <code>import/moc/extract_ekv.py</code> nad výkresy „čtečky EKV – celý objekt“
+            (jeden list na patro). Čtečky pak dostanou polohu ve výkresu, ze které se generuje plán patra.
+        </p>
+
+        <div class="checkbox-row">
+            <input type="checkbox" id="dryRun" name="dryRun" value="true" checked />
+            <label for="dryRun">Jen náhled (nic se neuloží)</label>
+        </div>
+        <div class="checkbox-row">
+            <input type="checkbox" id="keepUnmatched" name="keepUnmatched" value="true" />
+            <label for="keepUnmatched">
+                Nedeaktivovat čtečky z výkresů, které v tabulce nemají protějšek
+                (u výtahové tabulky se nedeaktivuje nikdy — dveřní čtečky v ní nejsou)
+            </label>
+        </div>
+
+        <button class="btn" type="submit">Spustit import</button>
+        <a class="btn btn-ghost" asp-page="/Catalog/Readers/Index">Čtečky</a>
+    </form>
+</div>

@@ -67,6 +67,7 @@ builder.Services.AddScoped<Acs.Infrastructure.Sync.AutoAssignmentService>();
 builder.Services.AddScoped<Acs.Infrastructure.Automation.AutomationService>();
 builder.Services.AddScoped<Acs.Infrastructure.Automation.HealthCheckService>();
 builder.Services.AddScoped<Acs.Infrastructure.Import.PlanImportService>();
+builder.Services.AddScoped<Acs.Infrastructure.Import.EkvReaderImportService>();
 builder.Services.AddScoped<Acs.Infrastructure.Plans.PlanGenerationService>();
 builder.Services.AddScoped<Acs.Infrastructure.Sync.EmployeeSourceFactory>();
 builder.Services.AddScoped<Acs.Infrastructure.Sync.LdapDiagnosticsService>();
@@ -188,6 +189,49 @@ if (args.Contains("--import-plan"))
         preferNonCorridor: !args.Contains("--prefer-corridor"),
         userName: "cli");
     Console.WriteLine(importResult);
+    return 0;
+}
+
+// ---------- Import čteček z tabulky EKV (CLI) ----------
+// Použití: Acs.Web --import-readers <tabulka.xlsx> [--building MOC] [--dry-run] [--keep-unmatched]
+//          [--positions import/moc/ekv-readers.json]   (polohy z výkresů EKV, viz extract_ekv.py)
+// Tabulka „čtečky EKV“ z dokumentace skutečného provedení; jde nahrát dveřní
+// i výtahovou. Čtečky z výkresů se sjednotí podle rozvaděče a místnosti;
+// co protějšek nemá, se deaktivuje (--keep-unmatched to vypne).
+if (args.Contains("--import-readers"))
+{
+    var idx = Array.IndexOf(args, "--import-readers");
+    var path = idx + 1 < args.Length ? args[idx + 1] : null;
+    if (path is null || !File.Exists(path))
+    {
+        Console.Error.WriteLine($"Soubor s tabulkou nenalezen: {path ?? "(nezadán)"}");
+        return 2;
+    }
+
+    var buildingIdx = Array.IndexOf(args, "--building");
+    var buildingName = buildingIdx >= 0 && buildingIdx + 1 < args.Length ? args[buildingIdx + 1] : "MOC";
+
+    using var readersScope = app.Services.CreateScope();
+    var readerImporter = readersScope.ServiceProvider
+        .GetRequiredService<Acs.Infrastructure.Import.EkvReaderImportService>();
+    await using var tableStream = File.OpenRead(path);
+    var tableRows = Acs.Infrastructure.Import.EkvReaderImportService.Parse(tableStream);
+
+    Dictionary<string, List<Acs.Infrastructure.Import.EkvPosition>>? readerPositions = null;
+    var positionsIdx = Array.IndexOf(args, "--positions");
+    if (positionsIdx >= 0 && positionsIdx + 1 < args.Length)
+    {
+        await using var positionsStream = File.OpenRead(args[positionsIdx + 1]);
+        readerPositions = Acs.Infrastructure.Import.EkvReaderImportService.ParsePositions(positionsStream);
+    }
+
+    var readersResult = await readerImporter.ImportAsync(
+        tableRows, buildingName,
+        dryRun: args.Contains("--dry-run"),
+        deactivateUnmatched: !args.Contains("--keep-unmatched"),
+        userName: "cli",
+        positions: readerPositions);
+    Console.WriteLine(readersResult);
     return 0;
 }
 

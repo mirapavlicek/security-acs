@@ -41,11 +41,11 @@ public class FloorPlanModel(AcsDbContext db, AuditService audit, PlanGenerationS
         LayoutJson = JsonSerializer.Serialize(await LoadLayoutAsync(id), JsonOpts);
 
         HasDrawingSource = await db.Rooms.AnyAsync(r => r.FloorId == id && r.SourceX != null)
-                           || await db.Readers.AnyAsync(r => r.SourceX != null
+                           || await db.Readers.AnyAsync(r => r.IsActive && r.SourceX != null
                                                              && ((r.Room != null && r.Room.FloorId == id)
                                                                  || (r.Corridor != null && r.Corridor.FloorId == id)));
         UnplacedRooms = await db.Rooms.CountAsync(r => r.FloorId == id && r.PlanX == null);
-        UnplacedReaders = await db.Readers.CountAsync(r => r.SchemaX == null
+        UnplacedReaders = await db.Readers.CountAsync(r => r.IsActive && r.SchemaX == null
                                                           && ((r.Room != null && r.Room.FloorId == id)
                                                               || (r.Corridor != null && r.Corridor.FloorId == id)));
         return Page();
@@ -60,8 +60,9 @@ public class FloorPlanModel(AcsDbContext db, AuditService audit, PlanGenerationS
             .Select(r => new RoomDto(r.Id, r.Name, r.PlanX, r.PlanY, r.PlanW, r.PlanH))
             .ToListAsync();
         var readers = await db.Readers
-            .Where(r => (r.Room != null && r.Room.FloorId == floorId)
-                        || (r.Corridor != null && r.Corridor.FloorId == floorId))
+            .Where(r => r.IsActive
+                        && ((r.Room != null && r.Room.FloorId == floorId)
+                            || (r.Corridor != null && r.Corridor.FloorId == floorId)))
             .OrderBy(r => r.Name)
             .Select(r => new ReaderDto(r.Id, r.Name, r.SchemaX, r.SchemaY))
             .ToListAsync();

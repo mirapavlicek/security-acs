@@ -188,6 +188,8 @@ AuditLog          — každá změna číselníků, rozhodnutí, přihlášení,
    (výběr a konfigurace v GUI — zadání nechává otevřené). ✅ Implementováno.
 8. **Správa budov / pater / místností** — CRUD + přiřazení čteček.
    ✅ Implementováno (`/Catalog/Places`).
+   ✅ Čtečky se skutečnými čísly z dokumentace skutečného provedení —
+   viz [Import čteček z tabulek EKV](import-ctecek-ekv.md).
 9. **Grafická schémata** — upload podkladu, editor hotspotů (umístění
    místnosti/čtečky na plán), zobrazení stavu přístupů na plánu.
    ✅ Implementováno (upload PNG/JPEG/SVG per patro v Budovách, editor pozic

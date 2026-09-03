@@ -65,6 +65,8 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
         modelBuilder.Entity<Reader>(e =>
         {
             e.HasIndex(x => x.ExternalId);
+            e.HasIndex(x => x.DeviceNumber);
+            e.Property(x => x.DeviceNumber).HasMaxLength(32);
             e.Property(x => x.Name).HasMaxLength(256);
             e.HasOne(x => x.Room).WithMany(r => r.Readers).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.Corridor).WithMany(c => c.Readers).OnDelete(DeleteBehavior.SetNull);

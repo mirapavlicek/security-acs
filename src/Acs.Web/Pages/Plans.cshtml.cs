@@ -41,8 +41,9 @@ public class PlansModel(AcsDbContext db, Acs.Infrastructure.Workflow.ReaderGroup
             .Select(r => new { r.Id, r.Name, x = r.PlanX, y = r.PlanY, w = r.PlanW, h = r.PlanH })
             .ToListAsync();
         var readers = await db.Readers
-            .Where(r => ((r.Room != null && r.Room.FloorId == SelectedFloor.Id)
-                         || (r.Corridor != null && r.Corridor.FloorId == SelectedFloor.Id))
+            .Where(r => r.IsActive
+                        && ((r.Room != null && r.Room.FloorId == SelectedFloor.Id)
+                            || (r.Corridor != null && r.Corridor.FloorId == SelectedFloor.Id))
                         && r.SchemaX != null)
             .Select(r => new { r.Id, r.Name, x = r.SchemaX, y = r.SchemaY, r.RoomId })
             .ToListAsync();
