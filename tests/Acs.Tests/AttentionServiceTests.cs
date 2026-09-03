@@ -112,4 +112,55 @@ public sealed class AttentionServiceTests : IDisposable
         var counts = await CreateService().GetAsync(principal);
         Assert.Equal(0, counts.CardQueue);
     }
+
+    private void AddParkingItem(RequestStatus status)
+    {
+        var type = new ParkingPermitType { Name = "Zaměstnanec" };
+        _db.ParkingPermitTypes.Add(type);
+        _db.SaveChanges();
+        _db.AccessRequests.Add(new AccessRequest
+        {
+            RequesterUserId = _admin.Id,
+            TargetEmployeeId = _employee.Id,
+            Items =
+            [
+                new AccessRequestItem
+                {
+                    Status = status,
+                    ParkingPermit = new ParkingPermit { EmployeeId = _employee.Id, PermitTypeId = type.Id, ValidFrom = DateTime.UtcNow },
+                },
+            ],
+        });
+        _db.SaveChanges();
+    }
+
+    [Fact]
+    public async Task ApprovedParkingItem_CountsInParkingQueue_NotCardQueue()
+    {
+        AddParkingItem(RequestStatus.Approved);
+        var counts = await CreateService().GetAsync(AdminPrincipal());
+        Assert.Equal(1, counts.ParkingQueue);
+        Assert.Equal(0, counts.CardQueue);
+        Assert.Equal(1, counts.Total);
+    }
+
+    [Fact]
+    public async Task ParkingAdmin_SeesParkingQueue_ButNotCardQueue()
+    {
+        AddParkingItem(RequestStatus.Approved);
+        AddItem(RequestStatus.Approved);
+        var parkingAdmin = new AppUser { UserName = "parkovani", Roles = AppRole.ParkingAdmin };
+        _db.Users.Add(parkingAdmin);
+        await _db.SaveChangesAsync();
+
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, parkingAdmin.Id.ToString()),
+            new Claim(ClaimTypes.Role, nameof(AppRole.ParkingAdmin)),
+        ], "TestAuth"));
+
+        var counts = await CreateService().GetAsync(principal);
+        Assert.Equal(1, counts.ParkingQueue);
+        Assert.Equal(0, counts.CardQueue);
+    }
 }
