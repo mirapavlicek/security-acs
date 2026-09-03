@@ -27,11 +27,16 @@ public sealed class FakeComDispatch(string name, FakeComFactory factory) : IComD
     /// <summary>Metody, které mají selhat — WIN-PAK některá volání odmítá podle verze a licence.</summary>
     public Dictionary<string, Exception> Throws { get; } = [];
 
+    /// <summary>Metody, které mají selhat jen napoprvé — pád COM+ serveru s následnou obnovou.</summary>
+    public Dictionary<string, Queue<Exception>> ThrowsOnce { get; } = [];
+
     public object? Invoke(string method, object?[] args)
     {
         factory.Calls.Add(new ComCall(Name, method, [.. args]));
         if (Throws.TryGetValue(method, out var failure))
             throw failure;
+        if (ThrowsOnce.TryGetValue(method, out var queue) && queue.Count > 0)
+            throw queue.Dequeue();
 
         for (var i = 0; i < args.Length; i++)
         {

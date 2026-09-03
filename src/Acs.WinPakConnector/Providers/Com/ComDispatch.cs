@@ -177,6 +177,16 @@ public sealed class ComDispatch(object instance) : IComDispatch
         {
             throw new ComCallException(member, inner);
         }
+        catch (COMException ex)
+        {
+            // Chyby před samotným vyvoláním (neznámý název členu, spadlý RPC) přijdou
+            // bez obalu — bez názvu členu by z nich nešlo poznat, co WIN-PAK nezná.
+            throw new ComCallException(member, ex);
+        }
+        catch (MissingMemberException ex)
+        {
+            throw new ComCallException(member, ex);
+        }
     }
 }
 
@@ -185,6 +195,16 @@ public sealed class ComCallException(string member, Exception inner)
     : InvalidOperationException(Describe(member, inner), inner)
 {
     public string Member { get; } = member;
+
+    /// <summary>
+    /// Spojení s COM+ serverem WIN-PAKu je pryč — proces spadl nebo byl recyklován
+    /// (RPC_S_SERVER_UNAVAILABLE, RPC_S_CALL_FAILED, RPC_E_DISCONNECTED,
+    /// RPC_E_SERVERFAULT). Proxy objekt je od té chvíle mrtvý a každé další volání
+    /// selže stejně, dokud se objekt nevytvoří znovu.
+    /// </summary>
+    public bool IsConnectionLost => InnerException is COMException com
+        && com.HResult is unchecked((int)0x800706BA) or unchecked((int)0x800706BE)
+            or unchecked((int)0x80010108) or unchecked((int)0x80010105) or unchecked((int)0x800706D9);
 
     private static string Describe(string member, Exception inner)
     {
