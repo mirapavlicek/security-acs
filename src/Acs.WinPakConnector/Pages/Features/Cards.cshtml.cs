@@ -19,6 +19,11 @@ public class CardsModel(WinPakProviderCache providers) : FeaturePageModel(provid
     /// <summary>Seznam držitelů a karet bez držitele se načítá jen na vyžádání — jsou to nejdelší volání do WIN-PAKu.</summary>
     [BindProperty(SupportsGet = true)] public bool List { get; set; }
 
+    /// <summary>Fotka držitele jen na vyžádání — obrázkové API ostrého WIN-PAKu je nejméně spolehlivá část a detail držitele na něm nemá záviset.</summary>
+    [BindProperty(SupportsGet = true)] public bool ShowPhoto { get; set; }
+
+    public string? PhotoError { get; private set; }
+
     public CardDto? Card { get; private set; }
     public CardHolderDto? Holder { get; private set; }
     public CardHolderImageDto? Photo { get; private set; }
@@ -53,15 +58,23 @@ public class CardsModel(WinPakProviderCache providers) : FeaturePageModel(provid
                 Card = await Provider.GetCardAsync(CardNumber, ct);
 
             if (!string.IsNullOrWhiteSpace(HolderId))
-            {
                 Holder = await Provider.GetCardHolderAsync(HolderId, ct);
-                if (Catalog is { } catalog)
-                    Photo = await catalog.GetCardHolderImageAsync(HolderId, 0, signature: false, ct);
-            }
         }
         catch (Exception ex)
         {
             DetailError = ex.Message;
+        }
+
+        if (Holder is null || !ShowPhoto || Catalog is not { } catalog)
+            return;
+
+        try
+        {
+            Photo = await catalog.GetCardHolderImageAsync(Holder.Id, 0, signature: false, ct);
+        }
+        catch (Exception ex)
+        {
+            PhotoError = ex.Message;
         }
     }
 

@@ -144,7 +144,7 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
             }
             catch (ComCallException ex) when (ex.IsConnectionLost)
             {
-                api.ResetSession();
+                api.RecycleSession();
                 api.EnsureSession();
                 return call();
             }
@@ -152,11 +152,32 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
     }
 
     /// <summary>
-    /// Opustí relaci, na které visí nedokončené volání: objekt se nechá uvázlému vláknu
-    /// a další volání si vytvoří nový. Neodhlašuje se — na zablokovaném serveru by
-    /// to viselo stejně.
+    /// Zahodí relaci a další volání si vytvoří nový aplikační objekt. Používá se
+    /// po chybě volání i po uvázlém volání: na ostrém serveru po chybě zůstal
+    /// objekt WIN-PAKu v stavu, kdy každé další volání viselo, a pomohl jen
+    /// restart služby — tedy nový objekt. Neodhlašuje se (na zablokovaném objektu
+    /// by to viselo stejně); starý objekt se uvolní mimo zámek na pozadí, aby
+    /// s ním zanikla i jeho relace a databázové spojení.
     /// </summary>
-    public void AbandonSession() => ResetSession();
+    public void RecycleSession()
+    {
+        var stale = _app;
+        ResetSession();
+        if (stale is null)
+            return;
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                _com.Release(stale);
+            }
+            catch (Exception)
+            {
+                // Uvolnění mrtvého nebo uvázlého objektu může selhat; nový už běží.
+            }
+        });
+    }
 
     /// <summary>Zahodí mrtvou relaci bez pokusu o odhlášení — server, který by ho přijal, už neběží.</summary>
     private void ResetSession()

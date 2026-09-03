@@ -252,18 +252,37 @@ public sealed partial class WinPakDatabaseApi
     // ---------- Fotky a podpisy ----------
 
     public CardHolderImageDto GetPhoto(string cardHolderId, int index)
-        => GetImage(cardHolderId, index, "GetPhotoSize", "GetPhoto");
+        => GetImage(cardHolderId, index, "GetPhoto");
 
     public CardHolderImageDto GetSignature(string cardHolderId, int index)
-        => GetImage(cardHolderId, index, "GetSigSize", "GetSig");
+        => GetImage(cardHolderId, index, "GetSig");
 
-    private CardHolderImageDto GetImage(string cardHolderId, int index, string sizeMethod, string dataMethod)
+    /// <summary>
+    /// Obrázek se čte rovnou (<c>GetPhoto</c>/<c>GetSig</c>), velikost se spočítá
+    /// z dat. <c>GetPhotoSize</c> ostrý WIN-PAK odmítal s „Type mismatch“ a bez něj
+    /// se konektor obejde — je to jedno volání navíc, které nic nepřidává.
+    /// </summary>
+    private CardHolderImageDto GetImage(string cardHolderId, int index, string dataMethod)
     {
-        var id = ComValue.ToLong(cardHolderId);
-        var size = ComValue.ToLong(Call(sizeMethod, id, index, 0)[2]);
-        var data = Call(dataMethod, id, index, null)[2];
+        var data = Call(dataMethod, ComValue.ToLong(cardHolderId), index, null)[2];
+        var content = ToBase64(data);
+        return new CardHolderImageDto(cardHolderId, index, ContentLength(content), content);
+    }
 
-        return new CardHolderImageDto(cardHolderId, index, size, ToBase64(data));
+    private static long ContentLength(string? base64)
+    {
+        if (base64 is null)
+            return 0;
+
+        try
+        {
+            return Convert.FromBase64String(base64).LongLength;
+        }
+        catch (FormatException)
+        {
+            // WIN-PAK může vrátit obrázek i jako text, který base64 není — pak platí jeho délka.
+            return base64.Length;
+        }
     }
 
     /// <summary>Obrázky chodí jako VARIANT s polem bytů; pro REST je vracíme v base64.</summary>

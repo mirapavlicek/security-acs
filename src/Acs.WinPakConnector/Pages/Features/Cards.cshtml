@@ -251,7 +251,15 @@
         }
 
         <h3>Fotka a podpis</h3>
-        @if (Model.Photo is { ContentBase64: { Length: > 0 } content })
+        @if (!Model.ShowPhoto)
+        {
+            <p><a class="btn btn-sm btn-ghost" asp-page="/Features/Cards" asp-route-holderId="@detail.Id" asp-route-showPhoto="true">Načíst fotku</a></p>
+        }
+        else if (Model.PhotoError is not null)
+        {
+            <p class="alert alert-error">@Model.PhotoError</p>
+        }
+        else if (Model.Photo is { ContentBase64: { Length: > 0 } content })
         {
             <p><img src="data:image/*;base64,@content" alt="Fotka držitele" style="max-height:160px" /></p>
         }

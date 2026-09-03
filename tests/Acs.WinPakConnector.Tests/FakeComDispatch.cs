@@ -102,6 +102,10 @@ public sealed class FakeComFactory : IComFactory
 
     public IComDispatch Wrap(object comObject) => (FakeComDispatch)comObject;
 
+    /// <summary>Uvolnění objektu se jen zaznamená — na pořadí vůči dalšímu Login záleží.</summary>
+    public void Release(IComDispatch dispatch)
+        => Calls.Add(new ComCall(((FakeComDispatch)dispatch).Name, "<release>", []));
+
     /// <summary>Vyrobí atrapu datového objektu (karta, držitel, čtečka…) s danými vlastnostmi.</summary>
     public FakeComDispatch Record(string name, params (string Property, object? Value)[] properties)
     {

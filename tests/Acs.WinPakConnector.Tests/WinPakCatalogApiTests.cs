@@ -319,9 +319,9 @@ public sealed class WinPakCatalogApiTests
     }
 
     [Fact]
-    public void Fotka_se_cte_i_s_velikosti_a_vraci_se_v_base64()
+    public void Fotka_se_cte_jednim_volanim_a_velikost_se_pocita_z_dat()
     {
-        App.OutValues["GetPhotoSize#2"] = 3;
+        // GetPhotoSize ostrý WIN-PAK odmítal s „Type mismatch“ — konektor ho nepotřebuje.
         App.OutValues["GetPhoto#2"] = new byte[] { 1, 2, 3 };
 
         var photo = CreateApi().GetPhoto("1001", 0);
@@ -329,6 +329,18 @@ public sealed class WinPakCatalogApiTests
         Assert.Equal(3, photo.Size);
         Assert.Equal(Convert.ToBase64String([1, 2, 3]), photo.ContentBase64);
         Assert.Equal([1001L, 0, null], _com.Call("GetPhoto").Args);
+        Assert.DoesNotContain(_com.Calls, c => c.Method == "GetPhotoSize");
+    }
+
+    [Fact]
+    public void Drzitel_bez_fotky_ma_velikost_nula_a_zadny_obsah()
+    {
+        App.OutValues["GetPhoto#2"] = Array.Empty<byte>();
+
+        var photo = CreateApi().GetPhoto("1001", 0);
+
+        Assert.Equal(0, photo.Size);
+        Assert.Null(photo.ContentBase64);
     }
 
     [Fact]

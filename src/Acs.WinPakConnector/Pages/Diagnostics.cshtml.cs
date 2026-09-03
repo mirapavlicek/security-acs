@@ -42,6 +42,8 @@ public class DiagnosticsModel(WinPakProviderCache providers) : PageModel
             var abandoned = provider is ComWinPakProvider { AbandonedCalls: > 0 } com
                 ? $"; od startu opuštěno {com.AbandonedCalls} volání, která WIN-PAK nedokončil v limitu"
                 : "";
+            if (provider is ComWinPakProvider { RecycledSessions: > 0 } recycled)
+                abandoned += $"; po chybě volání {recycled.RecycledSessions}× založena nová relace";
             return $"databázový server {(status.DatabaseServerConnected ? "připojen" : "nepřipojen")}, "
                    + $"serverů se stavem: {status.Servers.Count}{abandoned}";
         });

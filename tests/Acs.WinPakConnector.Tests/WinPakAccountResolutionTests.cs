@@ -416,6 +416,24 @@ public sealed class WinPakAccountResolutionTests
     }
 
     [Fact]
+    public void Nula_ve_vystupnim_variantu_se_po_Type_mismatch_zopakuje_s_null()
+    {
+        // GetPhotoSize(id, index, 0) na ostrém: výstupní ByRef As Variant odmítne číslo, null přijme.
+        var target = new VariantOut();
+        var dispatch = new ComDispatch(target);
+        var args = new object?[] { 1001, 0 };
+
+        dispatch.Invoke("GetSize", args);
+
+        Assert.Equal(3, args[1]);
+        Assert.Equal(2, target.Calls);
+
+        // Naučený tvar: podruhé rovnou, bez odmítnutého pokusu.
+        dispatch.Invoke("GetSize", [1001, 0]);
+        Assert.Equal(3, target.Calls);
+    }
+
+    [Fact]
     public void Long_se_posila_jako_32bitove_cislo()
     {
         // VB6 Long je VT_I4; C# long by šel jako VT_I8 a WIN-PAK by ho odmítl.
@@ -452,6 +470,20 @@ public sealed class WinPakAccountResolutionTests
             if (dsn is null)
                 throw new COMException("Type mismatch.", unchecked((int)0x80020005));
             dsn = "WINPAK";
+        }
+    }
+
+    /// <summary>Výstupní ByRef As Variant: číslo odmítne, prázdný variant (null) přijme a naplní.</summary>
+    public sealed class VariantOut
+    {
+        public int Calls;
+
+        public void GetSize(int id, ref object? size)
+        {
+            Calls++;
+            if (size is not null)
+                throw new COMException("Type mismatch.", unchecked((int)0x80020005));
+            size = 3;
         }
     }
 
