@@ -19,6 +19,10 @@ public class NewModel(AcsDbContext db, RequestWorkflowService workflow) : PageMo
     public bool CanActForOthers { get; private set; }
     public int MaxPlateInputs => Math.Clamp(Types.Count == 0 ? 1 : Types.Max(t => t.MaxPlates), 1, 10);
 
+    /// <summary>SPZ zaměstnance oddělené mezerou (pro hledání v seznamu).</summary>
+    public string PlatesOf(Employee employee)
+        => string.Join(' ', employee.Identifiers.Select(i => i.Value));
+
     [TempData] public string? ErrorMessage { get; set; }
 
     private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
@@ -34,8 +38,11 @@ public class NewModel(AcsDbContext db, RequestWorkflowService workflow) : PageMo
         MyEmployeeId = user?.EmployeeId;
         MyEmployeeName = user?.Employee?.FullName;
 
+        // Hledání i podle SPZ — evidované značky se přibalí do vyhledávacího textu položky.
         Employees = CanActForOthers
-            ? await db.Employees.Where(e => e.IsActive).OrderBy(e => e.LastName).ThenBy(e => e.FirstName).ToListAsync()
+            ? await db.Employees.Where(e => e.IsActive)
+                .Include(e => e.Identifiers.Where(i => i.Type == IdentifierType.LicensePlate && i.IsActive))
+                .OrderBy(e => e.LastName).ThenBy(e => e.FirstName).ToListAsync()
             : [];
 
         Types = await db.ParkingPermitTypes.Where(t => t.IsActive)
