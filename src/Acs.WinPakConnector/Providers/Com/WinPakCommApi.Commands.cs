@@ -10,16 +10,20 @@ public sealed partial class WinPakCommApi
 {
     // ---------- Alarmy a transakce ----------
 
-    public void AcknowledgeAlarm(long hid, int point)
+    /// <summary>
+    /// Skutečná signatura: <c>AckAlarm(strData As String, lHID As Long, lPoint As Long)</c> —
+    /// první je text transakce (poznámka k potvrzení), příručka ho neuváděla.
+    /// </summary>
+    public void AcknowledgeAlarm(long hid, int point, string? note = null)
     {
         EnsureStarted();
-        Server.Invoke("AckAlarm", [hid, point]);
+        Server.Invoke("AckAlarm", [note ?? "", hid, point]);
     }
 
-    public void ClearAlarm(long hid, int point)
+    public void ClearAlarm(long hid, int point, string? note = null)
     {
         EnsureStarted();
-        Server.Invoke("ClrAlarm", [hid, point]);
+        Server.Invoke("ClrAlarm", [note ?? "", hid, point]);
     }
 
     public void AddNote(long hid, int point, string note)
@@ -151,7 +155,7 @@ public sealed partial class WinPakCommApi
     public void LockUnlockAllDoors(long accountId, bool shouldLock)
     {
         EnsureStarted();
-        Server.Invoke("LockUnLockAllDoors", [accountId, shouldLock]);
+        Server.Invoke("LockUnLockAllDoors", [accountId, shouldLock ? 1 : 0]); // isLock As Long
     }
 
     /// <summary>Obnoví stav dveří účtu a vrátí návratový status (<c>RefreshDoorsByAccId</c>).</summary>
@@ -222,7 +226,8 @@ public sealed partial class WinPakCommApi
     public int GetDeviceStatus(long hid, int deviceType)
     {
         EnsureStarted();
-        return ComValue.ToInt(Server.Invoke("GetStatus", [hid, deviceType, 0]));
+        // GetStatus(lHID, lDeviceType) As Long — stav je návratová hodnota.
+        return ComValue.ToInt(Server.Invoke("GetStatus", [hid, deviceType]));
     }
 
     /// <summary>Výchozí režim čtečky (<c>GetDefaultACRMode</c>).</summary>
@@ -270,9 +275,8 @@ public sealed partial class WinPakCommApi
     public IReadOnlyList<string> GetCommServerFilters()
     {
         EnsureStarted();
-        var args = new object?[] { null };
-        Server.Invoke("GetFilterCommServerIDs", args);
-        return SplitIds(ComValue.ToStringOrNull(args[0]));
+        // GetFilterCommServerIDs() As String — návratová hodnota, bez parametrů.
+        return SplitIds(ComValue.ToStringOrNull(Server.Invoke("GetFilterCommServerIDs", [])));
     }
 
     /// <summary>Filtry se vracejí jako jeden řetězec oddělený čárkami nebo středníky.</summary>
@@ -287,7 +291,8 @@ public sealed partial class WinPakCommApi
     public MusterElementDto GetMusterElements(long areaId, long accountId, int sortField, int sortOrder)
     {
         EnsureStarted();
-        var args = new object?[] { null, areaId, accountId, sortField, sortOrder, false };
+        // GetMusterElemenets(ByRef sTransaction As String, AreaId, AccountId, iSortField, iSortOrder, ByRef bStatus As Long)
+        var args = new object?[] { "", areaId, accountId, sortField, sortOrder, 0 };
         Server.Invoke("GetMusterElemenets", args);
 
         if (!ComValue.ToBool(args[5]))

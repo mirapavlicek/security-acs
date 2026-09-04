@@ -186,6 +186,12 @@ a skutečné COM objekty si v několika místech nerozumí:
 | `GetAccountEmailIDs`, `GetBadgeData`, `GetReaderTZDetailsByAccountId`, `LoopTimeZoneByAccountId` mají výstupní parametr | vrací hodnotu (`As String`), jediný parametr id | čte se návratová hodnota |
 | `GetSchedule`, `GetTemplate` mají výstupní parametr | `(RecordId) As Variant` — objekt je návratová hodnota | čte se návratová hodnota |
 | objektové parametry `As Object` | typované rozhraním (`ICard`, `ICardHolder`, `IAccessLevel`, `ITimeZone`, `IMasterHoliday`, `IHolidayGroup`, `ISchedule`, `ITemplate`), všechny `ByRef` | objekt z ProgID téže třídy vyhovuje |
+| **Komunikační server** `AckAlarm(hid, point)`, `ClrAlarm(hid, point)` | `(strData As String, lHID As Long, lPoint As Long)` — první je text transakce | posílá se `""`, hid, bod |
+| `EntryPointLockByID(hid)`, `EntryPointUnLockByID(hid)` | **na FN Motol neexistují**; je jen `EntryPointLock(hid, point)` / `EntryPointUnLock(hid, point)` | když varianta podle id chybí, volá se s bodem 0 a chybějící metoda se pamatuje |
+| `ListConnectedDevices(out list)`, `GetFilterCommServerIDs(out ids)` | bez parametrů, seznam je návratová hodnota (`As Variant`, `As String`) | čte se návratová hodnota |
+| `GetStatus(hid, type, out status)` | `(lHID, lDeviceType) As Long` | čte se návratová hodnota |
+| `LockUnLockAllDoors(account, isLock As Boolean)` | `isLock As Long` | 1/0 |
+| `GetMusterElemenets(…, ByRef bStatus As Boolean)` | `ByRef sTransaction As String` (ne null), `ByRef bStatus As Long` | `""` a 0 |
 | `Login`/`ConnectWPDatabase` doména | `bstrDomainName As String` ByVal — null z konfigurace WIN-PAK přijme, ale je to náhoda | posílá se `""` |
 | po chybě volání objekt dál funguje | po chybě volání každé další volání visí až do restartu služby | konektor po chybě relaci zahodí, objekt uvolní a přihlásí se znovu |
 | `GetConfiguredHolidayGroupsByPanel` vrací objekty skupin | vrací prostá čísla (`UInt32` id) | jméno se dohledá v `GetHolidayGroupsByAcctID` |
@@ -196,7 +202,8 @@ CardHolderID, FirstName, LastName, EmailID, ExtRefID, NoteField, NoteFields,
 Photo, Signature, SpareDW3, SpareDW4`. `ExtRefID` je místo pro osobní číslo
 z personálního systému — pro párování držitelů s ACS.
 
-Výstup kontroly signatur z FN Motol (v1.12.8, 4. 9. 2026) je zapracovaný výše;
+Výstup kontroly signatur z FN Motol (v1.12.8, 4. 9. 2026, databázové
+i komunikační API) je zapracovaný výše;
 zbylé řádky „vyrovná se za běhu“ (výstupní `ByRef String` posílaný jako null)
 konektor řeší sám a nic se u nich nemění.
 

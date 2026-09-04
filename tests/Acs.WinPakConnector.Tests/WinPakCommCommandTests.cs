@@ -35,8 +35,9 @@ public sealed class WinPakCommCommandTests
         api.AcknowledgeAlarm(23, 5);
         api.ClearAlarm(23, 5);
 
-        Assert.Equal([23L, 5], _com.Call("AckAlarm").Args);
-        Assert.Equal([23L, 5], _com.Call("ClrAlarm").Args);
+        // Skutečná signatura: AckAlarm(strData As String, lHID, lPoint) — text transakce první.
+        Assert.Equal(["", 23L, 5], _com.Call("AckAlarm").Args);
+        Assert.Equal(["", 23L, 5], _com.Call("ClrAlarm").Args);
     }
 
     [Fact]
@@ -137,7 +138,7 @@ public sealed class WinPakCommCommandTests
     {
         CreateApi().LockUnlockAllDoors(8, shouldLock: true);
 
-        Assert.Equal([8L, true], _com.Call("LockUnLockAllDoors").Args);
+        Assert.Equal([8L, 1], _com.Call("LockUnLockAllDoors").Args); // isLock As Long
     }
 
     [Fact]
@@ -205,7 +206,7 @@ public sealed class WinPakCommCommandTests
         Server.Returns["GetStatus"] = 5;
 
         Assert.Equal(5, CreateApi().GetDeviceStatus(23, deviceType: 2));
-        Assert.Equal([23L, 2, 0], _com.Call("GetStatus").Args);
+        Assert.Equal([23L, 2], _com.Call("GetStatus").Args); // GetStatus(hid, type) As Long
     }
 
     [Fact]
@@ -233,7 +234,7 @@ public sealed class WinPakCommCommandTests
     [Fact]
     public void Filtry_komunikacnich_serveru_maji_vlastni_volani()
     {
-        Server.OutValues["GetFilterCommServerIDs#0"] = "1";
+        Server.Returns["GetFilterCommServerIDs"] = "1"; // GetFilterCommServerIDs() As String
         var api = CreateApi();
 
         api.AddCommServerFilter(1);
@@ -246,7 +247,7 @@ public sealed class WinPakCommCommandTests
     public void Muster_vraci_data_jen_pri_uspesnem_statusu()
     {
         Server.OutValues["GetMusterElemenets#0"] = "<Muster/>";
-        Server.OutValues["GetMusterElemenets#5"] = true;
+        Server.OutValues["GetMusterElemenets#5"] = 1; // bStatus As Long
 
         var muster = CreateApi().GetMusterElements(areaId: 2, accountId: 8, sortField: 1, sortOrder: 0);
 
