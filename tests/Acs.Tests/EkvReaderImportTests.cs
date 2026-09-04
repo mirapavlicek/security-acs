@@ -177,6 +177,25 @@ public sealed class EkvReaderImportTests : IDisposable
     // ---------- Import ----------
 
     [Fact]
+    public async Task Import_PrevezmeCteckuZeSynchronizaceWinPakuSeStejnymCislem()
+    {
+        // Sync z WIN-PAKu čtečku založil jako „362001“ (název zařízení = číslo čtečky), bez umístění.
+        var synced = new Reader { ExternalId = "5001", Name = "362001", PanelName = "362001", Source = RecordSource.Imported, IsActive = true };
+        _db.Readers.Add(synced);
+        await _db.SaveChangesAsync();
+        AddRoom(_floor2Pp, "23-02301 — ROZVODNA");
+        var rows = new[] { new EkvReaderRow("362001", "23-02301", "-02PP", "ACS.03", null, "101", null, null) };
+
+        var result = await _importer.ImportAsync(rows, "MOC", dryRun: false, deactivateUnmatched: true, "test");
+
+        Assert.Equal(0, result.Created);
+        var reader = await _db.Readers.SingleAsync();
+        Assert.Equal(synced.Id, reader.Id);
+        Assert.Equal(("5001", "362001", "362001 — 23-02301 — ROZVODNA", "ACS.03"), (reader.ExternalId, reader.DeviceNumber, reader.Name, reader.PanelName));
+        Assert.NotNull(reader.RoomId);
+    }
+
+    [Fact]
     public async Task Import_PrevezmeCteckuZVykresuKdyzSediRozvadecIMistnost()
     {
         var room = AddRoom(_floor2Pp, "23-02301 — ROZVODNA");

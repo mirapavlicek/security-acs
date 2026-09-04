@@ -262,7 +262,8 @@ public class EkvReaderImportService(AcsDbContext db, AuditService audit)
                 }
             }
 
-            var reader = byDevice.GetValueOrDefault(row.DeviceNumber);
+            var reader = byDevice.GetValueOrDefault(row.DeviceNumber)
+                         ?? ClaimSyncedReader(readers, row.DeviceNumber);
             if (reader is not null)
             {
                 updated++;
@@ -436,6 +437,21 @@ public class EkvReaderImportService(AcsDbContext db, AuditService audit)
         if (candidate is not null)
             claimed.Add(candidate.Id);
         return candidate;
+    }
+
+    /// <summary>
+    /// Čtečka už založená synchronizací z WIN-PAKu (název zařízení = číslo čtečky, bez
+    /// čísla z dokumentace a bez umístění) je tatáž fyzická čtečka — dokumentace jí
+    /// doplní číslo, jméno a umístění, místo aby vedle ní založila duplicitu.
+    /// </summary>
+    private static Reader? ClaimSyncedReader(List<Reader> readers, string deviceNumber)
+    {
+        var number = Sync.ReaderSyncService.Normalize(deviceNumber);
+        var candidates = readers
+            .Where(r => r.ExternalId != null && r.DeviceNumber is null && r.RoomId is null && r.CorridorId is null
+                        && Sync.ReaderSyncService.Normalize(r.Name) == number)
+            .ToList();
+        return candidates.Count == 1 ? candidates[0] : null;
     }
 
     private static void Apply(Reader reader, EkvReaderRow row, Room? room, Corridor? corridor)
