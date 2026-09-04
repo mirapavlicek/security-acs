@@ -18,8 +18,14 @@ public sealed class UpdateOptions
     /// <summary>Kam skript po startu volá, aby ověřil, že nová verze běží.</summary>
     public string HealthUrl { get; set; } = "http://localhost:52001/health";
 
-    /// <summary>Kam se ukládají přijaté balíky a protokol aktualizace; prázdné = <c>updates</c> vedle programu.</summary>
+    /// <summary>
+    /// Kam se ukládají přijaté balíky a protokol aktualizace; prázdné = <c>%ProgramData%\AcsWinPakConnector\updates</c>.
+    /// Mimo složku programu — ta se při aktualizaci celá přejmenovává a nesmí v ní být otevřené soubory.
+    /// </summary>
     public string? StagingDirectory { get; set; }
+
+    /// <summary>Název jednorázové úlohy Plánovače, která výměnu souborů provede.</summary>
+    public string TaskName { get; set; } = "AcsWinPakConnector-Update";
 }
 
 /// <summary>Přijatý balík připravený k instalaci.</summary>
@@ -56,10 +62,25 @@ public sealed class ConnectorUpdater(IOptions<UpdateOptions> options, ILogger<Co
 
     public string StagingDirectory
         => string.IsNullOrWhiteSpace(options.Value.StagingDirectory)
-            ? Path.Combine(AppContext.BaseDirectory, "updates")
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "AcsWinPakConnector", "updates")
             : options.Value.StagingDirectory;
 
     public string LogPath => Path.Combine(StagingDirectory, "update.log");
+
+    /// <summary>Kompletní výstup PowerShellu (chyby parseru, výjimky mimo skript) — doplněk k protokolu skriptu.</summary>
+    public string StreamLogPath => Path.Combine(StagingDirectory, "update-output.log");
+
+    /// <summary>
+    /// Po startu zapíše výsledek poslední aktualizace do logu služby (Prohlížeč událostí),
+    /// aby byl vidět i tam, kde se administrace neotevře.
+    /// </summary>
+    public void ReportPreviousUpdate()
+    {
+        var log = ReadLogTail();
+        if (string.IsNullOrWhiteSpace(log))
+            return;
+        logger.LogInformation("Konektor {Version} po aktualizaci; protokol poslední aktualizace:{NewLine}{Log}", CurrentVersion, Environment.NewLine, log);
+    }
 
     /// <summary>Výměnu souborů umí skript jen na Windows se službou; jinde se balík jen přijme.</summary>
     public static bool Supported => OperatingSystem.IsWindows();
@@ -108,6 +129,8 @@ public sealed class ConnectorUpdater(IOptions<UpdateOptions> options, ILogger<Co
             var version = ReadPackageVersion(temp);
             var final = Path.Combine(StagingDirectory, $"AcsWinPakConnector-{version}-win-x64.zip");
             File.Move(temp, final, overwrite: true);
+            // Skript si balík ověří ještě jednou podle souboru .sha256 vedle něj.
+            await File.WriteAllTextAsync(final + ".sha256", $"{sha256}  {Path.GetFileName(final)}\n", ct);
 
             var staged = new StagedUpdate(version, final, new FileInfo(final).Length, sha256, DateTime.UtcNow);
             lock (_gate)
@@ -143,27 +166,87 @@ public sealed class ConnectorUpdater(IOptions<UpdateOptions> options, ILogger<Co
 
         var script = WriteEmbeddedScript();
         var installDir = AppContext.BaseDirectory.TrimEnd('\\', '/');
-        var command = $"& '{script}' -ZipPath '{staged.Path}' -InstallDir '{installDir}' -ServiceName '{options.Value.ServiceName}' "
-                      + $"-HealthUrl '{options.Value.HealthUrl}' *> '{LogPath}'";
+        var taskName = options.Value.TaskName;
 
-        File.WriteAllText(LogPath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} Spouštím aktualizaci na {staged.Version} z {staged.Path}{Environment.NewLine}");
-        var start = new ProcessStartInfo("powershell.exe")
+        // Skript píše protokol sám (-LogPath); dávkový soubor zachytí i to, co by spadlo mimo (chyba parseru, výjimka).
+        var launcher = Path.Combine(StagingDirectory, "run-update.cmd");
+        File.WriteAllText(launcher,
+            "@echo off\r\n"
+            + $"powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{script}\" -ZipPath \"{staged.Path}\" "
+            + $"-InstallDir \"{installDir}\" -ServiceName \"{options.Value.ServiceName}\" -HealthUrl \"{options.Value.HealthUrl}\" "
+            + $"-LogPath \"{LogPath}\" -TaskName \"{taskName}\" >> \"{StreamLogPath}\" 2>&1\r\n");
+
+        File.WriteAllText(LogPath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} Konektor {CurrentVersion}: spoustim aktualizaci na {staged.Version} z {staged.Path}{Environment.NewLine}");
+        File.WriteAllText(StreamLogPath, "");
+
+        // Výměnu nesmí dělat potomek procesu služby: se zastavenou službou zanikl i on, uprostřed
+        // kopírování (napůl vyměněná instalace). Jednorázová úloha Plánovače běží pod SYSTEM ve
+        // vlastním stromu procesů, kterého se zastavení služby netýká.
+        if (!TryScheduleTask(taskName, launcher, out var scheduleError))
+        {
+            logger.LogWarning("Plánovač úloh aktualizaci nepřijal ({Error}); spouštím skript přímo.", scheduleError);
+            File.AppendAllText(LogPath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} Planovac uloh nepouzit ({scheduleError}), skript spusten primo.{Environment.NewLine}");
+            var start = new ProcessStartInfo("cmd.exe") { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = StagingDirectory };
+            start.ArgumentList.Add("/c");
+            start.ArgumentList.Add(launcher);
+            using var process = Process.Start(start) ?? throw new InvalidOperationException("Aktualizační skript se nepodařilo spustit.");
+        }
+
+        logger.LogWarning("Aktualizace konektoru na {Version} spuštěna; služba se za okamžik zastaví a znovu spustí.", staged.Version);
+        return staged;
+    }
+
+    /// <summary>Založí a hned spustí jednorázovou úlohu Plánovače pod účtem SYSTEM.</summary>
+    private static bool TryScheduleTask(string taskName, string launcher, out string error)
+    {
+        error = "";
+        var create = RunSchtasks("/Create", "/F", "/TN", taskName, "/SC", "ONCE", "/ST", DateTime.Now.AddMinutes(-1).ToString("HH:mm"),
+            "/RU", "SYSTEM", "/RL", "HIGHEST", "/TR", $"\"{launcher}\"");
+        if (create.ExitCode != 0)
+        {
+            error = $"schtasks /Create: {create.Output}".Trim();
+            return false;
+        }
+
+        var run = RunSchtasks("/Run", "/TN", taskName);
+        if (run.ExitCode != 0)
+        {
+            error = $"schtasks /Run: {run.Output}".Trim();
+            RunSchtasks("/Delete", "/TN", taskName, "/F");
+            return false;
+        }
+
+        return true;
+    }
+
+    private static (int ExitCode, string Output) RunSchtasks(params string[] arguments)
+    {
+        var start = new ProcessStartInfo("schtasks.exe")
         {
             UseShellExecute = false,
             CreateNoWindow = true,
-            WorkingDirectory = StagingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
         };
-        start.ArgumentList.Add("-NoProfile");
-        start.ArgumentList.Add("-NonInteractive");
-        start.ArgumentList.Add("-ExecutionPolicy");
-        start.ArgumentList.Add("Bypass");
-        start.ArgumentList.Add("-Command");
-        start.ArgumentList.Add(command);
+        foreach (var argument in arguments)
+            start.ArgumentList.Add(argument);
 
-        // Odpojený proces: skript službu zastaví, čímž skončí i tento proces — skript musí žít dál.
-        using var process = Process.Start(start) ?? throw new InvalidOperationException("PowerShell se nepodařilo spustit.");
-        logger.LogWarning("Aktualizace konektoru na {Version} spuštěna; služba se za okamžik zastaví a znovu spustí.", staged.Version);
-        return staged;
+        try
+        {
+            using var process = Process.Start(start) ?? throw new InvalidOperationException("schtasks.exe se nepodařilo spustit.");
+            var output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
+            if (!process.WaitForExit(30_000))
+            {
+                process.Kill();
+                return (-1, "schtasks neodpověděl do 30 s");
+            }
+
+            return (process.ExitCode, output);
+        }
+        catch (Exception ex)
+        {
+            return (-1, ex.Message);
+        }
     }
 
     /// <summary>Vloží aktualizační skript z prostředků vedle balíku (vždy verze odpovídající tomuto konektoru).</summary>
@@ -200,14 +283,24 @@ public sealed class ConnectorUpdater(IOptions<UpdateOptions> options, ILogger<Co
 
     private string? ReadLogTail()
     {
+        var text = ReadFile(LogPath);
+        var streams = ReadFile(StreamLogPath);
+        if (!string.IsNullOrWhiteSpace(streams))
+            text = $"{text}{Environment.NewLine}--- výstup PowerShellu ---{Environment.NewLine}{streams}";
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+        return text.Length <= 12000 ? text : text[^12000..];
+    }
+
+    private static string? ReadFile(string path)
+    {
         try
         {
-            if (!File.Exists(LogPath))
+            if (!File.Exists(path))
                 return null;
-            using var stream = new FileStream(LogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             using var reader = new StreamReader(stream);
-            var text = reader.ReadToEnd();
-            return text.Length <= 8000 ? text : text[^8000..];
+            return reader.ReadToEnd();
         }
         catch (IOException)
         {

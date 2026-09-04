@@ -1,6 +1,7 @@
 using Acs.Infrastructure.WinPak;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 
 namespace Acs.Web.Pages.Admin;
 
@@ -10,11 +11,15 @@ namespace Acs.Web.Pages.Admin;
 /// vymění soubory sám. Stránka ukazuje běžící verzi, dostupná vydání a protokol.
 /// </summary>
 [RequestSizeLimit(400_000_000)]
-public class ConnectorUpdateModel(WinPakClient winPak, ConnectorReleaseService releases) : PageModel
+public class ConnectorUpdateModel(WinPakClient winPak, ConnectorReleaseService releases, Acs.Infrastructure.Data.AcsDbContext db) : PageModel
 {
     public WinPakInfo? Info { get; private set; }
     public WinPakUpdateStatus? Status { get; private set; }
     public string? ConnectorError { get; private set; }
+
+    /// <summary>Poslední aktualizace poslaná z ACS (z auditu) — když konektor neodpovídá, je to nejspíš ona.</summary>
+    public DateTime? LastPushUtc { get; private set; }
+    public string? LastPushVersion { get; private set; }
     public IReadOnlyList<ConnectorRelease> Releases { get; private set; } = [];
     public string? ReleasesError { get; private set; }
 
@@ -35,6 +40,15 @@ public class ConnectorUpdateModel(WinPakClient winPak, ConnectorReleaseService r
         catch (Exception ex)
         {
             ConnectorError = ex.Message;
+            var lastPush = await db.AuditLogs
+                .Where(a => a.Action == "connector-update-pushed")
+                .OrderByDescending(a => a.At)
+                .FirstOrDefaultAsync(ct);
+            if (lastPush is not null && DateTime.UtcNow - lastPush.At < TimeSpan.FromHours(6))
+            {
+                LastPushUtc = lastPush.At;
+                LastPushVersion = lastPush.EntityId;
+            }
         }
 
         try
