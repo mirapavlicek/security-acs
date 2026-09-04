@@ -165,6 +165,32 @@ public sealed class WinPakCatalogApiTests
     }
 
     [Fact]
+    public void Vetve_pristupovych_oblasti_jako_retezce_se_namapuji_na_nazev_i_id()
+    {
+        // Ostrý WIN-PAK: GetAccessAreaBranchesByAccountName vrací názvy, ne objekty
+        // („Method 'System.String.DeviceID' not found“).
+        App.OutValues["GetAccessAreaBranchesByAccountName#1"] = new object[] { "Budova A", "Budova B" };
+
+        var branches = CreateApi().GetAccessAreaBranches();
+
+        Assert.Equal([("Budova A", "Budova A"), ("Budova B", "Budova B")], branches.Select(b => (b.Id, b.Name)));
+    }
+
+    [Fact]
+    public void Prosta_hodnota_v_seznamu_odpovida_na_nazev_nebo_id_podle_sveho_typu()
+    {
+        var text = new ScalarDispatch("Budova A");
+        var number = new ScalarDispatch(42u);
+
+        Assert.Equal("Budova A", text.GetProperty("DeviceName"));
+        Assert.Null(text.GetProperty("DeviceID"));
+        Assert.Equal(42u, number.GetProperty("HolGrpID"));
+        Assert.Null(number.GetProperty("HolGrpName"));
+        Assert.Null(text.GetProperty("Status"));
+        Assert.Throws<ComCallException>(() => text.Invoke("Anything", []));
+    }
+
+    [Fact]
     public void Skupiny_svatku_panelu_jako_cisla_se_doplni_o_jmeno_ze_seznamu_skupin()
     {
         // Ostrý WIN-PAK: GetConfiguredHolidayGroupsByPanel vrací UInt32 id, ne objekty
