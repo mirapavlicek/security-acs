@@ -189,6 +189,7 @@ a skutečné COM objekty si v několika místech nerozumí:
 | **Komunikační server** `AckAlarm(hid, point)`, `ClrAlarm(hid, point)` | `(strData As String, lHID As Long, lPoint As Long)` — první je text transakce | posílá se `""`, hid, bod |
 | `EntryPointLockByID(hid)`, `EntryPointUnLockByID(hid)` | **na FN Motol neexistují**; je jen `EntryPointLock(hid, point)` / `EntryPointUnLock(hid, point)` | když varianta podle id chybí, volá se s bodem 0 a chybějící metoda se pamatuje |
 | `ListConnectedDevices(out list)`, `GetFilterCommServerIDs(out ids)` | bez parametrů, seznam je návratová hodnota (`As Variant`, `As String`) | čte se návratová hodnota |
+| `ListConnectedDevices` vrací objekty | vrací pole **VB6 záznamů** (`VT_RECORD`), která .NET pozdní vazba odmítá („The specified record cannot be mapped to a managed value class“) | `RecordInvoker`: přímé `IDispatch::Invoke`, záznamy přečtené po polích přes `IRecordInfo` |
 | `GetStatus(hid, type, out status)` | `(lHID, lDeviceType) As Long` | čte se návratová hodnota |
 | `LockUnLockAllDoors(account, isLock As Boolean)` | `isLock As Long` | 1/0 |
 | `GetMusterElemenets(…, ByRef bStatus As Boolean)` | `ByRef sTransaction As String` (ne null), `ByRef bStatus As Long` | `""` a 0 |
