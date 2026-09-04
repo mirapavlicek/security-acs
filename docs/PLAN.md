@@ -274,14 +274,17 @@ zástupy, řetěz fází, notifikace, připomínky); položka žádosti
 23. **Fronta správce parkování** — nová role `ParkingAdmin`; vydání povolení
     přidělí číslo (`P-RRRR-NNNN`), zapíše SPZ jako identifikátory zaměstnance
     (`EmployeeIdentifier` typu `LicensePlate` s platností povolení — připraveno
-    pro online autorizaci vjezdu přes integrační API) a umožní **tisk kartičky
-    za čelní sklo** (HTML + tiskové CSS, 150 × 70 mm, podle předlohy FNMH).
+    pro online autorizaci vjezdu přes integrační API) a vygeneruje **kartičku
+    za čelní sklo jako PDF** (150 × 70 mm podle předlohy FNMH; generuje se na
+    serveru knihovnou PDFsharp, hromadně i všechny kartičky ze seznamu
+    vydaných povolení do jednoho PDF).
     Odebrání: na žádost držitele (jde rovnou do fronty, bez schvalování) nebo
     přímo správcem. ✅ Implementováno (`/Parking/Queue`, `/Parking/Permit`,
     `/Parking/Print`, `ParkingAdminService`).
 24. **Automatizace a výstupy** — expirace platnosti a offboarding odebírají
-    vydaná povolení a deaktivují SPZ; report „Parkovací povolení“ s CSV;
-    přehled „Parkování“ pro zaměstnance. ✅ Implementováno.
+    vydaná povolení a deaktivují SPZ; report „Parkovací povolení“ s exportem
+    do **PDF** i CSV (PDF export mají i reporty přístupů); přehled „Parkování“
+    pro zaměstnance. ✅ Implementováno.
 
 ---
 
@@ -308,7 +311,7 @@ zástupy, řetěz fází, notifikace, připomínky); položka žádosti
 | 3 | Schvalovací matice, zástupy, řetězce čteček, workflow žádostí, notifikace | funkční schvalování end-to-end |
 | 4 | Fronta správce karet, WinPak Connector (zápis), „Moje přístupy“, reporty | uzavřená smyčka do WIN-PAK |
 | 5 | Grafická schémata, témata GUI, ladění UX, zátěžové a failover testy | produkční verze 1.0 |
-| 6 | Parkovací povolení — areály, druhy povolení, žádost a schvalování, fronta správce parkování, tisk kartičky za sklo (viz kapitola 5 F) | parkování schvalované stejným jádrem jako přístupy |
+| 6 | Parkovací povolení — areály, druhy povolení, žádost a schvalování, fronta správce parkování, kartička za sklo jako PDF (viz kapitola 5 F) | parkování schvalované stejným jádrem jako přístupy |
 | 7 | Napojení dalších systémů (vjezdy na SPZ, stravování) přes univerzální integrační API — [podklad do zadávačky](integrace/README.md) | jeden kontrakt, N konektorů místo integrace na míru; vydaná parkovací povolení už SPZ evidují jako identifikátory |
 
 ---
@@ -368,9 +371,9 @@ zástupy, řetěz fází, notifikace, připomínky); položka žádosti
     zaměstnance, takže online autorizace vjezdu přes integrační API na ně
     může rovnou navázat. Má se SPZ do parkovacího systému propisovat
     automaticky při vydání, nebo stačí dotaz u brány?
-20. Kartička za sklo: stačí tisk z prohlížeče (HTML, 150 × 70 mm), nebo je
-    potřeba PDF s pevnou šablonou / potisk plastových karet? Má na kartičce
-    být i jméno držitele u povolení na funkci?
+20. Kartička za sklo se generuje jako **PDF** (150 × 70 mm). Je potřeba i
+    potisk plastových karet (jiný rozměr / šablona tiskárny)? Má na kartičce
+    být i jméno držitele u povolení na funkci (současný stav: ano)?
 21. Má odebrání povolení na žádost držitele procházet schvalováním, nebo
     stačí, že ho provede správce parkování (současný stav)?
 

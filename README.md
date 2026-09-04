@@ -67,8 +67,11 @@ areálů (Motol, Homolka…) a druhů povolení (např. „Vedení nemocnice“,
 více nebo všechny areály přidělené konkrétnímu zaměstnanci, schvalování
 stejným jádrem (matice druhu → matice areálů, zástupy, notifikace), fronta
 **správce parkování** (nová role) s vydáním čísla, zápisem SPZ mezi
-identifikátory zaměstnance a **tiskem kartičky za čelní sklo**; expirace a
-offboarding povolení odebírají automaticky.
+identifikátory zaměstnance a **kartičkou za čelní sklo jako PDF** (i hromadně);
+reporty přístupů a povolení se exportují do **PDF** a CSV; expirace a
+offboarding povolení odebírají automaticky. PDF se generuje na serveru
+(PDFsharp, MIT) — potřebuje TrueType písmo s diakritikou (`dejavu-sans-fonts`,
+instaluje deploy skript; jinak `ACS_PDF_FONT_DIR`).
 Zbývá: nasazení na cílové servery (skripty připraveny, spouští se z macOS-ai
 proxyhubu) a napojení konektoru na reálný WIN-PAK (MSSQL přístup / licence
 SDK — viz otevřené otázky, kapitola 8 v `docs/PLAN.md`).
