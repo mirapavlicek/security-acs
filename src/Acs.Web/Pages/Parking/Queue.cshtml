@@ -6,7 +6,7 @@
 }
 <h1>Fronta správce parkování</h1>
 <p class="muted">
-    Schválená parkovací povolení k vydání (číslo povolení, kartička za sklo) a požadavky na odebrání.
+    Schválená parkovací povolení k vydání (číslo povolení, kartička za sklo jako PDF) a požadavky na odebrání.
     SPZ vydaného povolení se zapíšou mezi identifikátory zaměstnance, takže jsou připravené pro napojení parkovacího systému.
 </p>
 
@@ -83,6 +83,11 @@
         {
             <a class="btn btn-sm btn-ghost" asp-page="Queue">Zrušit filtr</a>
         }
+        @if (Model.Issued.Count > 0)
+        {
+            <a class="btn btn-sm btn-ghost" asp-page="Queue" asp-page-handler="Cards" asp-route-search="@Model.Search" target="_blank"
+               title="Všechny kartičky z tohoto seznamu v jednom PDF (jedna kartička na stránku)">Kartičky ze seznamu (PDF)</a>
+        }
     </form>
     <table class="data">
         <thead>
@@ -103,7 +108,7 @@
                 <td style="white-space:nowrap">
                     @if (permit.PermitType?.PrintsWindshieldCard == true)
                     {
-                        <a class="btn btn-sm btn-ghost" asp-page="Print" asp-route-id="@permit.Id" target="_blank">Tisk</a>
+                        <a class="btn btn-sm btn-ghost" asp-page="Print" asp-route-id="@permit.Id" target="_blank">Kartička (PDF)</a>
                     }
                     <form method="post" asp-page-handler="Revoke" asp-route-search="@Model.Search" class="inline-form"
                           onsubmit="return confirm('Odebrat povolení @permit.PermitNumber?');">

@@ -268,8 +268,8 @@ a:hover { text-decoration: underline; }
 .hotspot-mine { background: var(--success); }
 .hotspot-inline { position: static; display: inline-block; margin: 0 0.2rem -3px 0; cursor: default; }
 
-/* ===== Parkovací povolení — kartička za čelní sklo =====
-   Pevné barvy nezávislé na tématu: kartička se tiskne, musí vypadat stejně všude. */
+/* ===== Parkovací povolení — náhled kartičky za čelní sklo =====
+   Pevné barvy nezávislé na tématu: náhled má odpovídat generovanému PDF. */
 .permit-card {
   --pc-blue: #1f3f95;
   --pc-blue-dark: #27409a;
@@ -338,16 +338,6 @@ a:hover { text-decoration: underline; }
   text-align: right;
   pointer-events: none;
   user-select: none;
-}
-
-/* Tisková stránka kartičky: bez rámu aplikace, jen kartička. */
-.permit-print-page { display: flex; flex-direction: column; align-items: flex-start; gap: 1rem; padding: 1rem; }
-.permit-print-actions { display: flex; gap: 0.5rem; }
-@media print {
-  .permit-print-actions, .no-print { display: none !important; }
-  .permit-print-page { padding: 0; }
-  .permit-card { box-shadow: none; margin: 0; }
-  @page { margin: 8mm; }
 }
 
 /* Formulář žádosti o povolení */

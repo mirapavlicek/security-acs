@@ -218,6 +218,18 @@ public sealed class ParkingAdminTests : IDisposable
     }
 
     [Fact]
+    public async Task IssuedPermit_RendersWindshieldCardPdf()
+    {
+        var item = await IssuedItemAsync("1AB2345");
+        var issued = await _parking.GetItemAsync(item.Id);
+
+        var pdf = Acs.Infrastructure.Pdf.PermitCardPdf.Render(
+            Acs.Infrastructure.Pdf.PermitCardView.For(issued!.ParkingPermit!, issued.Request!.TargetEmployee));
+
+        Assert.Equal("%PDF-", System.Text.Encoding.ASCII.GetString(pdf, 0, 5));
+    }
+
+    [Fact]
     public async Task GetIssued_SearchMatchesPlateNameAndNumber()
     {
         await IssuedItemAsync("1AB2345");

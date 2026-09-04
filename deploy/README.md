@@ -26,10 +26,12 @@ cp deploy/acs.env.example deploy/acs.env
 ./deploy/install.sh <ssh-user> 10.84.7.146  # případně jen jeden
 ```
 
-Skript na každém nodu: nainstaluje .NET 10 SDK a git, založí účet `acs`,
-naklonuje repozitář do `/opt/acs/src`, nahraje `/etc/acs/acs.env` (600),
-zaregistruje systemd služby, otevře port 52000 (firewalld + SELinux),
-provede první build a spustí aplikaci.
+Skript na každém nodu: nainstaluje .NET 10 SDK, git a písmo `dejavu-sans-fonts`
+(generování PDF — kartičky parkovacích povolení a reporty potřebují TrueType
+písmo s českou diakritikou; jiný adresář s `.ttf` lze určit proměnnou
+`ACS_PDF_FONT_DIR`), založí účet `acs`, naklonuje repozitář do `/opt/acs/src`,
+nahraje `/etc/acs/acs.env` (600), zaregistruje systemd služby, otevře port
+52000 (firewalld + SELinux), provede první build a spustí aplikaci.
 
 Pozn.: pokud je repozitář privátní, nastavte na nodech přístup ke čtení
 (deploy key / `git config credential…`) — updater potřebuje `git fetch`.

@@ -29,7 +29,7 @@
     <div style="margin-top:0.8rem;display:flex;gap:0.5rem;flex-wrap:wrap">
         @if (Model.CanPrint)
         {
-            <a class="btn" asp-page="Print" asp-route-id="@Model.Permit.Id" target="_blank">Tisk kartičky</a>
+            <a class="btn" asp-page="Print" asp-route-id="@Model.Permit.Id" target="_blank">Kartička (PDF)</a>
         }
         <a class="btn btn-ghost" asp-page="Index">Zpět</a>
     </div>
