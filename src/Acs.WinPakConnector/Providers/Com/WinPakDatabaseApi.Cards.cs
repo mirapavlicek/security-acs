@@ -48,6 +48,23 @@ public sealed partial class WinPakDatabaseApi
         var existing = GetCard(cardNumber);
         var accessLevelIds = ToIds(request.AccessLevelIds ?? existing?.AccessLevelIds);
 
+        try
+        {
+            AddUpdateCard(cardNumber, request, existing, accessLevelIds, accountId, subAccountId);
+        }
+        catch (ComCallException ex) when (existing is not null && ex.IsConnectionLost)
+        {
+            // AddUpdateCard na ostrém shodilo COM+ proces (i po obnovení relace). Existující
+            // kartu jde upravit i cestou, kterou používá sám WIN-PAK: vzít jeho objekt karty,
+            // změnit pole a poslat ho zpět přes EditCard — bez 18 argumentů, ve kterých se dá
+            // trefit něco, co komponenta nepřežije.
+            EditCardViaObject(cardNumber, request, accessLevelIds);
+        }
+    }
+
+    private void AddUpdateCard(string cardNumber, UpsertCardRequest request, CardDto? existing, int[] accessLevelIds,
+        long accountId, long subAccountId)
+    {
         // Skutečná signatura (typová informace ostrého WIN-PAKu): 18 parametrů, žádný
         // výstupní stav — za 14 z příručky následují čtyři NetAXS volby, bMultiple je Long.
         var status = CallWithResult("AddUpdateCard",
@@ -72,8 +89,38 @@ public sealed partial class WinPakDatabaseApi
         EnsureWriteSucceeded($"Uložení karty {cardNumber}", status);
     }
 
+    /// <summary>
+    /// Úprava existující karty přes objekt karty z WIN-PAKu: <c>GetCardbyCardNumber</c>
+    /// vrátí skutečný <c>ICard</c> se všemi poli, změní se jen to, co žádost mění,
+    /// a objekt se vrátí přes <c>EditCard(cardNo, account, subAccount, ByRef card, ByRef status)</c>.
+    /// </summary>
+    internal void EditCardViaObject(string cardNumber, UpsertCardRequest request, int[] accessLevelIds)
+    {
+        var result = Call("GetCardbyCardNumber", cardNumber, AccountName, SubAccountName, null);
+        var raw = ComValue.AsEnumerable(result[3]).FirstOrDefault()
+                  ?? throw new KeyNotFoundException($"Karta {cardNumber} ve WIN-PAKu není.");
+        var card = _com.Wrap(raw);
+
+        card.SetProperty("CardStatus", (int)request.Status);
+        card.SetProperty("Issue", request.Issue);
+        if (request.CardHolderId is not null)
+            card.SetProperty("CardHolderID", ComValue.ToLong(request.CardHolderId));
+        if (request.ActivationDate is { } activation)
+            card.SetProperty("ActivationDate", activation);
+        if (request.ExpirationDate is { } expiration)
+            card.SetProperty("ExpirationDate", expiration);
+        if (request.Pin is not null)
+            card.SetProperty("PIN1", request.Pin);
+        if (request.AccessLevelIds is not null)
+            card.SetProperty("AccessLevels", accessLevelIds);
+
+        var args = new object?[] { cardNumber, AccountName, SubAccountName, card.Target, 0 };
+        App.Invoke("EditCard", args);
+        WinPakStatus.EnsureCardSucceeded($"Uložení karty {cardNumber} (přes objekt karty)", ComValue.ToInt(args[4]));
+    }
+
     /// <summary>WIN-PAK chce <c>bMultiple As Long</c>: 1 = více přístupových úrovní, 0 = jedna nebo žádná.</summary>
-    private static int Multiple(long[] accessLevelIds) => accessLevelIds.Length > 1 ? 1 : 0;
+    private static int Multiple(int[] accessLevelIds) => accessLevelIds.Length > 1 ? 1 : 0;
 
     /// <summary>Stavový kód zápisu, pokud ho WIN-PAK vrátil (návratovou hodnotou nebo doplněným výstupním parametrem).</summary>
     private static void EnsureWriteSucceeded(string operation, object? status)

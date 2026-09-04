@@ -261,8 +261,30 @@ public sealed class WinPakDatabaseApiTests
         Assert.Equal(0, args[10]);                          // Backdrop1ID
         Assert.Equal(0, args[11]);                          // Backdrop2ID
         Assert.Equal(1, args[12]);                          // bMultiple As Long (dvě úrovně)
-        Assert.Equal(new long[] { 4, 5 }, args[13]);        // alAccessLevelIDs
+        Assert.Equal(new int[] { 4, 5 }, args[13]);        // alAccessLevelIDs
         Assert.Equal([false, (short)0, (short)0, false], args[14..]); // NetAXS volby: bTempCard, iNXCardType, nUsageLimits, bLimitedCard
+    }
+
+    [Fact]
+    public void Kdyz_AddUpdateCard_shodi_server_upravi_se_existujici_karta_pres_jeji_objekt()
+    {
+        // Ostrý FN Motol: AddUpdateCard → „The remote procedure call failed“ (0x800706BE)
+        // i po obnovení relace. Existující karta se pak upraví objektem karty a EditCard.
+        ArrangeSuccessfulLogin();
+        var card = _com.Record("card", ("CardNumber", "176025930"), ("CardID", 9L), ("CardHolderID", 1001L), ("CardStatus", 1), ("Issue", 0));
+        App.OutValues["GetCardbyCardNumber#3"] = new object[] { card };
+        App.Throws["AddUpdateCard"] = new ComCallException("AddUpdateCard",
+            new System.Runtime.InteropServices.COMException("The remote procedure call failed.", unchecked((int)0x800706BE)));
+
+        CreateApi().UpsertCard("176025930", new UpsertCardRequest(CardHolderId: "1001", AccessLevelIds: ["4", "5"]), accountId: 1, subAccountId: 2);
+
+        Assert.Equal(new int[] { 4, 5 }, card.Properties["AccessLevels"]);
+        var edit = _com.Call("EditCard").Args;
+        Assert.Equal("176025930", edit[0]);
+        Assert.Same(card, edit[3]);
+        // Po pádu se relace obnovila (druhé přihlášení) a AddUpdateCard se zkusilo dvakrát.
+        Assert.Equal(2, _com.Calls.Count(c => c.Method == "Login"));
+        Assert.Equal(2, _com.Calls.Count(c => c.Method == "AddUpdateCard"));
     }
 
     [Fact]

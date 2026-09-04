@@ -44,7 +44,7 @@ public sealed partial class WinPakDatabaseApi
     /// <summary>Jednoduché založení zóny pro více účtů (<c>CreateTimezone</c>).</summary>
     public void CreateTimeZone(UpsertTimeZoneRequest request)
     {
-        var accountIds = request.AccountIds is { Count: > 0 } ? ToIds(request.AccountIds) : [AccountId];
+        var accountIds = request.AccountIds is { Count: > 0 } ? ToIds(request.AccountIds) : new[] { (int)AccountId };
         CallCardWrite("Založení časové zóny", "CreateTimezone",
             request.Name, request.Description ?? "", accountIds, 0);
     }

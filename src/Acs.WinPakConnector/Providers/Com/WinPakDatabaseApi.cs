@@ -333,8 +333,13 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
             .ToList();
     }
 
-    private static long[] ToIds(IEnumerable<string>? values)
-        => (values ?? []).Select(v => ComValue.ToLong(v)).Where(id => id > 0).Distinct().ToArray();
+    /// <summary>
+    /// Id pro WIN-PAK jako 32bitová čísla. VB6 Long je VT_I4; pole <c>long[]</c> by šlo
+    /// jako SAFEARRAY VT_I8, který VB6 nezná — na ostrém to <c>AddUpdateCard</c>
+    /// nevrátilo jako chybu, ale shodilo COM+ proces („The remote procedure call failed“).
+    /// </summary>
+    private static int[] ToIds(IEnumerable<string>? values)
+        => (values ?? []).Select(v => ComValue.ToLong(v)).Where(id => id > 0 && id <= int.MaxValue).Distinct().Select(id => (int)id).ToArray();
 
     // ---------- Účty ----------
 

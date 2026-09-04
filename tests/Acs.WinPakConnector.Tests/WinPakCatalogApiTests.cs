@@ -145,8 +145,8 @@ public sealed class WinPakCatalogApiTests
         CreateApi().AddHolidayGroup(new UpsertHolidayGroupRequest("Státní svátky", ["1", "2"], ["9"]));
 
         var args = _com.Call("AddHolidayGroup").Args;
-        Assert.Equal(new long[] { 1, 2 }, args[1]);
-        Assert.Equal(new long[] { 9 }, args[2]);
+        Assert.Equal(new int[] { 1, 2 }, args[1]);
+        Assert.Equal(new int[] { 9 }, args[2]);
     }
 
     [Fact]
@@ -257,7 +257,7 @@ public sealed class WinPakCatalogApiTests
         var args = _com.Call("CreateAccessLevel").Args;
         Assert.Equal("Serverovna", args[0]);
         Assert.Equal("A-105", args[1]);
-        Assert.Equal(new long[] { 8 }, args[2]);
+        Assert.Equal(new int[] { 8 }, args[2]);
         Assert.Equal(_options.AccountName, args[3]);
     }
 
@@ -276,10 +276,10 @@ public sealed class WinPakCatalogApiTests
         Assert.Equal("Serverovna", args[1]);
         Assert.Equal("A-105", args[2]);
         Assert.Equal(8L, args[3]);
-        Assert.Equal(new long[] { 3 }, args[4]);
-        Assert.Equal(new long[] { 11, 12 }, args[5]);
-        Assert.Equal(new long[] { 1 }, args[6]);   // duplicity se zahazují
-        Assert.Equal(new long[] { 7 }, args[7]);
+        Assert.Equal(new int[] { 3 }, args[4]);
+        Assert.Equal(new int[] { 11, 12 }, args[5]);
+        Assert.Equal(new int[] { 1 }, args[6]);   // duplicity se zahazují
+        Assert.Equal(new int[] { 7 }, args[7]);
     }
 
     [Fact]
@@ -354,7 +354,7 @@ public sealed class WinPakCatalogApiTests
         Assert.Equal(4, args[7]);                       // lOperID
         Assert.Equal("acs-service", args[8]);           // sOpName
         Assert.Equal(1, args[9]);                       // bMultiple As Long
-        Assert.Equal(new long[] { 4, 5 }, args[10]);
+        Assert.Equal(new int[] { 4, 5 }, args[10]);
     }
 
     [Fact]

@@ -101,10 +101,10 @@ public sealed class WinPakReassignApiTests
             CardIds: ["3"]));
 
         // Operátoři: jen nová zóna a seznam.
-        Assert.Equal([5L, new long[] { 1 }, 0], _com.Call("ReassignOperatorTZ").Args);
+        Assert.Equal([5L, new int[] { 1 }, 0], _com.Call("ReassignOperatorTZ").Args);
         // Ostatní: účet, stará zóna, nová zóna, seznam, status.
-        Assert.Equal([8L, 4L, 5L, new long[] { 2 }, 0], _com.Call("ReassignAccessLevelTZ").Args);
-        Assert.Equal([8L, 4L, 5L, new long[] { 3 }, 0], _com.Call("ReassignCardTZ").Args);
+        Assert.Equal([8L, 4L, 5L, new int[] { 2 }, 0], _com.Call("ReassignAccessLevelTZ").Args);
+        Assert.Equal([8L, 4L, 5L, new int[] { 3 }, 0], _com.Call("ReassignCardTZ").Args);
         // Skupiny bez id se nevolají vůbec.
         Assert.Empty(_com.AllCalls("ReassignActionGroupTZ"));
     }
@@ -116,7 +116,7 @@ public sealed class WinPakReassignApiTests
 
         CreateApi().DeletePanelTimeZone("4", ["11", "12"]);
 
-        Assert.Equal([8L, 4L, new long[] { 11, 12 }, 0], _com.Call("DeletePanelTZ").Args);
+        Assert.Equal([8L, 4L, new int[] { 11, 12 }, 0], _com.Call("DeletePanelTZ").Args);
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public sealed class WinPakReassignApiTests
         Assert.Equal("100234", card.Properties["CardNumber"]);
         Assert.Equal(1001L, card.Properties["CardHolderID"]);
         Assert.Equal("1234", card.Properties["PIN1"]);
-        Assert.Equal(new long[] { 4 }, card.Properties["AccessLevels"]);
+        Assert.Equal(new int[] { 4 }, card.Properties["AccessLevels"]);
     }
 
     [Fact]

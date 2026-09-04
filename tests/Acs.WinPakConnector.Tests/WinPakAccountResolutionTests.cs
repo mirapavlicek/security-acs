@@ -538,6 +538,20 @@ public sealed class WinPakAccountResolutionTests
     }
 
     [Fact]
+    public void Pole_long_se_posila_jako_pole_32bitovych_cisel()
+    {
+        // SAFEARRAY VT_I8 VB6 nezná — na ostrém shodil COM+ proces (AddUpdateCard).
+        var target = new ArrayParameter();
+        var dispatch = new ComDispatch(target);
+
+        dispatch.Invoke("Take", [new long[] { 4, 5 }]);
+        dispatch.SetProperty("Levels", new long[] { 7 });
+
+        Assert.Equal(new int[] { 4, 5 }, target.Received);
+        Assert.Equal(new int[] { 7 }, target.Levels);
+    }
+
+    [Fact]
     public void Long_mimo_rozsah_int_zustane_beze_zmeny()
     {
         var target = new LongParameter();
@@ -632,6 +646,14 @@ public sealed class WinPakAccountResolutionTests
                 throw new COMException("Type mismatch.", unchecked((int)0x80020005));
             name = $"Panel {id}";
         }
+    }
+
+    public sealed class ArrayParameter
+    {
+        public object? Received;
+        public object? Levels { get; set; }
+
+        public void Take(object value) => Received = value;
     }
 
     public sealed class LongParameter
