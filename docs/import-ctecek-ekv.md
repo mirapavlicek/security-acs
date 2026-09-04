@@ -148,6 +148,25 @@ odhady a pak importovat tabulky (všechny čtečky vzniknou nově), nebo importo
 a nechat import odhady sjednotit a deaktivovat, a skryté pak odstranit filtrem
 „jen skryté“.
 
+## Párování s čtečkami z WIN-PAKu
+
+Synchronizace čteček z WIN-PAKu (`ReaderSyncService`) a import z EKV popisují
+tutéž fyzickou čtečku: WIN-PAK zná id zařízení a název (= číslo čtečky),
+dokumentace číslo, jméno místnosti a umístění v plánu. V ACS má být jeden
+záznam — id z WIN-PAKu pro zápis přístupů, umístění z dokumentace.
+
+- **Synchronizace** páruje čtečku z WIN-PAKu bez id v ACS s čtečkou
+  z dokumentace podle **čísla čtečky** (název zařízení ↔ `DeviceNumber`,
+  bez ohledu na mezery a úvodní nuly). Spárované čtečce nepřepisuje jméno
+  ani rozvaděč, doplní jen id, účet a aktivitu.
+- **Import z EKV** naopak převezme čtečku, kterou už synchronizace založila
+  jen s číslem (bez umístění), a doplní jí číslo, jméno a umístění.
+- **Duplicity** z doby, kdy se párovalo jen přes id (čtečka „330011“ ze
+  synchronizace vedle „330011 — 23-10225 — CHODBA“ z EKV), synchronizace
+  sloučí: id, účet a mapování úrovně přenese na dokumentovanou čtečku
+  a duplicitu smaže — nebo jen deaktivuje, když na ní visí žádost či skupina.
+  Výsledek hlásí „spárováno … / sloučeno duplicit …“.
+
 ## Co zůstává na ruční dořešení
 
 Import vypíše místnosti, které v číselníku nenašel; čtečky k nim založí bez
