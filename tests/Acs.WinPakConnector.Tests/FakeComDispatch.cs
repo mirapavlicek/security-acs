@@ -100,7 +100,7 @@ public sealed class FakeComFactory : IComFactory
         return Created[progId] = new FakeComDispatch(progId, this);
     }
 
-    public IComDispatch Wrap(object comObject) => (FakeComDispatch)comObject;
+    public IComDispatch Wrap(object comObject) => (IComDispatch)comObject;
 
     /// <summary>Uvolnění objektu se jen zaznamená — na pořadí vůči dalšímu Login záleží.</summary>
     public void Release(IComDispatch dispatch)

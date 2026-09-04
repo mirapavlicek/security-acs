@@ -21,7 +21,7 @@ public sealed record SentArgument(string Type, bool Placeholder)
         null => new("null", true),
         int i => new("Long", i == 0),
         long l => new("Long", l == 0),
-        uint or ulong => new("Long", false),
+        uint or ulong => new("UInt32", false),
         short s => new("Integer", s == 0),
         byte => new("Byte", false),
         bool b => new("Boolean", !b),

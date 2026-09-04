@@ -324,15 +324,24 @@ public sealed class ComDispatch(object instance, SignatureSource? signatures = n
         for (var i = 0; i < args.Length; i++)
             modifiers[i] = true;
 
-        return Unwrap(method, () => Instance.GetType().InvokeMember(
-            method,
-            BindingFlags.InvokeMethod,
-            binder: null,
-            target: Instance,
-            args: args,
-            modifiers: args.Length > 0 ? [modifiers] : null,
-            culture: null,
-            namedParameters: null));
+        try
+        {
+            return Unwrap(method, () => Instance.GetType().InvokeMember(
+                method,
+                BindingFlags.InvokeMethod,
+                binder: null,
+                target: Instance,
+                args: args,
+                modifiers: args.Length > 0 ? [modifiers] : null,
+                culture: null,
+                namedParameters: null));
+        }
+        catch (Exception ex) when (RecordInvoker.IsUnmappableRecord(ex) && Marshal.IsComObject(Instance))
+        {
+            // Metoda vrací strukturované záznamy (VT_RECORD), které pozdní vazba .NET
+            // neumí namapovat — na ostrém ListConnectedDevices. Přečtou se ručně po polích.
+            return Unwrap(method, () => RecordInvoker.Invoke(Instance, method, args));
+        }
     }
 
     /// <summary>
@@ -472,7 +481,8 @@ public sealed class ComFactory : IComFactory
         return new ComDispatch(instance);
     }
 
-    public IComDispatch Wrap(object comObject) => new ComDispatch(comObject);
+    /// <summary>Záznamy přečtené po polích (<see cref="RecordDispatch"/>) už obálku mají.</summary>
+    public IComDispatch Wrap(object comObject) => comObject as IComDispatch ?? new ComDispatch(comObject);
 
     public void Release(IComDispatch dispatch)
     {

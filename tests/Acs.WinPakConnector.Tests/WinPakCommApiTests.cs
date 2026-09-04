@@ -144,4 +144,33 @@ public sealed class WinPakCommApiTests
         Assert.Equal(0, _com.Call("IsConnected2").Args[0]);   // 0 = všechny servery
         Assert.True(Assert.Single(servers).Connected);
     }
+
+    [Fact]
+    public void Zaznamy_prectene_po_polich_se_mapuji_jako_zarizeni()
+    {
+        // Ostrý ListConnectedDevices vrací pole VB6 záznamů (VT_RECORD), která .NET
+        // nenamapuje; RecordInvoker je rozebere po polích a mapování s nimi pracuje
+        // stejně jako s objekty.
+        Server.Returns["ListConnectedDevices"] = new object[]
+        {
+            new RecordDispatch(new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["HWDeviceID"] = 23, ["DeviceName"] = "Vchod A", ["DeviceType"] = 4,
+            }),
+        };
+
+        var device = Assert.Single(CreateApi().ListConnectedDevices());
+
+        Assert.Equal(("23", "Vchod A", "4"), (device.Hid, device.Name, device.DeviceType));
+    }
+
+    [Fact]
+    public void Odmitnuti_marshalleru_kvuli_zaznamu_se_pozna_i_zabalene()
+    {
+        var inner = new ArgumentException("The specified record cannot be mapped to a managed value class.");
+
+        Assert.True(RecordInvoker.IsUnmappableRecord(inner));
+        Assert.True(RecordInvoker.IsUnmappableRecord(new ComCallException("ListConnectedDevices", inner)));
+        Assert.False(RecordInvoker.IsUnmappableRecord(new InvalidOperationException("něco jiného")));
+    }
 }
