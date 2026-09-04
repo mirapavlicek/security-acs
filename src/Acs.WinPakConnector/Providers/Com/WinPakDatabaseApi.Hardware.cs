@@ -65,11 +65,19 @@ public sealed partial class WinPakDatabaseApi
 
     // ---------- Přístupové oblasti ----------
 
+    /// <summary>
+    /// Větve přístupových oblastí. Ostrý WIN-PAK vrací jen názvy (prosté řetězce);
+    /// id se použije, když ho objekt má, jinak je jím název — na něj se ptá
+    /// i <see cref="GetReadersInAccessAreaBranch"/>.
+    /// </summary>
     public IReadOnlyList<AccessAreaBranchDto> GetAccessAreaBranches()
         => CallList("GetAccessAreaBranchesByAccountName",
-            branch => new AccessAreaBranchDto(
-                ComValue.ToStringOrEmpty(branch.GetProperty("DeviceID")),
-                ComValue.ToStringOrEmpty(branch.GetProperty("DeviceName"))),
+            branch =>
+            {
+                var name = ComValue.ToStringOrEmpty(branch.GetProperty("DeviceName"));
+                var id = ComValue.ToStringOrNull(branch.GetProperty("DeviceID"));
+                return new AccessAreaBranchDto(string.IsNullOrEmpty(id) ? name : id, name);
+            },
             AccountName, null);
 
     public IReadOnlyList<ReaderDto> GetReadersInAccessAreaBranch(string branchName)

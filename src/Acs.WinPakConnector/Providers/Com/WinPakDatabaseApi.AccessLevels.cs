@@ -128,7 +128,7 @@ public sealed partial class WinPakDatabaseApi
     {
         var result = Call("IsolateAccessLevel", accessLevelName, AccountName, null, 0);
         WinPakStatus.EnsureCardSucceeded("Vyhledání karet přístupové úrovně", ComValue.ToInt(result[3]));
-        return ComValue.AsEnumerable(result[2]).Select(_com.Wrap).Select(MapCard).ToList();
+        return ComValue.AsEnumerable(result[2]).Select(WrapItem).Select(MapCard).ToList();
     }
 
     /// <summary>Úrovně, na které lze karty přeřadit (<c>GetAccesslevelsForReassign</c>).</summary>

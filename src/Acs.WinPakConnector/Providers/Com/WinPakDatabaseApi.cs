@@ -304,8 +304,16 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
     private List<T> CallList<T>(string method, Func<IComDispatch, T> map, params object?[] args)
     {
         var result = Call(method, args);
-        return ComValue.AsEnumerable(result[^1]).Select(_com.Wrap).Select(map).ToList();
+        return ComValue.AsEnumerable(result[^1]).Select(WrapItem).Select(map).ToList();
     }
+
+    /// <summary>
+    /// Prvek seznamu jako objekt s vlastnostmi. Prostou hodnotu (řetězec, číslo), kterou
+    /// skutečný WIN-PAK vrací místo objektu, obalí <see cref="ScalarDispatch"/>, aby
+    /// mapování dostalo název nebo id místo výjimky „Method 'System.String.X' not found“.
+    /// </summary>
+    private IComDispatch WrapItem(object raw)
+        => ComValue.IsScalar(raw) ? new ScalarDispatch(raw) : _com.Wrap(raw);
 
     /// <summary>
     /// Seznam, jehož prvky mohou být buď objekty s vlastnostmi, nebo prosté hodnoty
@@ -337,7 +345,7 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
         var accounts = new List<AccountDto>();
         foreach (var raw in ComValue.AsEnumerable(args[0]))
         {
-            var account = _com.Wrap(raw);
+            var account = WrapItem(raw);
             var id = ComValue.ToStringOrEmpty(account.GetProperty("AccountID"));
             accounts.Add(new AccountDto(
                 Id: id,
@@ -354,7 +362,7 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
         App.Invoke("GetSubAccountsByAccountID", args);
 
         return ComValue.AsEnumerable(args[1])
-            .Select(_com.Wrap)
+            .Select(WrapItem)
             .Select(sub => new SubAccountDto(
                 ComValue.ToStringOrEmpty(sub.GetProperty("AccountID")),
                 ComValue.ToStringOrEmpty(sub.GetProperty("AccountName"))))

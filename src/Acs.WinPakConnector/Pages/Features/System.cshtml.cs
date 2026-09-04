@@ -20,15 +20,13 @@ public class SystemModel(WinPakProviderCache providers) : FeaturePageModel(provi
     public async Task OnGetAsync(CancellationToken ct)
     {
         await LoadAsync(async () => Accounts = await Provider.GetAccountsAsync(ct));
-        await LoadAsync(async () =>
-        {
-            var catalog = RequireCatalog();
-            SystemInfo = await catalog.GetSystemInfoAsync(ct);
-            Devices = await catalog.GetHardwareDevicesAsync(ct);
-            Branches = await catalog.GetAccessAreaBranchesAsync(ct);
-            EventFilters = await catalog.GetEventFiltersAsync(commServer: false, ct);
-            CommServerFilters = await catalog.GetEventFiltersAsync(commServer: true, ct);
-        });
+        // Každá část zvlášť — jedna odmítnutá (na ostrém větve přístupových oblastí)
+        // nemá skrýt údaje o instalaci a zařízení.
+        await LoadAsync(async () => SystemInfo = await RequireCatalog().GetSystemInfoAsync(ct));
+        await LoadAsync(async () => Devices = await RequireCatalog().GetHardwareDevicesAsync(ct));
+        await LoadAsync(async () => Branches = await RequireCatalog().GetAccessAreaBranchesAsync(ct));
+        await LoadAsync(async () => EventFilters = await RequireCatalog().GetEventFiltersAsync(commServer: false, ct));
+        await LoadAsync(async () => CommServerFilters = await RequireCatalog().GetEventFiltersAsync(commServer: true, ct));
 
         await LoadEventsAsync(ct);
     }

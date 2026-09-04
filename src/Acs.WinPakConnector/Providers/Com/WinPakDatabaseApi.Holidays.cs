@@ -104,7 +104,7 @@ public sealed partial class WinPakDatabaseApi
     {
         var result = Call("IsolatePanelsForHGDelete", AccountId, ComValue.ToLong(holidayGroupId), null, 0);
         WinPakStatus.EnsureCardSucceeded("Vyhledání panelů skupiny svátků", ComValue.ToInt(result[3]));
-        return ComValue.AsEnumerable(result[2]).Select(_com.Wrap).Select(MapPanel).ToList();
+        return ComValue.AsEnumerable(result[2]).Select(WrapItem).Select(MapPanel).ToList();
     }
 
     /// <summary>
