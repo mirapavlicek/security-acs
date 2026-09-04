@@ -4,6 +4,7 @@ using Acs.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Acs.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AcsDbContext))]
-    partial class AcsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260903180921_ParkingPermits")]
+    partial class ParkingPermits
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,81 +24,6 @@ namespace Acs.Infrastructure.Data.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
-
-            modelBuilder.Entity("Acs.Domain.Entities.AccessLevel", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("AccessTree")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(1024)
-                        .HasColumnType("varchar(1024)");
-
-                    b.Property<string>("ExternalId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<DateTime?>("LastSyncedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("varchar(256)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ExternalId")
-                        .IsUnique();
-
-                    b.ToTable("AccessLevels");
-                });
-
-            modelBuilder.Entity("Acs.Domain.Entities.AccessLevelEntry", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("AccessLevelId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("ReaderExternalId")
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<string>("ReaderName")
-                        .HasMaxLength(256)
-                        .HasColumnType("varchar(256)");
-
-                    b.Property<string>("TimeZoneExternalId")
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<string>("TimeZoneName")
-                        .HasMaxLength(256)
-                        .HasColumnType("varchar(256)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AccessLevelId");
-
-                    b.HasIndex("ReaderExternalId");
-
-                    b.ToTable("AccessLevelEntries");
-                });
 
             modelBuilder.Entity("Acs.Domain.Entities.AccessRequest", b =>
                 {
@@ -941,10 +869,6 @@ namespace Acs.Infrastructure.Data.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("longtext");
 
-                    b.Property<string>("DeviceNumber")
-                        .HasMaxLength(32)
-                        .HasColumnType("varchar(32)");
-
                     b.Property<string>("ExternalId")
                         .HasColumnType("varchar(255)");
 
@@ -985,8 +909,6 @@ namespace Acs.Infrastructure.Data.Migrations
                     b.HasIndex("ApprovalMatrixId");
 
                     b.HasIndex("CorridorId");
-
-                    b.HasIndex("DeviceNumber");
 
                     b.HasIndex("ExternalId");
 
@@ -1200,17 +1122,6 @@ namespace Acs.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("DataProtectionKeys");
-                });
-
-            modelBuilder.Entity("Acs.Domain.Entities.AccessLevelEntry", b =>
-                {
-                    b.HasOne("Acs.Domain.Entities.AccessLevel", "AccessLevel")
-                        .WithMany("Entries")
-                        .HasForeignKey("AccessLevelId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("AccessLevel");
                 });
 
             modelBuilder.Entity("Acs.Domain.Entities.AccessRequest", b =>
@@ -1607,11 +1518,6 @@ namespace Acs.Infrastructure.Data.Migrations
                     b.Navigation("Corridor");
 
                     b.Navigation("Floor");
-                });
-
-            modelBuilder.Entity("Acs.Domain.Entities.AccessLevel", b =>
-                {
-                    b.Navigation("Entries");
                 });
 
             modelBuilder.Entity("Acs.Domain.Entities.Site", b =>

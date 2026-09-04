@@ -231,6 +231,61 @@ public class WebAppTests(AcsWebFactory factory) : IClassFixture<AcsWebFactory>
         Assert.Contains("/Admin/ConnectorUpdate", ExtractBlock(await client.GetStringAsync("/"), "class=\"mainnav\"", "</nav>"));
     }
 
+    [Fact]
+    public async Task ParkingPages_DeniedToAnonymous()
+    {
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        foreach (var url in new[] { "/Parking", "/Parking/New", "/Parking/Queue", "/Catalog/Parking/Sites", "/Catalog/Parking/PermitTypes" })
+        {
+            var response = await client.GetAsync(url);
+            Assert.Equal(HttpStatusCode.Found, response.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task Admin_SeesParkingPages_AndCatalogs()
+    {
+        const string knownPassword = "Znam3Heslo!Park";
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Acs.Infrastructure.Data.AcsDbContext>();
+            var admin = await db.Users.FirstAsync(u => u.UserName == "admin");
+            admin.PasswordHash = Acs.Infrastructure.Auth.PasswordHasher.Hash(knownPassword);
+            admin.MustChangePassword = false;
+            if (!await db.ParkingPermitTypes.AnyAsync())
+            {
+                db.ParkingPermitTypes.Add(new Acs.Domain.Entities.ParkingPermitType { Name = "Vedení nemocnice", Binding = Acs.Domain.Entities.PermitBinding.Function });
+                db.Sites.Add(new Acs.Domain.Entities.Site { Name = "Motol" });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        var client = CreateClientWithCookies(allowRedirects: true);
+        var loginPage = await client.GetStringAsync("/Account/Login");
+        await client.PostAsync("/Account/Login", new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                ["UserName"] = "admin",
+                ["Password"] = knownPassword,
+                ["__RequestVerificationToken"] = ExtractAntiforgeryToken(loginPage),
+            }));
+
+        var home = await client.GetStringAsync("/");
+        var mainNav = ExtractBlock(home, "class=\"mainnav\"", "</nav>");
+        Assert.Contains("Parkování", mainNav);
+        Assert.Contains("/Catalog/Parking/Sites", mainNav);
+        Assert.Contains("/Catalog/Parking/PermitTypes", mainNav);
+
+        Assert.Contains("Požádat o parkovací povolení", await client.GetStringAsync("/Parking"));
+        var form = await client.GetStringAsync("/Parking/New");
+        Assert.Contains("Vedení nemocnice", form);
+        Assert.Contains("Motol", form);
+        Assert.Contains("Fronta správce parkování", await client.GetStringAsync("/Parking/Queue"));
+        Assert.Contains("Druhy parkovacích povolení", await client.GetStringAsync("/Catalog/Parking/PermitTypes"));
+        Assert.Contains("Areály", await client.GetStringAsync("/Catalog/Parking/Sites"));
+        Assert.Contains("Parkovací povolení", await client.GetStringAsync("/Reports?view=parking"));
+    }
+
     private static string ExtractBlock(string html, string start, string end)
     {
         var from = html.IndexOf(start, StringComparison.Ordinal);

@@ -18,6 +18,8 @@ public enum RequestStatus
     Revoked = 6,
     /// <summary>Zrušeno žadatelem.</summary>
     Cancelled = 7,
+    /// <summary>Vydáno — parkovací povolení vydáno správcem parkování (kartička / zápis do parkovacího systému).</summary>
+    Issued = 8,
 }
 
 public enum RequestKind
@@ -55,10 +57,11 @@ public class AccessRequest
 }
 
 /// <summary>
-/// Položka žádosti — buď jedna čtečka, nebo celá skupina čteček (právě jedno).
-/// Položka prochází řetězem matic (fáze <see cref="Stages"/>): u skupiny je to
-/// matice skupiny a poté matice všech nadřazených skupin. Položky doplněné
-/// automaticky z řetězce závislostí mají <see cref="AutoAdded"/>.
+/// Položka žádosti — jedna čtečka, celá skupina čteček, nebo parkovací povolení
+/// (právě jedno). Položka prochází řetězem matic (fáze <see cref="Stages"/>):
+/// u skupiny je to matice skupiny a poté matice všech nadřazených skupin,
+/// u parkovacího povolení matice druhu a poté matice zvolených areálů. Položky
+/// doplněné automaticky z řetězce závislostí mají <see cref="AutoAdded"/>.
 /// </summary>
 public class AccessRequestItem
 {
@@ -73,6 +76,13 @@ public class AccessRequestItem
     /// <summary>Skupina čteček (null, pokud jde o jednotlivou čtečku).</summary>
     public int? ReaderGroupId { get; set; }
     public ReaderGroup? ReaderGroup { get; set; }
+
+    /// <summary>Parkovací povolení (null, pokud jde o čtečku nebo skupinu).</summary>
+    public int? ParkingPermitId { get; set; }
+    public ParkingPermit? ParkingPermit { get; set; }
+
+    /// <summary>Jde o položku parkovacího povolení (ne o přístup ke čtečce)?</summary>
+    public bool IsParking => ParkingPermitId is not null;
 
     public bool AutoAdded { get; set; }
     public RequestStatus Status { get; set; } = RequestStatus.Pending;

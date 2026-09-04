@@ -41,6 +41,8 @@ public record AutomationResult(
 ///   <item><b>Automatické předání do WIN-PAK</b> — schválené položky se předají samy,
 ///     správce karet nemusí nic odklikávat (lze vypnout).</item>
 /// </list>
+/// Vydaná parkovací povolení se při offboardingu a expiraci odebírají přímo
+/// (<see cref="ParkingAdminService.RevokeAsync"/>) — nemají co předávat do WIN-PAK.
 /// Všechny části lze samostatně zapnout/vypnout v Nastavení → Automatizace.
 /// </summary>
 public class AutomationService(
@@ -49,8 +51,11 @@ public class AutomationService(
     AuditService audit,
     CardAdminService cardAdmin,
     ILogger<AutomationService> logger,
-    INotificationService? notifier = null)
+    INotificationService? notifier = null,
+    ParkingAdminService? parkingAdmin = null)
 {
+    private ParkingAdminService Parking => parkingAdmin ?? new ParkingAdminService(db, audit, notifier);
+
     public async Task<AutomationResult> RunAsync(string? userName, CancellationToken ct = default)
     {
         var systemUser = await GetSystemUserAsync(ct);
@@ -83,8 +88,20 @@ public class AutomationService(
             return 0;
 
         var items = await ActiveGrantItemsAsync(inactiveIds, ct);
-        return await CreateRevocationsAsync(items, systemUser,
+        var revoked = await CreateRevocationsAsync(items, systemUser,
             "offboarding — zaměstnanec je neaktivní (odešel / zmizel z AD)", "automation-offboarding", ct);
+
+        var permitIds = await db.AccessRequestItems
+            .Where(i => i.ParkingPermitId != null && i.Status == RequestStatus.Issued
+                        && i.Request!.Kind == RequestKind.Grant
+                        && inactiveIds.Contains(i.Request.TargetEmployeeId))
+            .Select(i => i.ParkingPermitId!.Value)
+            .Distinct()
+            .ToListAsync(ct);
+        revoked += await RevokeParkingPermitsAsync(permitIds, systemUser,
+            "offboarding — zaměstnanec je neaktivní (odešel / zmizel z AD)", "automation-offboarding", ct);
+
+        return revoked;
     }
 
     // ---------- Změna oddělení ----------
@@ -128,8 +145,41 @@ public class AutomationService(
                             || i.Status == RequestStatus.ManuallyConfirmed))
             .ToListAsync(ct);
 
-        return await CreateRevocationsAsync(expired, systemUser,
+        var revoked = await CreateRevocationsAsync(expired, systemUser,
             "uplynula platnost přístupu", "automation-expiration", ct);
+
+        var expiredPermitIds = await db.AccessRequestItems
+            .Where(i => i.ParkingPermitId != null && i.Status == RequestStatus.Issued
+                        && i.Request!.Kind == RequestKind.Grant
+                        && i.ParkingPermit!.ValidTo != null && i.ParkingPermit.ValidTo < now)
+            .Select(i => i.ParkingPermitId!.Value)
+            .Distinct()
+            .ToListAsync(ct);
+        revoked += await RevokeParkingPermitsAsync(expiredPermitIds, systemUser,
+            "uplynula platnost parkovacího povolení", "automation-expiration", ct);
+
+        return revoked;
+    }
+
+    /// <summary>Přímé odebrání vydaných parkovacích povolení (offboarding, expirace).</summary>
+    private async Task<int> RevokeParkingPermitsAsync(
+        List<int> permitIds, AppUser systemUser, string reason, string auditAction, CancellationToken ct)
+    {
+        var revoked = 0;
+        foreach (var permitId in permitIds)
+        {
+            try
+            {
+                await Parking.RevokeAsync(permitId, systemUser.Id, reason, "system", auditAction, ct);
+                revoked++;
+            }
+            catch (InvalidOperationException ex)
+            {
+                logger.LogWarning(ex, "Automatické odebrání parkovacího povolení {PermitId} se nepodařilo.", permitId);
+            }
+        }
+
+        return revoked;
     }
 
     // ---------- Připomínky a eskalace ----------

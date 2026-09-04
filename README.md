@@ -12,7 +12,7 @@ Webová aplikace pro schvalování přístupů k místnostem (`acs.fnmh.network`
   přihlašování AD + lokální admin, nastavení v GUI, barevná témata, správa
   uživatelů a rolí, audit, healthcheck pro HAProxy.
 - [`src/Acs.Domain`](src/Acs.Domain) — doménový model (číselníky, schvalovací
-  matice, zástupy, řetězce čteček, žádosti).
+  matice, zástupy, řetězce čteček, žádosti, parkovací povolení).
 - [`src/Acs.Infrastructure`](src/Acs.Infrastructure) — EF Core (MariaDB
   Galera / SQLite pro vývoj), LDAP, šifrovaná nastavení, klient konektoru.
 - [`src/Acs.WinPakConnector`](src/Acs.WinPakConnector/README.md) — Windows
@@ -62,6 +62,15 @@ skupina má vlastní matici a schvalování prochází **řetězem matic** (skup
 nadřazené skupiny, např. Chirurgie → Bezpečnost); **zaměstnanci se načítají
 z AD** a **karty z SQL**; **automatické zařazení dle oddělení** (nástup na
 chirurgii → předschválený základní přístup skupiny Chirurgie).
+
+Dále: **parkovací povolení** — druhý typ oprávnění vedle karet. Číselníky
+areálů (Motol, Homolka…) a druhů povolení (např. „Vedení nemocnice“,
+„Zaměstnanec“; vazba na **SPZ** nebo na **funkci**), povolení pro jeden,
+více nebo všechny areály přidělené konkrétnímu zaměstnanci, schvalování
+stejným jádrem (matice druhu → matice areálů, zástupy, notifikace), fronta
+**správce parkování** (nová role) s vydáním čísla, zápisem SPZ mezi
+identifikátory zaměstnance a **tiskem kartičky za čelní sklo**; expirace a
+offboarding povolení odebírají automaticky.
 Zbývá: nasazení na cílové servery (skripty připraveny, spouští se z macOS-ai
 proxyhubu) a napojení konektoru na reálný WIN-PAK (MSSQL přístup / licence
 SDK — viz otevřené otázky, kapitola 8 v `docs/PLAN.md`).

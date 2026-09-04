@@ -1,0 +1,123 @@
+@page
+@using Acs.Domain.Entities
+@model Acs.Web.Pages.Parking.QueueModel
+@{
+    ViewData["Title"] = "Fronta správce parkování";
+}
+<h1>Fronta správce parkování</h1>
+<p class="muted">
+    Schválená parkovací povolení k vydání (číslo povolení, kartička za sklo) a požadavky na odebrání.
+    SPZ vydaného povolení se zapíšou mezi identifikátory zaměstnance, takže jsou připravené pro napojení parkovacího systému.
+</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="card">
+    <h2 style="margin-top:0">Čeká na vyřízení (@Model.Queue.Count)</h2>
+    <table class="data">
+        <thead>
+        <tr><th>Žádost</th><th>Typ</th><th>Zaměstnanec</th><th>Druh</th><th>SPZ / funkce</th><th>Areály</th><th>Platnost</th><th></th></tr>
+        </thead>
+        <tbody>
+        @foreach (var item in Model.Queue)
+        {
+            var permit = item.ParkingPermit!;
+            var isRevoke = item.Request?.Kind == RequestKind.Revoke;
+            <tr>
+                <td><a asp-page="/Requests/Detail" asp-route-id="@item.RequestId">#@item.RequestId</a></td>
+                <td>
+                    @if (isRevoke)
+                    {
+                        <span class="badge btn-danger">odebrání</span>
+                    }
+                    else
+                    {
+                        <span class="badge">udělení</span>
+                    }
+                </td>
+                <td>@item.Request?.TargetEmployee?.FullName <span class="muted">@item.Request?.TargetEmployee?.Department</span></td>
+                <td>@permit.PermitType?.Name</td>
+                <td>@permit.SubjectText()</td>
+                <td>@permit.SitesText()</td>
+                <td class="muted">@permit.ValidFrom.ToString("d. M. yyyy") – @(permit.ValidTo?.ToString("d. M. yyyy") ?? "bez omezení")</td>
+                <td style="white-space:nowrap">
+                    @if (isRevoke)
+                    {
+                        <form method="post" asp-page-handler="ConfirmRevoke" asp-route-search="@Model.Search" class="inline-form">
+                            <input type="hidden" name="itemId" value="@item.Id" />
+                            <button class="btn btn-sm btn-danger" type="submit">Provést odebrání</button>
+                        </form>
+                    }
+                    else
+                    {
+                        <form method="post" asp-page-handler="Issue" asp-route-search="@Model.Search" class="inline-form">
+                            <input type="hidden" name="itemId" value="@item.Id" />
+                            <input type="text" name="permitNumber" placeholder="číslo (auto)" style="width:9rem;display:inline-block;margin:0" />
+                            <button class="btn btn-sm" type="submit">Vydat povolení</button>
+                        </form>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Queue.Count == 0)
+    {
+        <p class="muted">Fronta je prázdná.</p>
+    }
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">Vydaná povolení (@Model.Issued.Count)</h2>
+    <form method="get" class="filterbar" style="margin-bottom:0.6rem">
+        <input type="text" name="search" value="@Model.Search" placeholder="jméno, SPZ, číslo, druh…" />
+        <button class="btn btn-sm" type="submit">Hledat</button>
+        @if (!string.IsNullOrWhiteSpace(Model.Search))
+        {
+            <a class="btn btn-sm btn-ghost" asp-page="Queue">Zrušit filtr</a>
+        }
+    </form>
+    <table class="data">
+        <thead>
+        <tr><th>Číslo</th><th>Zaměstnanec</th><th>Druh</th><th>SPZ / funkce</th><th>Areály</th><th>Platnost do</th><th>Vydáno</th><th></th></tr>
+        </thead>
+        <tbody>
+        @foreach (var item in Model.Issued)
+        {
+            var permit = item.ParkingPermit!;
+            <tr>
+                <td><a asp-page="Permit" asp-route-id="@permit.Id">@permit.PermitNumber</a></td>
+                <td>@item.Request?.TargetEmployee?.FullName</td>
+                <td>@permit.PermitType?.Name</td>
+                <td>@permit.SubjectText()</td>
+                <td>@permit.SitesText()</td>
+                <td class="muted">@(permit.ValidTo?.ToString("d. M. yyyy") ?? "bez omezení")</td>
+                <td class="muted">@permit.IssuedAt?.ToString("d. M. yyyy") @(permit.IssuedByUser?.DisplayName ?? permit.IssuedByUser?.UserName)</td>
+                <td style="white-space:nowrap">
+                    @if (permit.PermitType?.PrintsWindshieldCard == true)
+                    {
+                        <a class="btn btn-sm btn-ghost" asp-page="Print" asp-route-id="@permit.Id" target="_blank">Tisk</a>
+                    }
+                    <form method="post" asp-page-handler="Revoke" asp-route-search="@Model.Search" class="inline-form"
+                          onsubmit="return confirm('Odebrat povolení @permit.PermitNumber?');">
+                        <input type="hidden" name="permitId" value="@permit.Id" />
+                        <input type="text" name="reason" placeholder="důvod" required style="width:9rem;display:inline-block;margin:0" />
+                        <button class="btn btn-sm btn-danger" type="submit">Odebrat</button>
+                    </form>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Issued.Count == 0)
+    {
+        <p class="muted">@(string.IsNullOrWhiteSpace(Model.Search) ? "Zatím nebylo vydáno žádné povolení." : "Nic nenalezeno.")</p>
+    }
+</div>

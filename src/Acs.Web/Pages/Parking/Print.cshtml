@@ -1,0 +1,24 @@
+@page "{id:int}"
+@model Acs.Web.Pages.Parking.PrintModel
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="cs" data-theme="light">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Parkovací povolení @Model.Card.PermitNumber – tisk</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body>
+<div class="permit-print-page">
+    <div class="permit-print-actions">
+        <button class="btn" type="button" onclick="window.print()">Vytisknout</button>
+        <button class="btn btn-ghost" type="button" onclick="window.close()">Zavřít</button>
+        <span class="muted" style="align-self:center">@Model.HolderName · rozměr 150 × 70 mm, tisk 100 % (bez přizpůsobení stránce)</span>
+    </div>
+    <partial name="_PermitCard" model="Model.Card" />
+</div>
+</body>
+</html>

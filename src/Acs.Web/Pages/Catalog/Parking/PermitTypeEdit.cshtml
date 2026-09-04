@@ -1,0 +1,94 @@
+@page "{id:int}"
+@using Acs.Domain.Entities
+@model Acs.Web.Pages.Catalog.Parking.PermitTypeEditModel
+@{
+    ViewData["Title"] = $"Druh povolení: {Model.Type.Name}";
+}
+<h1>@ViewData["Title"]</h1>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<form method="post" asp-page-handler="Save">
+<div class="settings-grid">
+<div class="card">
+    <h2 style="margin-top:0">Vlastnosti a schvalování</h2>
+    <label>Název</label>
+    <input type="text" name="name" value="@Model.Type.Name" required />
+    <label>Kód (volitelné)</label>
+    <input type="text" name="code" value="@Model.Type.Code" maxlength="32" />
+    <label>Popis (zobrazí se žadateli)</label>
+    <input type="text" name="description" value="@Model.Type.Description" />
+    <label>Vazba povolení</label>
+    <select name="binding">
+        <option value="@((int)PermitBinding.LicensePlate)" selected="@(Model.Type.Binding == PermitBinding.LicensePlate)">na SPZ vozidla</option>
+        <option value="@((int)PermitBinding.Function)" selected="@(Model.Type.Binding == PermitBinding.Function)">na funkci (bez SPZ, přenosné mezi vozidly)</option>
+    </select>
+    <label>Nejvýše SPZ na jedno povolení (jen u vazby na SPZ)</label>
+    <input type="number" name="maxPlates" min="1" max="10" value="@Model.Type.MaxPlates" />
+    <label>Výchozí platnost v měsících (prázdné = bez omezení)</label>
+    <input type="number" name="defaultValidityMonths" min="1" max="120" value="@Model.Type.DefaultValidityMonths" />
+    <label>Schvalovací matice druhu</label>
+    <select name="approvalMatrixId">
+        <option value="">— bez matice (schvaluje admin) —</option>
+        @foreach (var matrix in Model.Matrices)
+        {
+            <option value="@matrix.Id" selected="@(matrix.Id == Model.Type.ApprovalMatrixId)">@matrix.Name</option>
+        }
+    </select>
+    <p class="muted">Po matici druhu prochází žádost ještě maticemi zvolených areálů (pokud je mají).</p>
+    <label>Pořadí</label>
+    <input type="number" name="sortOrder" value="@Model.Type.SortOrder" />
+    <div class="checkbox-row">
+        <input type="checkbox" id="allSitesByDefault" name="allSitesByDefault" value="true" checked="@Model.Type.AllSitesByDefault" />
+        <label for="allSitesByDefault">Předvyplnit „všechny areály“</label>
+    </div>
+    <div class="checkbox-row">
+        <input type="checkbox" id="isActive" name="isActive" value="true" checked="@Model.Type.IsActive" />
+        <label for="isActive">Aktivní</label>
+    </div>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">Kartička za čelní sklo</h2>
+    <div class="checkbox-row">
+        <input type="checkbox" id="printsWindshieldCard" name="printsWindshieldCard" value="true" checked="@Model.Type.PrintsWindshieldCard" />
+        <label for="printsWindshieldCard">K povolení se tiskne kartička</label>
+    </div>
+    <label>Nadpis kartičky</label>
+    <input type="text" name="cardTitle" value="@Model.Type.CardTitle" placeholder="POVOLENÍ K PARKOVÁNÍ" maxlength="128" />
+    <label>Text rozsahu (prázdné = vygeneruje se ze zvolených areálů)</label>
+    <input type="text" name="cardScopeText" value="@Model.Type.CardScopeText"
+           placeholder="Platí pro všechna pracoviště FNMH (Motol i Homolka)" maxlength="256" />
+    <p class="muted">Název druhu se na kartičce tiskne velkými písmeny pod nadpisem (např. „VEDENÍ NEMOCNICE“).</p>
+
+    <p class="muted">Náhled (po uložení se aktualizuje):</p>
+    <partial name="_PermitCard" model="Acs.Web.Pages.Shared.PermitCardView.Sample(Model.Type)" />
+</div>
+</div>
+
+<div style="margin-top:0.8rem">
+    <button class="btn" type="submit">Uložit</button>
+    <a class="btn btn-ghost" asp-page="PermitTypes">Zpět</a>
+</div>
+</form>
+
+@if (Model.PermitCount == 0)
+{
+    <form method="post" asp-page-handler="Delete" style="margin-top:1rem"
+          onsubmit="return confirm('Smazat druh povolení @Model.Type.Name?');">
+        <button class="btn btn-sm btn-danger" type="submit">Smazat druh povolení</button>
+    </form>
+}
+else
+{
+    <p class="muted" style="margin-top:1rem">
+        Druh používá @Model.PermitCount povolení — nelze smazat, jen deaktivovat.
+    </p>
+}

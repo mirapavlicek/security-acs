@@ -1,0 +1,175 @@
+@page
+@using Acs.Domain.Entities
+@model Acs.Web.Pages.Parking.NewModel
+@{
+    ViewData["Title"] = "Žádost o parkovací povolení";
+}
+<h1>Žádost o parkovací povolení</h1>
+
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+@if (Model.Types.Count == 0)
+{
+    <div class="card"><p class="muted">Není nastaven žádný aktivní druh povolení.</p></div>
+}
+else
+{
+<form method="post" id="parking-form">
+<div class="settings-grid">
+<div class="card">
+    <h2 style="margin-top:0">Pro koho a jaké povolení</h2>
+
+    @if (Model.CanActForOthers)
+    {
+        <label>Zaměstnanec</label>
+        <select name="targetEmployeeId" required>
+            <option value="">— vyberte —</option>
+            @foreach (var e in Model.Employees)
+            {
+                <option value="@e.Id" selected="@(e.Id == Model.MyEmployeeId)">@e.LastName @e.FirstName (@e.Department)</option>
+            }
+        </select>
+    }
+    else if (Model.MyEmployeeId is not null)
+    {
+        <input type="hidden" name="targetEmployeeId" value="@Model.MyEmployeeId" />
+        <p>Žádáte za sebe: <strong>@Model.MyEmployeeName</strong></p>
+    }
+    else
+    {
+        <div class="alert alert-error">Váš účet není navázaný na zaměstnance — žádost nelze podat. Obraťte se na administrátora.</div>
+    }
+
+    <label>Druh povolení</label>
+    <div class="permit-type-options">
+        @foreach (var type in Model.Types)
+        {
+            <div class="permit-type-option">
+                <input type="radio" name="permitTypeId" id="type-@type.Id" value="@type.Id" required
+                       data-binding="@((int)type.Binding)" data-max-plates="@type.MaxPlates"
+                       data-months="@(type.DefaultValidityMonths ?? 0)" data-all-sites="@(type.AllSitesByDefault ? "1" : "0")" />
+                <label for="type-@type.Id">
+                    <strong>@type.Name</strong>
+                    @if (type.Binding == PermitBinding.Function)
+                    {
+                        <span class="badge badge-primary">na funkci</span>
+                    }
+                    else
+                    {
+                        <span class="badge">na SPZ (max. @type.MaxPlates)</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(type.Description))
+                    {
+                        <br /><span class="muted">@type.Description</span>
+                    }
+                    <br /><span class="muted" style="font-size:0.82rem">
+                        Schvaluje: @(type.ApprovalMatrix?.Name ?? "administrátor")@(type.DefaultValidityMonths is { } m ? $" · platnost {m} měs." : "")
+                    </span>
+                </label>
+            </div>
+        }
+    </div>
+
+    <div id="plates-block" class="permit-plates">
+        <label>Registrační značky (SPZ)</label>
+        @for (var i = 0; i < Model.MaxPlateInputs; i++)
+        {
+            <input type="text" name="plates" placeholder="např. 1AB 2345" maxlength="16" data-plate-index="@i" />
+        }
+        <p class="muted" style="font-size:0.82rem">Mezery a pomlčky se ignorují; značka se uloží velkými písmeny.</p>
+    </div>
+
+    <div id="function-block" style="display:none">
+        <label>Funkce, na kterou je povolení vázáno</label>
+        <input type="text" name="functionTitle" placeholder="např. Náměstek pro léčebnou péči" maxlength="128" />
+    </div>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">Areály a platnost</h2>
+    <div class="checkbox-row">
+        <input type="checkbox" id="allSites" name="allSites" value="true" />
+        <label for="allSites"><strong>Všechny areály</strong></label>
+    </div>
+    <div id="sites-block">
+        @if (Model.Sites.Count == 0)
+        {
+            <p class="muted">Nejsou založené žádné areály — zvolte „všechny areály“, nebo požádejte správce číselníků.</p>
+        }
+        @foreach (var site in Model.Sites)
+        {
+            <div class="checkbox-row">
+                <input type="checkbox" id="site-@site.Id" name="siteIds" value="@site.Id" />
+                <label for="site-@site.Id">@site.Name @(site.Code is null ? "" : $"({site.Code})")
+                    @if (site.ApprovalMatrixId is not null)
+                    {
+                        <span class="badge" title="Areál má vlastní schvalovací matici">schvaluje areál</span>
+                    }
+                </label>
+            </div>
+        }
+    </div>
+
+    <label>Platnost od</label>
+    <input type="date" name="validFrom" id="validFrom" value="@DateTime.UtcNow.ToString("yyyy-MM-dd")" />
+    <label>Platnost do (prázdné = podle druhu / bez omezení)</label>
+    <input type="date" name="validTo" id="validTo" />
+
+    <label>Zdůvodnění</label>
+    <textarea name="justification" rows="3" placeholder="Proč je povolení potřeba"></textarea>
+
+    <div style="margin-top:0.8rem">
+        <button class="btn" type="submit" disabled="@(Model.MyEmployeeId is null && !Model.CanActForOthers)">Podat žádost</button>
+        <a class="btn btn-ghost" asp-page="Index">Zpět</a>
+    </div>
+</div>
+</div>
+</form>
+}
+
+@section Scripts {
+<script>
+(() => {
+    const form = document.getElementById('parking-form');
+    if (!form) return;
+    const platesBlock = document.getElementById('plates-block');
+    const functionBlock = document.getElementById('function-block');
+    const sitesBlock = document.getElementById('sites-block');
+    const allSites = document.getElementById('allSites');
+    const validFrom = document.getElementById('validFrom');
+    const validTo = document.getElementById('validTo');
+    const plateInputs = [...platesBlock.querySelectorAll('input[name="plates"]')];
+
+    function applyType(radio) {
+        const binding = radio.dataset.binding;
+        const maxPlates = parseInt(radio.dataset.maxPlates || '1', 10);
+        const months = parseInt(radio.dataset.months || '0', 10);
+        const isPlate = binding === '0';
+        platesBlock.style.display = isPlate ? '' : 'none';
+        functionBlock.style.display = isPlate ? 'none' : '';
+        plateInputs.forEach((input, idx) => { input.style.display = idx < maxPlates ? '' : 'none'; if (idx >= maxPlates) input.value = ''; });
+        if (radio.dataset.allSites === '1' && !allSites.dataset.touched) { allSites.checked = true; applySites(); }
+        if (months > 0 && validFrom.value && !validTo.dataset.touched) {
+            const d = new Date(validFrom.value + 'T00:00:00Z');
+            d.setUTCMonth(d.getUTCMonth() + months);
+            validTo.value = d.toISOString().slice(0, 10);
+        }
+    }
+    function applySites() {
+        sitesBlock.style.display = allSites.checked ? 'none' : '';
+    }
+
+    form.querySelectorAll('input[name="permitTypeId"]').forEach(r => r.addEventListener('change', () => applyType(r)));
+    allSites.addEventListener('change', () => { allSites.dataset.touched = '1'; applySites(); });
+    validTo.addEventListener('input', () => { validTo.dataset.touched = '1'; });
+    validFrom.addEventListener('change', () => { const r = form.querySelector('input[name="permitTypeId"]:checked'); if (r) applyType(r); });
+
+    const first = form.querySelector('input[name="permitTypeId"]:checked') || form.querySelector('input[name="permitTypeId"]');
+    if (first) { first.checked = true; applyType(first); }
+    applySites();
+})();
+</script>
+}

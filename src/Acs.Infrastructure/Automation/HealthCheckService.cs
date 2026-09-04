@@ -163,12 +163,22 @@ public class HealthCheckService(
         }
 
         // --- Provozní stav ---
-        var queueCount = await db.AccessRequestItems.CountAsync(i => i.Status == RequestStatus.Approved, ct);
+        var queueCount = await db.AccessRequestItems.CountAsync(
+            i => i.Status == RequestStatus.Approved && i.ParkingPermitId == null, ct);
         if (queueCount > 0)
         {
             items.Add(new HealthItem(HealthSeverity.Info, "Fronta správce karet",
                 $"{queueCount} schválených položek čeká na zadání do WIN-PAK.",
                 "Fronta karet (nebo zapnout automatické předávání)"));
+        }
+
+        var parkingQueueCount = await db.AccessRequestItems.CountAsync(
+            i => i.Status == RequestStatus.Approved && i.ParkingPermitId != null, ct);
+        if (parkingQueueCount > 0)
+        {
+            items.Add(new HealthItem(HealthSeverity.Info, "Fronta správce parkování",
+                $"{parkingQueueCount} schválených parkovacích povolení čeká na vydání.",
+                "Parkování → Fronta"));
         }
 
         var oldestPending = await db.AccessRequestItems

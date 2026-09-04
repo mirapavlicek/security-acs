@@ -31,12 +31,14 @@ public class IndexModel(AcsDbContext db, RequestWorkflowService workflow) : Page
     public string Summarize(AccessRequest request)
     {
         var statuses = request.Items.Select(i => i.Status).ToList();
-        if (statuses.All(s => s is RequestStatus.PushedToWinPak or RequestStatus.ManuallyConfirmed))
+        if (statuses.All(s => s is RequestStatus.PushedToWinPak or RequestStatus.ManuallyConfirmed or RequestStatus.Issued))
             return "dokončeno";
         if (statuses.Any(s => s == RequestStatus.Pending))
             return "čeká na schválení";
         if (statuses.Any(s => s == RequestStatus.Approved))
-            return "schváleno — u správce karet";
+            return request.Items.All(i => i.IsParking) ? "schváleno — u správce parkování" : "schváleno — u správce karet";
+        if (request.Kind == RequestKind.Revoke && statuses.All(s => s == RequestStatus.Revoked))
+            return "odebráno";
         if (statuses.All(s => s == RequestStatus.Rejected))
             return "zamítnuto";
         return "částečně vyřízeno";

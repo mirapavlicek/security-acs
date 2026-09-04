@@ -12,12 +12,40 @@
         <select name="view" onchange="this.form.submit()" style="max-width:260px;display:inline-block">
             <option value="byReader" selected="@(Model.View == "byReader")">Podle čtečky (kdo má přístup kam)</option>
             <option value="byEmployee" selected="@(Model.View == "byEmployee")">Podle zaměstnance (kdo má jaké přístupy)</option>
+            <option value="parking" selected="@(Model.View == "parking")">Parkovací povolení (kdo má jaké povolení, SPZ, areály)</option>
         </select>
     </form>
     <a class="btn btn-sm" style="float:right" href="/Reports?handler=Csv&view=@Model.View">Export CSV</a>
 </div>
 
-@if (Model.View == "byReader")
+@if (Model.View == "parking")
+{
+    <div class="card">
+        <table class="data">
+            <thead><tr><th>Číslo</th><th>Zaměstnanec</th><th>Oddělení</th><th>Druh</th><th>SPZ / funkce</th><th>Areály</th><th>Platnost do</th><th>Vydáno</th></tr></thead>
+            <tbody>
+            @foreach (var row in Model.ParkingRows)
+            {
+                <tr>
+                    <td>@row.PermitNumber</td>
+                    <td>@row.EmployeeName</td>
+                    <td class="muted">@row.Department</td>
+                    <td>@row.TypeName</td>
+                    <td>@row.Subject</td>
+                    <td>@row.Sites</td>
+                    <td class="muted">@(row.ValidTo?.ToString("yyyy-MM-dd") ?? "bez omezení")</td>
+                    <td class="muted">@row.IssuedAt?.ToString("yyyy-MM-dd")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (Model.ParkingRows.Count == 0)
+        {
+            <p class="muted">Žádná vydaná parkovací povolení.</p>
+        }
+    </div>
+}
+else if (Model.View == "byReader")
 {
     foreach (var group in Model.ByReader)
     {
@@ -57,7 +85,7 @@ else
     }
 }
 
-@if (Model.Rows.Count == 0)
+@if (Model.View != "parking" && Model.Rows.Count == 0)
 {
     <div class="card"><p class="muted">Žádné aktivní přístupy.</p></div>
 }

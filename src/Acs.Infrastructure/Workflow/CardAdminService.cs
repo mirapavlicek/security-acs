@@ -24,7 +24,7 @@ public class CardAdminService(AcsDbContext db, WinPakClient winPak, AuditService
             .Include(i => i.Request!).ThenInclude(r => r.RequesterUser)
             .Include(i => i.Reader)
             .Include(i => i.ReaderGroup)
-            .Where(i => i.Status == RequestStatus.Approved)
+            .Where(i => i.Status == RequestStatus.Approved && i.ParkingPermitId == null)
             .OrderBy(i => i.Request!.CreatedAt)
             .ToListAsync(ct);
 
@@ -120,6 +120,8 @@ public class CardAdminService(AcsDbContext db, WinPakClient winPak, AuditService
 
         if (item.Status != RequestStatus.Approved)
             throw new InvalidOperationException("Položka není ve stavu „schváleno“.");
+        if (item.ParkingPermitId is not null)
+            throw new InvalidOperationException("Parkovací povolení vydává správce parkování, ne fronta karet.");
         return item;
     }
 
