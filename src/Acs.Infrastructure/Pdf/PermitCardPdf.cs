@@ -14,12 +14,10 @@ public static class PermitCardPdf
     public const double WidthMm = 150;
     public const double HeightMm = 70;
 
-    private static readonly XColor Blue = XColor.FromArgb(0x1F, 0x3F, 0x95);
-    private static readonly XColor BlueDark = XColor.FromArgb(0x27, 0x40, 0x9A);
+    private static readonly XColor Blue = BrandAssets.Blue;
     private static readonly XColor Ink = XColor.FromArgb(0x1C, 0x27, 0x33);
     private static readonly XColor Gray = XColor.FromArgb(0x4A, 0x55, 0x63);
     private static readonly XColor GrayLight = XColor.FromArgb(0x63, 0x70, 0x7E);
-    private static readonly XColor Watermark = XColor.FromArgb(18, 0x1F, 0x3F, 0x95);
 
     public static byte[] Render(PermitCardView card) => Render([card]);
 
@@ -37,13 +35,17 @@ public static class PermitCardPdf
             : $"Parkovací povolení ({cards.Count} kartiček)";
         document.Info.Author = "ACS FNMH";
 
+        // Obrázky se v dokumentu sdílí — jeden XImage pro všechny stránky.
+        using var logo = BrandAssets.Logo();
+        using var watermark = BrandAssets.MonogramWatermark();
+
         foreach (var card in cards)
         {
             var page = document.AddPage();
             page.Width = XUnit.FromMillimeter(WidthMm);
             page.Height = XUnit.FromMillimeter(HeightMm);
             using var gfx = XGraphics.FromPdfPage(page);
-            DrawCard(gfx, card);
+            DrawCard(gfx, card, logo, watermark);
         }
 
         using var stream = new MemoryStream();
@@ -51,7 +53,7 @@ public static class PermitCardPdf
         return stream.ToArray();
     }
 
-    private static void DrawCard(XGraphics gfx, PermitCardView card)
+    private static void DrawCard(XGraphics gfx, PermitCardView card, XImage logo, XImage watermark)
     {
         var w = PdfText.Mm(WidthMm);
         var h = PdfText.Mm(HeightMm);
@@ -64,12 +66,9 @@ public static class PermitCardPdf
         gfx.DrawString("P", PdfText.Font(96, bold: true), XBrushes.White,
             new XRect(0, 0, bandWidth, h), XStringFormats.Center);
 
-        // Vodoznak „FN / MH“ vpravo.
-        var watermarkFont = PdfText.Font(100, bold: true);
-        var watermarkBrush = new XSolidBrush(Watermark);
-        var wmFormat = new XStringFormat { Alignment = XStringAlignment.Far, LineAlignment = XLineAlignment.Near };
-        gfx.DrawString("FN", watermarkFont, watermarkBrush, new XRect(0, PdfText.Mm(-4), w - PdfText.Mm(3), h / 2), wmFormat);
-        gfx.DrawString("MH", watermarkFont, watermarkBrush, new XRect(0, h / 2 - PdfText.Mm(12), w - PdfText.Mm(3), h / 2), wmFormat);
+        // Vodoznak — monogram FNMH z grafického manuálu, vpravo, přes celou výšku.
+        BrandAssets.DrawFitted(gfx, watermark,
+            new XRect(w - PdfText.Mm(58), PdfText.Mm(4), PdfText.Mm(55), h - PdfText.Mm(8)), XStringAlignment.Far);
 
         // Tělo kartičky (vpravo od pruhu).
         var bodyX = bandWidth + PdfText.Mm(4);
@@ -77,27 +76,10 @@ public static class PermitCardPdf
         var top = PdfText.Mm(3);
         var bottom = h - PdfText.Mm(2.5);
 
-        // Logo FNMH: značka „FN / M+H“ a třířádkový název, dohromady vycentrované.
-        var markFont = PdfText.Font(20, bold: true);
-        var logoTextFont = PdfText.Font(9.4);
-        var markWidth = Math.Max(gfx.MeasureString("FN", markFont).Width, gfx.MeasureString("M+H", markFont).Width);
-        var logoTextWidth = gfx.MeasureString("Motol a Homolka", logoTextFont).Width;
-        var gap = PdfText.Mm(2.5);
-        var logoWidth = markWidth + gap + logoTextWidth;
-        var logoX = bodyX + (bodyW - logoWidth) / 2;
-        var markLine = markFont.GetHeight() * 0.92;
-        var blueBrush = new XSolidBrush(BlueDark);
-        gfx.DrawString("FN", markFont, blueBrush, new XRect(logoX, top, markWidth, markLine), XStringFormats.TopLeft);
-        gfx.DrawString("M+H", markFont, blueBrush, new XRect(logoX, top + markLine, markWidth, markLine), XStringFormats.TopLeft);
-        var logoTextLine = logoTextFont.GetHeight() * 1.12;
-        var logoTextY = top + (2 * markLine - 3 * logoTextLine) / 2;
-        foreach (var (line, idx) in new[] { "Fakultní", "nemocnice", "Motol a Homolka" }.Select((l, i) => (l, i)))
-        {
-            gfx.DrawString(line, logoTextFont, blueBrush,
-                new XRect(logoX + markWidth + gap, logoTextY + idx * logoTextLine, logoTextWidth, logoTextLine), XStringFormats.TopLeft);
-        }
-
-        var logoBottom = top + 2 * markLine;
+        // Logo FNMH (modrý monogram s názvem) — originál z grafického manuálu, vycentrované.
+        var logoBox = BrandAssets.DrawFitted(gfx, logo, new XRect(bodyX, top, bodyW, PdfText.Mm(14)));
+        var blueBrush = new XSolidBrush(Blue);
+        var logoBottom = logoBox.Bottom + PdfText.Mm(1);
 
         // Patička (dva řádky) — kreslí se od spodu, aby se vědělo, kolik místa zbývá.
         var footerFont = PdfText.Font(7);

@@ -2,10 +2,7 @@
 <div class="permit-card">
     <div class="permit-card-band"><span>P</span></div>
     <div class="permit-card-body">
-        <div class="permit-card-logo">
-            <span class="permit-card-logo-mark">FN<br />M<b>+</b>H</span>
-            <span class="permit-card-logo-text">Fakultní<br />nemocnice<br />Motol a Homolka</span>
-        </div>
+        <img class="permit-card-logo" src="~/img/fnmh-logo.png" alt="Fakultní nemocnice Motol a Homolka" />
         <div class="permit-card-title">@Model.Title</div>
         <div class="permit-card-type">@Model.TypeName.ToUpperInvariant()</div>
         @if (Model.FunctionTitle is not null)
@@ -29,5 +26,5 @@
             Fakultní nemocnice Motol a Homolka (FNMH)
         </div>
     </div>
-    <div class="permit-card-watermark">FN<br />MH</div>
+    <img class="permit-card-watermark" src="~/img/fnmh-monogram-grey.png" alt="" />
 </div>

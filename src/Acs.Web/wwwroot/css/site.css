@@ -271,8 +271,8 @@ a:hover { text-decoration: underline; }
 /* ===== Parkovací povolení — náhled kartičky za čelní sklo =====
    Pevné barvy nezávislé na tématu: náhled má odpovídat generovanému PDF. */
 .permit-card {
-  --pc-blue: #1f3f95;
-  --pc-blue-dark: #27409a;
+  --pc-blue: #27348b; /* firemní modrá FNMH */
+  --pc-blue-dark: #27348b;
   position: relative;
   display: flex;
   width: 150mm;
@@ -306,10 +306,7 @@ a:hover { text-decoration: underline; }
   text-align: center;
   padding: 3mm 4mm 2.5mm;
 }
-.permit-card-logo { display: flex; align-items: center; gap: 2.5mm; margin-bottom: 2mm; text-align: left; }
-.permit-card-logo-mark { font-size: 7mm; font-weight: 800; line-height: 0.92; letter-spacing: 0.3mm; }
-.permit-card-logo-mark b { font-weight: 900; }
-.permit-card-logo-text { font-size: 3.3mm; line-height: 1.12; }
+.permit-card-logo { height: 14mm; width: auto; max-width: 100%; margin-bottom: 1mm; }
 .permit-card-title { margin-top: auto; font-size: 5.6mm; font-weight: 800; letter-spacing: 0.15mm; }
 .permit-card-type { font-size: 4.4mm; font-weight: 700; color: #1c2733; margin-top: 0.8mm; }
 .permit-card-function { font-size: 3.2mm; color: #1c2733; margin-top: 0.6mm; }
@@ -331,11 +328,9 @@ a:hover { text-decoration: underline; }
   position: absolute;
   right: 3mm;
   top: 4mm;
-  font-size: 36mm;
-  font-weight: 800;
-  line-height: 0.85;
-  color: rgba(31, 63, 149, 0.07);
-  text-align: right;
+  height: 62mm;
+  width: auto;
+  opacity: 0.09;
   pointer-events: none;
   user-select: none;
 }
