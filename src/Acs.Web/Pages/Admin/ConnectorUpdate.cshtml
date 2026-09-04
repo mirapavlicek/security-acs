@@ -25,7 +25,21 @@
     @if (Model.ConnectorError is not null)
     {
         <div class="alert alert-error">Konektor neodpovídá: @Model.ConnectorError</div>
-        <p class="muted">Pokud právě probíhá aktualizace, je to očekávané — za minutu stránku obnovte.</p>
+        @if (Model.LastPushUtc is { } pushed)
+        {
+            <p class="muted">
+                Poslední aktualizace z ACS: verze @Model.LastPushVersion, @pushed.ToLocalTime().ToString("g").
+                Výměna souborů trvá asi minutu — stránku obnovte. Když se konektor neozve ani po pěti minutách,
+                na WIN-PAK serveru (PowerShell jako administrátor):
+            </p>
+            <pre class="mono" style="white-space:pre-wrap">Get-Content 'C:\Program Files\AcsWinPakConnector\updates\update.log'
+Start-Service AcsWinPakConnector</pre>
+            <p class="muted">Protokol řekne, na kterém kroku aktualizace skončila; spuštění služby vrátí konektor do provozu (soubory jsou buď nové, nebo z vrácené zálohy).</p>
+        }
+        else
+        {
+            <p class="muted">Pokud právě probíhá aktualizace, je to očekávané — za minutu stránku obnovte.</p>
+        }
     }
     else if (Model.Info is { } info)
     {

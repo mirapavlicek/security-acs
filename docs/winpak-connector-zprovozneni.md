@@ -283,6 +283,7 @@ Výsledek u každé metody:
 | `WIN-PAK AddUpdateCard: Number of parameters specified does not match the expected number` při uložení karty | skutečná metoda má 18 parametrů, příručka 14 (do v1.12.7) | od v1.12.9 se posílá všech 18 podle skutečné signatury (v1.12.8 doplňovala za běhu); když by nesoulad zůstal, hláška vypíše skutečnou signaturu — pošlete ji |
 | Diagnostika → Připojená zařízení: `WIN-PAK ListConnectedDevices: Number of parameters specified does not match` | seznam zařízení je návratová hodnota, ne výstupní parametr (do v1.12.8) | od v1.12.9 podle skutečné signatury |
 | `WIN-PAK AddUpdateCard: The remote procedure call failed. (0x800706BE)` při uložení karty | COM+ proces WIN-PAKu spadl na poli id ve formátu, který VB6 nezná (do v1.12.11 se pole posílala 64bitově) | od v1.12.12 se pole posílají 32bitově; kdyby `AddUpdateCard` přesto spadlo, existující karta se upraví přes objekt karty (`EditCard`) |
+| Aktualizace z ACS: služba se zastaví, ale nová verze nenaběhne (v1.12.10–1.12.12) | výměnu dělal potomek procesu služby a se zastavenou službou zanikl uprostřed kopírování (na disku napůl nová a napůl stará verze) | od v1.12.13 výměnu dělá úloha Plánovače a přejmenováním složek; stav opravte ručně skriptem `.\Update-WinPakConnector.ps1 -Version <verze>` a pak `Start-Service AcsWinPakConnector`; protokol v `C:\ProgramData\AcsWinPakConnector\updates\update.log` |
 | Diagnostika → Připojená zařízení: `The specified record cannot be mapped to a managed value class` | seznam zařízení je pole VB6 záznamů (VT_RECORD), které .NET nenamapuje (do v1.12.10) | od v1.12.11 konektor záznamy čte po polích sám |
 | Zamknutí/odemknutí dveří hlásí `Unknown name` u `EntryPointLockByID` | tato verze komunikačního serveru variantu podle id nemá | od v1.12.9 se použije `EntryPointLock(hid, 0)` |
 | `Type mismatch` u metody, kterou příručka popisuje jinak (typ parametru) | rozdíl typu (`Boolean` vs `Long`, `Long` vs `UInt32`…) | od v1.12.9 konektor po odmítnutí převede argumenty na typy ze skutečné signatury a volání zopakuje; rozdíly známé z FN Motol jsou zapsané natvrdo |
@@ -335,10 +336,14 @@ což konektor neovlivní.
 ano: *Administrace → Konektor* ukáže běžící verzi a vydání na GitHubu; tlačítko
 *Aktualizovat na X* balík stáhne, ověří SHA-256 a pošle konektoru na port
 52001 (`POST /api/v1/update`). Konektor balík znovu ověří (SHA-256, obsah,
-verze z assembly), zastaví službu, zazálohuje instalaci, přepíše soubory
-(`appsettings.Local.json` zůstává), službu spustí a při neúspěchu vrátí
-zálohu — totéž, co dělá skript níže, jen ho spouští konektor sám (skript má
-přibalený). Protokol je pak vidět v ACS i v administraci konektoru
+verze z assembly) a výměnu předá **jednorázové úloze Plánovače úloh** (účet
+SYSTEM) — nesmí ji dělat potomek procesu služby, ten se zastavenou službou
+zaniká uprostřed práce. Úloha spustí přibalený skript: zastaví službu,
+**přejmenuje** složku instalace na zálohu a nový balík na instalaci (celá
+instalace naráz, žádný napůl zkopírovaný stav), vrátí `appsettings.Local.json`
+a `logs`, službu spustí a při neúspěchu zálohu vrátí zpět. Balíky a protokol
+jsou v `C:\ProgramData\AcsWinPakConnector\updates` (`update.log` krok za
+krokem, `update-output.log` celý výstup PowerShellu). Protokol je pak vidět v ACS i v administraci konektoru
 (*Aktualizace*), kam jde balík nahrát i z prohlížeče, když ACS na GitHub
 nedosáhne. Aktualizace trvá asi minutu; po ní stránku obnovte a zkontrolujte
 Diagnostiku.

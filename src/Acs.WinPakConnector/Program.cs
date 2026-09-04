@@ -85,6 +85,9 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapRazorPages();
 app.MapGet("/", () => Results.Redirect("/ui"));
 
+// Výsledek poslední aktualizace do logu služby — po výměně souborů je to první, co chce správce vidět.
+app.Services.GetRequiredService<Acs.WinPakConnector.Update.ConnectorUpdater>().ReportPreviousUpdate();
+
 var api = app.MapGroup("/api/v1");
 
 api.MapGet("/info", (IWinPakProvider provider) => new ConnectorInfoDto(
