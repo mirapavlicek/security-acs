@@ -198,6 +198,7 @@ a skutečné COM objekty si v několika místech nerozumí:
 | `GetAccessAreaBranchesByAccountName` vrací objekty větví | vrací prosté názvy | prostá hodnota v seznamu se obecně obaluje (`ScalarDispatch`): řetězec odpoví na `*Name`, číslo na `*ID` |
 | `GetConfiguredHolidayGroupsByPanel` vrací objekty skupin | vrací prostá čísla (`UInt32` id) | jméno se dohledá v `GetHolidayGroupsByAcctID` |
 | id jako `Long` | 32bitové (VB6) | `long` se posílá jako `int` |
+| pole id (`alAccessLevelIDs`, `anReaderIDs`, `vHolidays`…) | pole 64bitových čísel (SAFEARRAY VT_I8) VB6 nezná — `AddUpdateCard` s ním **shodí COM+ proces** („The remote procedure call failed“, 0x800706BE), ne chybu | pole se posílají 32bitově (VT_I4); u existující karty je po pádu náhrada přes objekt karty a `EditCard` |
 
 Členy objektu držitele podle typové informace: `AccountName, SubAccountName,
 CardHolderID, FirstName, LastName, EmailID, ExtRefID, NoteField, NoteFields,

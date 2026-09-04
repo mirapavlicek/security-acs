@@ -118,10 +118,7 @@ public sealed class ComDispatch(object instance, SignatureSource? signatures = n
         // WIN-PAK je VB6/COM: jeho Long je 32bitový (VT_I4). C# long by šel jako
         // VT_I8 a skončil „Type mismatch“, proto se identifikátory posílají jako int.
         for (var i = 0; i < args.Length; i++)
-        {
-            if (args[i] is long l && l is >= int.MinValue and <= int.MaxValue)
-                args[i] = (int)l;
-        }
+            args[i] = To32Bit(args[i]);
 
         if (LearnedShapes.TryGetValue(method, out var learned))
             Apply(args, learned);
@@ -391,22 +388,31 @@ public sealed class ComDispatch(object instance, SignatureSource? signatures = n
         => Unwrap(name, () => Instance.GetType().InvokeMember(name, BindingFlags.GetProperty, null, Instance, Normalize(index)));
 
     public void SetProperty(string name, object? value)
-        => Unwrap(name, () => Instance.GetType().InvokeMember(name, BindingFlags.SetProperty, null, Instance, [value]));
+        => Unwrap(name, () => Instance.GetType().InvokeMember(name, BindingFlags.SetProperty, null, Instance, [To32Bit(value)]));
 
     public void SetProperty(string name, object?[] index, object? value)
-        => Unwrap(name, () => Instance.GetType().InvokeMember(name, BindingFlags.SetProperty, null, Instance, [.. Normalize(index), value]));
+        => Unwrap(name, () => Instance.GetType().InvokeMember(name, BindingFlags.SetProperty, null, Instance, [.. Normalize(index), To32Bit(value)]));
 
     private static object?[] Normalize(object?[] args)
     {
         var copy = (object?[])args.Clone();
         for (var i = 0; i < copy.Length; i++)
-        {
-            if (copy[i] is long l && l is >= int.MinValue and <= int.MaxValue)
-                copy[i] = (int)l;
-        }
+            copy[i] = To32Bit(copy[i]);
 
         return copy;
     }
+
+    /// <summary>
+    /// VB6 zná jen 32bitový Long (VT_I4). Skalár <c>long</c> i pole <c>long[]</c> se
+    /// posílají 32bitově — pole jako SAFEARRAY VT_I8 komponenta nečte jako chybu,
+    /// ale jako cizí paměť (pád COM+ procesu u <c>AddUpdateCard</c> na ostrém).
+    /// </summary>
+    internal static object? To32Bit(object? value) => value switch
+    {
+        long l when l is >= int.MinValue and <= int.MaxValue => (int)l,
+        long[] array when array.All(l => l is >= int.MinValue and <= int.MaxValue) => array.Select(l => (int)l).ToArray(),
+        _ => value,
+    };
 
     /// <summary>
     /// <see cref="Type.InvokeMember(string, BindingFlags, Binder, object, object[])"/> balí

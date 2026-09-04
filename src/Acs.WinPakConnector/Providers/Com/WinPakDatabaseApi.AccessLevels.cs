@@ -48,7 +48,7 @@ public sealed partial class WinPakDatabaseApi
     {
         var accountIds = request.AccountIds is { Count: > 0 }
             ? ToIds(request.AccountIds)
-            : [AccountId];
+            : new[] { (int)AccountId };
 
         CallCardWrite("Založení přístupové úrovně", "CreateAccessLevel",
             request.Name, request.Description ?? "", accountIds, AccountName, 0);
