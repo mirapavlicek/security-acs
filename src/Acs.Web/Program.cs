@@ -148,6 +148,14 @@ builder.Services.AddAuthorization(options =>
 // Antiforgery i přes hlavičku — pro JSON POSTy z interaktivního editoru plánů.
 builder.Services.AddAntiforgery(options => options.HeaderName = "X-CSRF-TOKEN");
 
+// Hromadné akce nad celým číselníkem (označit všech ~1 600 čteček a odstranit) posílají víc
+// hodnot formuláře než výchozích 1 024 — jinak 400 s prázdným tělem, které Safari stáhne jako soubor.
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.ValueCountLimit = 50_000;
+    options.KeyLengthLimit = 8 * 1024;
+});
+
 builder.Services.AddRazorPages(options =>
 {
     options.Conventions.AllowAnonymousToPage("/Account/Login");
@@ -352,6 +360,10 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error");
     app.UseHsts();
 }
+
+// Chybové odpovědi bez těla (400 z ochrany formuláře, 404, 413, 429…) dostanou stránku
+// s vysvětlením. S hlavičkou nosniff by prázdnou odpověď Safari jinak stáhlo jako soubor.
+app.UseStatusCodePagesWithReExecute("/Error", "?statusCode={0}");
 
 // Bezpečnostní hlavičky pro všechny odpovědi.
 app.Use(async (context, next) =>
