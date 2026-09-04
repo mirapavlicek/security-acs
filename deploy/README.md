@@ -78,6 +78,8 @@ nenasazuje**, publikuje a instaluje se zvlášť.
 
 - Postup zprovoznění krok za krokem:
   [`docs/winpak-connector-zprovozneni.md`](../docs/winpak-connector-zprovozneni.md)
+- Aktualizace z ACS bez přístupu WIN-PAK serveru na internet: *Administrace →
+  Konektor* (ACS stáhne release, pošle ho konektoru, ten se vymění sám).
 - Aktualizace na vydanou verzi jedním příkazem na WIN-PAK serveru:
   `.\Update-WinPakConnector.ps1 -Version 1.12.7` (skript
   [`deploy/Update-WinPakConnector.ps1`](Update-WinPakConnector.ps1), je i v balíku releasu)

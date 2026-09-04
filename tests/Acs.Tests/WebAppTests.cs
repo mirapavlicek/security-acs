@@ -20,6 +20,7 @@ public sealed class AcsWebFactory : WebApplicationFactory<Program>, IDisposable
         // což by zapnulo Secure cookies a rozbilo login test přes HTTP).
         builder.UseEnvironment("Development");
         builder.UseSetting("Database:Provider", "Sqlite");
+        builder.UseSetting("Security:LoginRateLimit", "1000");
         builder.UseSetting("ConnectionStrings:Default", $"Data Source={_dbPath}");
     }
 
@@ -196,6 +197,38 @@ public class WebAppTests(AcsWebFactory factory) : IClassFixture<AcsWebFactory>
         var edit = await client.GetStringAsync("/Catalog/AccessLevels/Edit");
         Assert.Contains("Nová přístupová úroveň", edit);
         Assert.Contains("Časové zóny se z WIN-PAKu nenačetly", edit);
+    }
+
+    [Fact]
+    public async Task Stranka_aktualizace_konektoru_se_otevre_i_bez_konektoru()
+    {
+        const string knownPassword = "Znam3Heslo!Konektor";
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Acs.Infrastructure.Data.AcsDbContext>();
+            var admin = await db.Users.FirstAsync(u => u.UserName == "admin");
+            admin.PasswordHash = Acs.Infrastructure.Auth.PasswordHasher.Hash(knownPassword);
+            admin.MustChangePassword = false;
+            await db.SaveChangesAsync();
+        }
+
+        var client = CreateClientWithCookies(allowRedirects: true);
+        var loginPage = await client.GetStringAsync("/Account/Login");
+        await client.PostAsync("/Account/Login", new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                ["UserName"] = "admin",
+                ["Password"] = knownPassword,
+                ["__RequestVerificationToken"] = ExtractAntiforgeryToken(loginPage),
+            }));
+
+        var page = await client.GetStringAsync("/Admin/ConnectorUpdate");
+
+        Assert.Contains("WIN-PAK konektor", page);
+        // Konektor není nakonfigurovaný — stránka to řekne, ale otevře se a nabídne vlastní balík.
+        Assert.Contains("Konektor neodpovídá", page);
+        Assert.Contains("Vlastní balík", page);
+        Assert.Contains("/Admin/ConnectorUpdate", ExtractBlock(await client.GetStringAsync("/"), "class=\"mainnav\"", "</nav>"));
     }
 
     private static string ExtractBlock(string html, string start, string end)

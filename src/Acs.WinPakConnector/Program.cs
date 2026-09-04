@@ -33,6 +33,9 @@ builder.Services.Configure<WinPakComOptions>(
 builder.Services.AddSingleton<ConnectorSettingsStore>();
 builder.Services.AddSingleton<AdminAuthentication>();
 builder.Services.AddSingleton<WinPakProviderCache>();
+builder.Services.Configure<Acs.WinPakConnector.Update.UpdateOptions>(
+    builder.Configuration.GetSection(Acs.WinPakConnector.Update.UpdateOptions.SectionName));
+builder.Services.AddSingleton<Acs.WinPakConnector.Update.ConnectorUpdater>();
 
 // Provider se řeší při každém požadavku, aby změna nastavení v GUI platila hned.
 builder.Services.AddTransient(sp => sp.GetRequiredService<WinPakProviderCache>().Current);
@@ -93,6 +96,61 @@ api.MapGet("/info", (IWinPakProvider provider) => new ConnectorInfoDto(
 
 api.MapGet("/status", async (IWinPakProvider provider, CancellationToken ct)
     => Results.Ok(await provider.GetStatusAsync(ct)));
+
+// Samoaktualizace: ACS (nebo správce) pošle balík releasu, konektor ho ověří a vymění soubory.
+// WIN-PAK server nemá přístup na internet, jiná cesta k nové verzi tam nevede.
+api.MapGet("/update", (Acs.WinPakConnector.Update.ConnectorUpdater updater) => Results.Ok(updater.Status()));
+
+api.MapPost("/update", async (HttpContext http, Acs.WinPakConnector.Update.ConnectorUpdater updater, bool? start, CancellationToken ct) =>
+{
+    // Balík má přes 50 MB — limit těla požadavku se pro tento endpoint ruší.
+    if (http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+        limit.MaxRequestBodySize = null;
+
+    var expectedSha = http.Request.Headers["X-Package-Sha256"].FirstOrDefault();
+    Stream package = http.Request.Body;
+    if (http.Request.HasFormContentType)
+    {
+        var form = await http.Request.ReadFormAsync(ct);
+        var file = form.Files.GetFile("package") ?? form.Files.FirstOrDefault();
+        if (file is null)
+            return Results.BadRequest(new { error = "Chybí soubor balíku (pole „package“)." });
+        expectedSha ??= form["sha256"].FirstOrDefault();
+        package = file.OpenReadStream();
+    }
+
+    try
+    {
+        var staged = await updater.StageAsync(package, expectedSha, ct);
+        if (start != false)
+            updater.Start();
+        return Results.Accepted("/api/v1/update", updater.Status());
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.UnprocessableEntity(new { error = ex.Message });
+    }
+    catch (PlatformNotSupportedException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status501NotImplemented);
+    }
+});
+
+api.MapPost("/update/start", (Acs.WinPakConnector.Update.ConnectorUpdater updater) =>
+{
+    try
+    {
+        return Results.Accepted("/api/v1/update", updater.Start());
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.UnprocessableEntity(new { error = ex.Message });
+    }
+    catch (PlatformNotSupportedException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status501NotImplemented);
+    }
+});
 
 // Porovnání volání konektoru se skutečnými signaturami objektů WIN-PAKu (jen režim Com).
 api.MapGet("/diagnostics/signatures", async (IWinPakProvider provider, CancellationToken ct)

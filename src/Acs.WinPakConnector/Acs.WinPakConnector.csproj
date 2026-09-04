@@ -15,6 +15,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Aktualizační skript je součástí konektoru: samoaktualizace ho spouští z prostředků,
+         ne z přijatého balíku, aby vždy odpovídal běžící verzi. -->
+    <EmbeddedResource Include="..\..\deploy\Update-WinPakConnector.ps1" LogicalName="Update-WinPakConnector.ps1" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.*" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="6.*" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.*" />

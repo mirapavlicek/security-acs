@@ -56,7 +56,9 @@ builder.Services.AddScoped<DcLocator>();
 builder.Services.AddScoped<LdapAuthenticator>();
 builder.Services.AddScoped<UserAuthenticationService>();
 builder.Services.AddScoped<AuditService>();
-builder.Services.AddHttpClient<WinPakClient>();
+builder.Services.AddHttpClient<WinPakClient>(client => client.Timeout = TimeSpan.FromMinutes(5)); // balík konektoru má přes 50 MB
+builder.Services.AddHttpClient(Acs.Infrastructure.WinPak.ConnectorReleaseService.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(5));
+builder.Services.AddScoped<Acs.Infrastructure.WinPak.ConnectorReleaseService>();
 
 // Synchronizace číselníků (ruční tlačítka + automatický plánovač s DB zámkem).
 builder.Services.AddScoped<Acs.Infrastructure.Sync.ReaderSyncService>();
@@ -123,7 +125,8 @@ builder.Services.AddRateLimiter(options =>
         partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         factory: _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = 10,
+            // Výchozí 10 pokusů za minutu; testy limit zvedají, aby se přihlášení jednotlivých testů nesčítala.
+            PermitLimit = builder.Configuration.GetValue("Security:LoginRateLimit", 10),
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0,
         }));

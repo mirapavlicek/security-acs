@@ -256,6 +256,62 @@ public sealed class ConnectorApiTests : IClassFixture<ConnectorFactory>
     }
 
     private sealed record CreatedCardHolder(string Id);
+
+    [Fact]
+    public async Task Update_prijme_balik_overi_SHA256_a_vrati_stav()
+    {
+        // Balík jako z workflow — exe a skutečná dll konektoru (kvůli verzi).
+        using var zipStream = new MemoryStream();
+        using (var zip = new System.IO.Compression.ZipArchive(zipStream, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            zip.CreateEntry("winpak-connector/Acs.WinPakConnector.exe").Open().Dispose();
+            using var dll = zip.CreateEntry("winpak-connector/Acs.WinPakConnector.dll").Open();
+            using var real = File.OpenRead(typeof(Program).Assembly.Location);
+            real.CopyTo(dll);
+        }
+
+        var package = zipStream.ToArray();
+        var sha = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(package));
+        var client = CreateClient();
+
+        using var content = new ByteArrayContent(package);
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/zip");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/update?start=false") { Content = content };
+        request.Headers.Add("X-Package-Sha256", sha);
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var status = await response.Content.ReadFromJsonAsync<Acs.WinPakConnector.Update.UpdateStatusDto>();
+        Assert.NotNull(status?.Staged);
+        Assert.Equal(sha, status!.Staged!.Sha256);
+        Assert.Equal(status.CurrentVersion, status.Staged.Version);
+
+        var again = await client.GetFromJsonAsync<Acs.WinPakConnector.Update.UpdateStatusDto>("/api/v1/update");
+        Assert.Equal(status.Staged.Version, again?.Staged?.Version);
+    }
+
+    [Fact]
+    public async Task Update_se_spatnym_SHA256_odmitne()
+    {
+        var client = CreateClient();
+        using var content = new ByteArrayContent([1, 2, 3]);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/update?start=false") { Content = content };
+        request.Headers.Add("X-Package-Sha256", new string('a', 64));
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        Assert.Contains("SHA-256", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Update_bez_API_klice_neprojde()
+    {
+        var response = await CreateClient(withApiKey: false).PostAsync("/api/v1/update", new ByteArrayContent([1]));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
 }
 
 public sealed class ConnectorFactory : WebApplicationFactory<Program>
@@ -267,7 +323,10 @@ public sealed class ConnectorFactory : WebApplicationFactory<Program>
             {
                 ["Security:ApiKey"] = "test-api-key",
                 ["WinPak:Mode"] = "Mock",
+                // Přijaté balíky do dočasné složky, ne vedle testovacího výstupu.
+                ["Update:StagingDirectory"] = Path.Combine(Path.GetTempPath(), "acs-connector-tests-updates-" + Guid.NewGuid().ToString("N")),
             }));
         return base.CreateHost(builder);
     }
+
 }

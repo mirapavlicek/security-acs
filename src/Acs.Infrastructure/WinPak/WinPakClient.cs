@@ -42,6 +42,12 @@ public record WinPakCardHolder(string Id, string FirstName, string LastName, str
 
 public record WinPakServerStatus(string ServerId, string ServerName, bool Connected, string? ServerType);
 
+/// <summary>Balík připravený v konektoru k instalaci.</summary>
+public record WinPakStagedUpdate(string Version, string Path, long Size, string Sha256, DateTime ReceivedUtc);
+
+/// <summary>Stav samoaktualizace konektoru (<c>GET /api/v1/update</c>).</summary>
+public record WinPakUpdateStatus(string CurrentVersion, bool Supported, WinPakStagedUpdate? Staged, DateTime? StartedUtc, string? Log);
+
 public record WinPakStatus(bool DatabaseServerConnected, IReadOnlyList<WinPakServerStatus> Servers, string? Error);
 
 /// <summary>Režim dveří podle WIN-PAK.</summary>
@@ -166,6 +172,37 @@ public class WinPakClient(HttpClient httpClient, SettingsService settings)
         IReadOnlyList<string>? accessLevelIds = null, CancellationToken ct = default)
         => SendAsync(HttpMethod.Put, $"api/v1/cards/{Uri.EscapeDataString(cardNumber)}",
             new { cardHolderId, status, activationDate, expirationDate, accessLevelIds }, ct);
+
+    // ---------- Aktualizace konektoru ----------
+
+    public Task<WinPakUpdateStatus?> GetUpdateStatusAsync(CancellationToken ct = default)
+        => GetAsync<WinPakUpdateStatus>("api/v1/update", ct);
+
+    /// <summary>
+    /// Pošle konektoru balík releasu; konektor ověří SHA-256 a obsah a (se <paramref name="start"/>)
+    /// rovnou vymění soubory — služba se na chvíli zastaví, proto se hned po volání
+    /// nečeká na odpověď o dokončení, jen na přijetí (202).
+    /// </summary>
+    public async Task<WinPakUpdateStatus?> PushUpdateAsync(Stream package, string sha256, bool start, CancellationToken ct = default)
+    {
+        using var request = await BuildRequestAsync(HttpMethod.Post, $"api/v1/update?start={(start ? "true" : "false")}", ct);
+        request.Content = new StreamContent(package);
+        request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/zip");
+        request.Headers.Add("X-Package-Sha256", sha256);
+
+        using var response = await httpClient.SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            throw new HttpRequestException(
+                $"Konektor balík odmítl ({(int)response.StatusCode}): {body}", null, response.StatusCode);
+        }
+
+        return await response.Content.ReadFromJsonAsync<WinPakUpdateStatus>(ct);
+    }
+
+    public Task StartUpdateAsync(CancellationToken ct = default)
+        => SendAsync(HttpMethod.Post, "api/v1/update/start", null, ct);
 
     public Task<WinPakDoorStatus?> GetDoorStatusAsync(long hid, CancellationToken ct = default)
         => GetAsync<WinPakDoorStatus>($"api/v1/doors/{hid}", ct);
