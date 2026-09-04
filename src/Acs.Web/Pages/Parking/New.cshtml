@@ -24,14 +24,29 @@ else
 
     @if (Model.CanActForOthers)
     {
-        <label>Zaměstnanec</label>
-        <select name="targetEmployeeId" required>
+        <label>Zaměstnanec (pište pro hledání)</label>
+        <input type="text" id="employee-search" placeholder="Hledat jméno, oddělení, osobní číslo, SPZ…"
+               autocomplete="off" style="margin-bottom:0.3rem" />
+        <select name="targetEmployeeId" id="employee-select" required size="1">
             <option value="">— vyberte —</option>
             @foreach (var e in Model.Employees)
             {
-                <option value="@e.Id" selected="@(e.Id == Model.MyEmployeeId)">@e.LastName @e.FirstName (@e.Department)</option>
+                <option value="@e.Id" selected="@(e.Id == Model.MyEmployeeId)"
+                        data-search="@($"{e.LastName} {e.FirstName} {e.Department} {e.PersonalNumber} {Model.PlatesOf(e)}")">
+                    @e.LastName @e.FirstName@(e.Department is null ? "" : $" ({e.Department})")
+                </option>
             }
         </select>
+        <p class="muted" id="employee-hint" style="font-size:0.85rem;margin:0.2rem 0 0">
+            @if (Model.Employees.Count == 0)
+            {
+                <text>Žádní zaměstnanci — nejdřív je importujte (Číselníky → Zaměstnanci).</text>
+            }
+            else
+            {
+                <text>@Model.Employees.Count zaměstnanců; hledá se bez ohledu na diakritiku a velikost písmen, i podle SPZ.</text>
+            }
+        </p>
     }
     else if (Model.MyEmployeeId is not null)
     {
@@ -131,10 +146,12 @@ else
 }
 
 @section Scripts {
+<script src="~/js/employee-search.js" asp-append-version="true"></script>
 <script>
 (() => {
     const form = document.getElementById('parking-form');
     if (!form) return;
+    window.acsEmployeeSearch('employee');
     const platesBlock = document.getElementById('plates-block');
     const functionBlock = document.getElementById('function-block');
     const sitesBlock = document.getElementById('sites-block');
