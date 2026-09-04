@@ -284,6 +284,16 @@ public class WebAppTests(AcsWebFactory factory) : IClassFixture<AcsWebFactory>
         Assert.Contains("Druhy parkovacích povolení", await client.GetStringAsync("/Catalog/Parking/PermitTypes"));
         Assert.Contains("Areály", await client.GetStringAsync("/Catalog/Parking/Sites"));
         Assert.Contains("Parkovací povolení", await client.GetStringAsync("/Reports?view=parking"));
+
+        // Exporty reportů jako PDF (všechny pohledy).
+        foreach (var view in new[] { "byReader", "byEmployee", "parking" })
+        {
+            var pdf = await client.GetAsync($"/Reports?handler=Pdf&view={view}");
+            Assert.Equal(HttpStatusCode.OK, pdf.StatusCode);
+            Assert.Equal("application/pdf", pdf.Content.Headers.ContentType?.MediaType);
+            var bytes = await pdf.Content.ReadAsByteArrayAsync();
+            Assert.Equal("%PDF-", System.Text.Encoding.ASCII.GetString(bytes, 0, 5));
+        }
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Acs.Domain.Entities;
+using Acs.Infrastructure.Pdf;
 using Acs.Infrastructure.Workflow;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -24,6 +25,25 @@ public class QueueModel(ParkingAdminService parkingAdmin) : PageModel
     {
         Queue = await parkingAdmin.GetQueueAsync();
         Issued = await parkingAdmin.GetIssuedAsync(Search);
+    }
+
+    /// <summary>Kartičky všech vydaných povolení (dle filtru) v jednom PDF — jedna kartička na stránku.</summary>
+    public async Task<IActionResult> OnGetCardsAsync()
+    {
+        var issued = await parkingAdmin.GetIssuedAsync(Search);
+        var cards = issued
+            .Where(i => i.ParkingPermit!.PermitType?.PrintsWindshieldCard == true)
+            .Select(i => PermitCardView.For(i.ParkingPermit!, i.Request!.TargetEmployee))
+            .ToList();
+        if (cards.Count == 0)
+        {
+            ErrorMessage = "Žádné vydané povolení s kartičkou k vygenerování.";
+            return RedirectToPage(new { Search });
+        }
+
+        var pdf = PermitCardPdf.Render(cards);
+        Response.Headers.ContentDisposition = $"inline; filename=\"parkovaci-karticky-{DateTime.UtcNow:yyyyMMdd}.pdf\"";
+        return File(pdf, "application/pdf");
     }
 
     public async Task<IActionResult> OnPostIssueAsync(int itemId, string? permitNumber)
