@@ -90,6 +90,13 @@ public sealed class ComDispatch(object instance, SignatureSource? signatures = n
     /// </summary>
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object?[]> LearnedExtensions = new();
 
+    /// <summary>
+    /// Metody, u kterých se argumenty převádějí na typy ze skutečné signatury (Boolean → Long
+    /// u <c>bMultiple</c>, Long → UInt32 u id držitele, null → "" u ByVal String…). Naučí se
+    /// při prvním „Type mismatch“, který se nepodařilo vyrovnat jinak.
+    /// </summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, ComMembers.ComMethodSignature> LearnedCoercions = new();
+
     /// <summary>Jak se musí u dané metody upravit argument na dané pozici, aby ho WIN-PAK přijal.</summary>
     private enum Shape
     {
@@ -118,6 +125,9 @@ public sealed class ComDispatch(object instance, SignatureSource? signatures = n
 
         if (LearnedShapes.TryGetValue(method, out var learned))
             Apply(args, learned);
+
+        if (LearnedCoercions.TryGetValue(method, out var coercion))
+            CoerceToSignature(args, coercion);
 
         if (LearnedExtensions.TryGetValue(method, out var extension))
             return InvokeExtended(method, args, extension);
@@ -150,10 +160,65 @@ public sealed class ComDispatch(object instance, SignatureSource? signatures = n
         }
         catch (ComCallException ex) when (IsTypeMismatch(ex))
         {
+            // Tvary null → "" a 0 → null nepomohly; zbývá převést argumenty na typy,
+            // které metoda podle typové informace doopravdy má, a zkusit to naposledy.
             var signature = _signatures(this, method);
+            if (signature is not null)
+            {
+                var coerced = (object?[])args.Clone();
+                if (CoerceToSignature(coerced, signature))
+                {
+                    try
+                    {
+                        var result = InvokeOnce(method, coerced);
+                        Array.Copy(coerced, args, args.Length);
+                        LearnedCoercions[method] = signature;
+                        return result;
+                    }
+                    catch (ComCallException retry) when (IsTypeMismatch(retry))
+                    {
+                    }
+                }
+            }
+
             throw signature is null ? ex : WithSignature(ex, signature, args.Length);
         }
     }
+
+    /// <summary>Převede argumenty na typy ze signatury; vrací, zda se něco změnilo.</summary>
+    internal static bool CoerceToSignature(object?[] args, ComMembers.ComMethodSignature signature)
+    {
+        var changed = false;
+        for (var i = 0; i < Math.Min(args.Length, signature.Parameters.Count); i++)
+        {
+            var coerced = Coerce(args[i], signature.Parameters[i]);
+            if (!Equals(coerced, args[i]))
+            {
+                args[i] = coerced;
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
+
+    private static object? Coerce(object? value, ComMembers.ComParameter parameter) => (parameter.Type, value) switch
+    {
+        ("String", null) => "",
+        ("String", string) => value,
+        ("String", bool or int or long or short or uint or byte or double or decimal) => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture),
+        ("Long" or "LongLong", bool b) => b ? 1 : 0,
+        ("Long" or "LongLong", short or byte or uint) => Convert.ToInt32(value),
+        ("UInt32", bool b) => b ? 1u : 0u,
+        ("UInt32", int or long or short or byte) => unchecked((uint)Convert.ToInt64(value)),
+        ("Integer", bool b) => (short)(b ? 1 : 0),
+        ("Integer", int or long or byte or uint) => unchecked((short)Convert.ToInt64(value)),
+        ("Byte", int or long or short or uint) => unchecked((byte)Convert.ToInt64(value)),
+        ("Boolean", int or long or short or uint or byte) => Convert.ToInt64(value) != 0,
+        ("Double" or "Single" or "Currency", int or long or short or uint or byte) => Convert.ToDouble(value),
+        ("Variant", 0) when parameter.ByRef => null,
+        _ => value,
+    };
 
     /// <summary>Volání s opakováním při „Type mismatch“ přes naučitelné tvary argumentů.</summary>
     private object? InvokeShaped(string method, object?[] args)

@@ -78,6 +78,23 @@ public sealed class WinPakCommApiTests
     }
 
     [Fact]
+    public void Kdyz_server_nema_variantu_podle_id_zamkne_se_bod_nula()
+    {
+        // Komunikační server FN Motol EntryPointLockByID nemá; má EntryPointLock(hid, point).
+        Server.Throws["EntryPointLockByID"] = new ComCallException("EntryPointLockByID",
+            new System.Runtime.InteropServices.COMException("Unknown name.", unchecked((int)0x80020006)));
+        var api = CreateApi();
+
+        api.LockDoor(23);
+        api.LockDoor(24);
+
+        Assert.Equal([23L, 0], _com.Calls.First(c => c.Method == "EntryPointLock").Args);
+        // Chybějící metoda se pamatuje — druhé zamknutí už ByID nezkouší.
+        Assert.Equal(1, _com.Calls.Count(c => c.Method == "EntryPointLockByID"));
+        Assert.Equal(2, _com.Calls.Count(c => c.Method == "EntryPointLock"));
+    }
+
+    [Fact]
     public void Puls_bez_delky_pouzije_PulseByHID()
     {
         CreateApi().Pulse(23, seconds: null);

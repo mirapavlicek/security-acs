@@ -90,6 +90,16 @@ public static class SignatureCheck
             notes.Count == 0 ? "sedí" : string.Join("; ", notes));
     }
 
+    private static readonly HashSet<string> Primitive = new(StringComparer.Ordinal)
+    {
+        "Long", "LongLong", "UInt32", "Integer", "Byte", "Boolean", "Double", "Single", "Currency", "Date", "String",
+    };
+
+    private static readonly HashSet<string> Numeric = new(StringComparer.Ordinal)
+    {
+        "Long", "LongLong", "UInt32", "Integer", "Byte", "Boolean", "Double", "Single", "Currency",
+    };
+
     private static (SignatureVerdict, string) Compare(SentArgument sent, ComMembers.ComParameter parameter)
     {
         var real = parameter.Type;
@@ -101,10 +111,17 @@ public static class SignatureCheck
                 : (SignatureVerdict.Ok, "");
         }
 
+        // Rozhraní WIN-PAKu (ICard, ICardHolder, ITimeZone…): konektor posílá objekt vytvořený
+        // podle ProgID téže třídy — to je přesně ten typ.
+        if (!Primitive.Contains(real) && !real.EndsWith("()"))
+            return sent.Type == "Object"
+                ? (SignatureVerdict.Ok, "")
+                : (SignatureVerdict.Mismatch, $"posílá se {sent.Type}, chce objekt {real}");
+
         if (sent.Type == "null")
         {
-            return real == "String" && parameter.ByRef
-                ? (SignatureVerdict.Learnable, "posílá se null, chce ByRef String — konektor přeučí na \"\"")
+            return real == "String"
+                ? (SignatureVerdict.Learnable, $"posílá se null, chce {(parameter.ByRef ? "ByRef " : "")}String — konektor převede na \"\"")
                 : real.EndsWith("()")
                     ? (SignatureVerdict.Ok, "")
                     : (SignatureVerdict.Mismatch, $"posílá se null, chce {real}");
@@ -113,14 +130,13 @@ public static class SignatureCheck
         if (sent.Type == real)
             return (SignatureVerdict.Ok, "");
 
+        if (Numeric.Contains(sent.Type) && Numeric.Contains(real))
+            return (SignatureVerdict.Learnable, $"posílá se {sent.Type}, chce {real} — konektor převede podle signatury");
+
         return (sent.Type, real) switch
         {
-            ("Long", "Integer" or "Byte") or ("Integer", "Long" or "Byte") or ("Byte", "Long" or "Integer")
-                => parameter.ByRef
-                    ? (SignatureVerdict.Mismatch, $"posílá se {sent.Type}, chce ByRef {real} — by-ref vyžaduje přesný typ")
-                    : (SignatureVerdict.Ok, ""),
-            ("Long", "Double" or "Currency") => (SignatureVerdict.Ok, ""),
-            ("Long()", "Variant()") or ("String()", "Variant()") => (SignatureVerdict.Ok, ""),
+            ("Long()", "Variant()") or ("String()", "Variant()") or ("Byte()", "Variant()") => (SignatureVerdict.Ok, ""),
+            (_, "String") when Numeric.Contains(sent.Type) => (SignatureVerdict.Learnable, $"posílá se {sent.Type}, chce String — konektor převede na text"),
             _ => (SignatureVerdict.Mismatch, $"posílá se {sent.Type}, chce {real}"),
         };
     }

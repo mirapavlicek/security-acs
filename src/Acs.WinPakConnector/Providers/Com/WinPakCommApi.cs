@@ -121,10 +121,10 @@ public sealed partial class WinPakCommApi(IComFactory com, WinPakComOptions opti
     public IReadOnlyList<DeviceDto> ListConnectedDevices()
     {
         EnsureStarted();
-        var args = new object?[] { null };
-        var returned = Server.Invoke("ListConnectedDevices", args);
+        // ListConnectedDevices() As Variant — seznam je návratová hodnota, bez parametrů.
+        var returned = Server.Invoke("ListConnectedDevices", []);
 
-        return ComValue.AsEnumerable(returned ?? args[0])
+        return ComValue.AsEnumerable(returned)
             .Select(_com.Wrap)
             .Select(device => new DeviceDto(
                 Hid: ComValue.ToStringOrEmpty(device.GetProperty("HWDeviceID")),
@@ -140,16 +140,42 @@ public sealed partial class WinPakCommApi(IComFactory com, WinPakComOptions opti
         return NlzMessage.ParseDoorStatus(hid, ComValue.ToStringOrNull(raw));
     }
 
+    /// <summary>
+    /// Zamknutí dveří. Příručka uvádí <c>EntryPointLockByID(hid)</c>; komunikační server
+    /// FN Motol tuto metodu nemá, má jen <c>EntryPointLock(hid, point)</c> — použije se
+    /// s bodem 0 (dveře čtečky), když varianta podle id chybí.
+    /// </summary>
     public void LockDoor(long hid)
     {
         EnsureStarted();
-        Server.Invoke("EntryPointLockByID", [hid]);
+        InvokeWithFallback("EntryPointLockByID", [hid], "EntryPointLock", [hid, 0]);
     }
 
     public void UnlockDoor(long hid)
     {
         EnsureStarted();
-        Server.Invoke("EntryPointUnLockByID", [hid]);
+        InvokeWithFallback("EntryPointUnLockByID", [hid], "EntryPointUnLock", [hid, 0]);
+    }
+
+    /// <summary>Metody, které tento komunikační server nemá — hned se volá náhrada, bez opakovaného odmítnutí.</summary>
+    private readonly HashSet<string> _missingMethods = new(StringComparer.OrdinalIgnoreCase);
+
+    private void InvokeWithFallback(string method, object?[] args, string fallbackMethod, object?[] fallbackArgs)
+    {
+        if (!_missingMethods.Contains(method))
+        {
+            try
+            {
+                Server.Invoke(method, args);
+                return;
+            }
+            catch (ComCallException ex) when (ComMembers.IsUnknownName(ex))
+            {
+                _missingMethods.Add(method);
+            }
+        }
+
+        Server.Invoke(fallbackMethod, fallbackArgs);
     }
 
     /// <summary>Krátké otevření; se zadanou délkou se použije časovaný puls (jednotka 0 = sekundy).</summary>

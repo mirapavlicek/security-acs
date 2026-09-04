@@ -121,7 +121,7 @@ public sealed partial class WinPakDatabaseApi
 
     /// <summary>Smaže úroveň a na kartách ji nahradí jinou (<c>DeleteAL</c>).</summary>
     public void DeleteAccessLevelWithReplacement(string accessLevelId, string replacementAccessLevelId, bool multiple)
-        => Call("DeleteAL", ComValue.ToLong(accessLevelId), ComValue.ToLong(replacementAccessLevelId), multiple);
+        => Call("DeleteAL", ComValue.ToLong(accessLevelId), ComValue.ToLong(replacementAccessLevelId), multiple ? 1 : 0); // bMultiple As Long
 
     /// <summary>Karty, které úroveň používají — nutné zjistit před jejím zrušením.</summary>
     public IReadOnlyList<CardDto> IsolateAccessLevel(string accessLevelName)

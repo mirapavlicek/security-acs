@@ -229,7 +229,7 @@ public sealed class WinPakDatabaseApiTests
     }
 
     [Fact]
-    public void AddUpdateCard_ma_14_parametru_v_poradi_podle_prirucky()
+    public void AddUpdateCard_ma_18_parametru_podle_skutecne_signatury()
     {
         ArrangeSuccessfulLogin();
         App.OutValues["GetCardbyCardNumber#3"] = new object[]
@@ -247,7 +247,7 @@ public sealed class WinPakDatabaseApiTests
             AccessLevelIds: ["4", "5"]), accountId: 1, subAccountId: 2);
 
         var args = _com.Call("AddUpdateCard").Args;
-        Assert.Equal(14, args.Length);
+        Assert.Equal(18, args.Length);
         Assert.Equal(9L, args[0]);                          // dwRecordID z existující karty
         Assert.Equal("100234", args[1]);                    // sCardNo
         Assert.Equal(1L, args[2]);                          // lAccountID
@@ -260,8 +260,9 @@ public sealed class WinPakDatabaseApiTests
         Assert.Equal(new DateTime(2027, 1, 1), args[9]);    // dtExpirationDate
         Assert.Equal(0, args[10]);                          // Backdrop1ID
         Assert.Equal(0, args[11]);                          // Backdrop2ID
-        Assert.Equal(true, args[12]);                       // bMultiple (dvě úrovně)
+        Assert.Equal(1, args[12]);                          // bMultiple As Long (dvě úrovně)
         Assert.Equal(new long[] { 4, 5 }, args[13]);        // alAccessLevelIDs
+        Assert.Equal([false, (short)0, (short)0, false], args[14..]); // NetAXS volby: bTempCard, iNXCardType, nUsageLimits, bLimitedCard
     }
 
     [Fact]
@@ -273,7 +274,7 @@ public sealed class WinPakDatabaseApiTests
 
         var args = _com.Call("AddUpdateCard").Args;
         Assert.Equal(0L, args[0]);
-        Assert.Equal(false, args[12]);   // jedna nebo žádná úroveň → bMultiple = false
+        Assert.Equal(0, args[12]);       // jedna nebo žádná úroveň → bMultiple = 0 (As Long)
     }
 
     [Fact]

@@ -208,7 +208,9 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
 
         var app = _app ??= _com.Create(_options.ApplicationProgId);
 
-        var login = new object?[] { _options.UserName, _options.Password, _options.Domain, 0 };
+        // bstrDomainName As String (ByVal) — z konfigurace může přijít null, WIN-PAK chce řetězec.
+        var domain = _options.Domain ?? "";
+        var login = new object?[] { _options.UserName, _options.Password, domain, 0 };
         app.Invoke("Login", login);
         var userId = ComValue.ToInt(login[3]);
         if (userId <= 0)
@@ -218,7 +220,7 @@ public sealed partial class WinPakDatabaseApi(IComFactory com, WinPakComOptions 
                 "Přihlášení k WIN-PAK se nezdařilo — ověřte uživatele, heslo a doménu v konfiguraci konektoru.");
         }
 
-        var connect = new object?[] { _options.UserName, _options.Password, _options.Domain, 0, userId };
+        var connect = new object?[] { _options.UserName, _options.Password, domain, 0, userId };
         app.Invoke("ConnectWPDatabase", connect);
         var status = ComValue.ToInt(connect[3]);
         if (status == -2)

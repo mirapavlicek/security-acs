@@ -264,7 +264,7 @@ public sealed partial class WinPakDatabaseApi
     /// </summary>
     private CardHolderImageDto GetImage(string cardHolderId, int index, string dataMethod)
     {
-        var data = Call(dataMethod, ComValue.ToLong(cardHolderId), index, null)[2];
+        var data = Call(dataMethod, HolderId(cardHolderId), index, null)[2];
         var content = ToBase64(data);
         return new CardHolderImageDto(cardHolderId, index, ContentLength(content), content);
     }
@@ -298,10 +298,10 @@ public sealed partial class WinPakDatabaseApi
         };
 
     public void ImportPhoto(string cardHolderId, int index, string contentBase64)
-        => Call("ImportPhoto", ComValue.ToLong(cardHolderId), index, Convert.FromBase64String(contentBase64));
+        => Call("ImportPhoto", HolderId(cardHolderId), index, Convert.FromBase64String(contentBase64));
 
     public void ImportSignature(string cardHolderId, int index, string contentBase64)
-        => Call("ImportSig", ComValue.ToLong(cardHolderId), index, Convert.FromBase64String(contentBase64));
+        => Call("ImportSig", HolderId(cardHolderId), index, Convert.FromBase64String(contentBase64));
 
     public void DeletePhoto(string cardHolderId, int index)
     {
@@ -320,5 +320,11 @@ public sealed partial class WinPakDatabaseApi
     /// vedle <c>DeleteSignature</c>; některé instalace mají jen jednu z nich.
     /// </summary>
     public void DeleteSignatureShort(string cardHolderId, int index)
-        => Call("DeleteSig", ComValue.ToLong(cardHolderId), index);
+        => Call("DeleteSig", HolderId(cardHolderId), index);
+
+    /// <summary>
+    /// Metody nad fotkami a podpisy mají podle typové informace ostrého WIN-PAKu
+    /// <c>dwCardHolderID As UInt32</c> — se znaménkovým Long odpovídaly „Type mismatch“.
+    /// </summary>
+    private static uint HolderId(string cardHolderId) => unchecked((uint)ComValue.ToLong(cardHolderId));
 }

@@ -86,5 +86,5 @@ public sealed partial class WinPakDatabaseApi
 
     /// <summary>Souhrn časových zón smyčky účtu (<c>LoopTimeZoneByAccountId</c>).</summary>
     public string? GetLoopTimeZones()
-        => ComValue.ToStringOrNull(Call("LoopTimeZoneByAccountId", AccountId, null)[1]);
+        => ComValue.ToStringOrNull(CallWithResult("LoopTimeZoneByAccountId", AccountId));
 }

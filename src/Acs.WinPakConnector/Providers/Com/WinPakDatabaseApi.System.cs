@@ -63,7 +63,7 @@ public sealed partial class WinPakDatabaseApi
             .ToList();
 
     /// <summary>E-mailové adresy účtu pro rozesílání reportů.</summary>
-    public string? GetAccountEmails() => ComValue.ToStringOrNull(Call("GetAccountEmailIDs", AccountId, null)[1]);
+    public string? GetAccountEmails() => ComValue.ToStringOrNull(CallWithResult("GetAccountEmailIDs", AccountId));
 
     /// <summary>Souhrn všeho, co se o instalaci dá zjistit jedním voláním REST.</summary>
     /// <summary>
@@ -107,8 +107,8 @@ public sealed partial class WinPakDatabaseApi
 
     public ScheduleDto? GetSchedule(string scheduleId)
     {
-        var result = Call("GetSchedule", ComValue.ToLong(scheduleId), null);
-        var raw = ComValue.AsEnumerable(result[1]).FirstOrDefault();
+        // GetSchedule(RecordId) As Variant — objekt je návratová hodnota.
+        var raw = ComValue.AsEnumerable(CallWithResult("GetSchedule", ComValue.ToLong(scheduleId))).FirstOrDefault();
         return raw is null ? null : MapSchedule(_com.Wrap(raw));
     }
 
@@ -165,8 +165,8 @@ public sealed partial class WinPakDatabaseApi
 
     public TemplateDto? GetTemplate(string templateId)
     {
-        var result = Call("GetTemplate", ComValue.ToLong(templateId), null);
-        var raw = ComValue.AsEnumerable(result[1]).FirstOrDefault();
+        // GetTemplate(RecordId) As Variant — objekt je návratová hodnota.
+        var raw = ComValue.AsEnumerable(CallWithResult("GetTemplate", ComValue.ToLong(templateId))).FirstOrDefault();
         if (raw is null)
             return null;
 
@@ -190,7 +190,7 @@ public sealed partial class WinPakDatabaseApi
     public BadgeDto GetBadge(string badgeId)
     {
         var id = ComValue.ToLong(badgeId);
-        var data = ComValue.ToStringOrNull(Call("GetBadgeData", id, null)[1]);
+        var data = ComValue.ToStringOrNull(CallWithResult("GetBadgeData", id));
         var dimensions = Call("GetBadgeDimension", id, 0, 0);
 
         return new BadgeDto(badgeId, data,

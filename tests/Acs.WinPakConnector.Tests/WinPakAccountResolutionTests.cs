@@ -486,6 +486,44 @@ public sealed class WinPakAccountResolutionTests
     }
 
     [Fact]
+    public void Po_Type_mismatch_se_argumenty_prevedou_na_typy_ze_skutecne_signatury()
+    {
+        // DeleteAL na ostrém: bMultiple As Long, konektor posílal Boolean.
+        var target = new LongFlag();
+        var signature = new ComMembers.ComMethodSignature("DeleteAL",
+        [
+            new("dwoldAcceslevelID", "Long", false, false), new("dwnewAcceslevelID", "Long", false, false),
+            new("bMultiple", "Long", false, false),
+        ], null);
+        var dispatch = new ComDispatch(target, (_, _) => signature);
+
+        dispatch.Invoke("DeleteAL", [1, 2, true]);
+
+        Assert.Equal(1, target.ReceivedMultiple);
+        Assert.Equal(2, target.Calls);
+
+        // Naučeno: podruhé rovnou převedené, bez odmítnutého pokusu.
+        dispatch.Invoke("DeleteAL", [1, 2, false]);
+        Assert.Equal(0, target.ReceivedMultiple);
+        Assert.Equal(3, target.Calls);
+    }
+
+    [Fact]
+    public void Prevod_podle_signatury_zvlada_UInt32_Integer_a_retezce()
+    {
+        var signature = new ComMembers.ComMethodSignature("X",
+        [
+            new("id", "UInt32", false, false), new("idx", "Integer", false, false),
+            new("flag", "Boolean", false, false), new("name", "String", false, false), new("v", "Variant", true, false),
+        ], null);
+        var args = new object?[] { 1001, 2, 1, null, 0 };
+
+        Assert.True(ComDispatch.CoerceToSignature(args, signature));
+
+        Assert.Equal([1001u, (short)2, true, "", null], args);
+    }
+
+    [Fact]
     public void Long_se_posila_jako_32bitove_cislo()
     {
         // VB6 Long je VT_I4; C# long by šel jako VT_I8 a WIN-PAK by ho odmítl.
@@ -561,6 +599,21 @@ public sealed class WinPakAccountResolutionTests
 
         public void DeleteCardShort(int recordId, string cardNo)
             => throw new COMException("Number of parameters specified does not match the expected number.", unchecked((int)0x8002000E));
+    }
+
+    /// <summary>Chová se jako DeleteAL na ostrém: bMultiple As Long, Boolean odmítne.</summary>
+    public sealed class LongFlag
+    {
+        public int Calls;
+        public int ReceivedMultiple = -1;
+
+        public void DeleteAL(int oldId, int newId, object multiple)
+        {
+            Calls++;
+            if (multiple is not int value)
+                throw new COMException("Type mismatch.", unchecked((int)0x80020005));
+            ReceivedMultiple = value;
+        }
     }
 
     public sealed class AlwaysMismatch

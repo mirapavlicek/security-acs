@@ -34,8 +34,8 @@ public sealed class SignatureCheckTests
         Assert.True(methods.Count >= 80, $"katalog má jen {methods.Count} metod");
 
         var addUpdateCard = catalog.Calls.Single(c => c.Method == "AddUpdateCard");
-        Assert.Equal(14, addUpdateCard.Arguments.Count);
-        Assert.Equal("Long()", addUpdateCard.Arguments[^1].Type);
+        Assert.Equal(18, addUpdateCard.Arguments.Count);
+        Assert.Equal("Long()", addUpdateCard.Arguments[13].Type);
         Assert.Equal("WinPakDatabaseApi.UpsertCard", addUpdateCard.Origin);
     }
 
