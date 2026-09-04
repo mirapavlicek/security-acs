@@ -39,11 +39,21 @@
                 @foreach (var employee in Model.Employees)
                 {
                     <option value="@employee.Id" selected="@(employee.Id == Model.MyEmployeeId)"
-                            data-search="@($"{employee.FullName} {employee.Department} {employee.PersonalNumber}".ToLowerInvariant())">
+                            data-search="@($"{employee.FullName} {employee.Department} {employee.PersonalNumber}")">
                         @employee.FullName @(employee.Department is null ? "" : $"({employee.Department})")
                     </option>
                 }
             </select>
+            <p class="hint" id="employee-hint">
+                @if (Model.Employees.Count == 0)
+                {
+                    <text>Žádní zaměstnanci — nejdřív je importujte (Katalog → Zaměstnanci → Synchronizovat).</text>
+                }
+                else
+                {
+                    <text>@Model.Employees.Count zaměstnanců; hledá se bez ohledu na diakritiku a velikost písmen.</text>
+                }
+            </p>
         }
 
         @if (Model.Groups.Count > 0)
@@ -96,35 +106,67 @@
 @section Scripts {
 <script>
 (() => {
-    // Textové hledání zaměstnance — filtruje možnosti výběru za psaní.
+    // Hledání bez diakritiky a velikosti písmen: „pavlicek“ najde „Pavlíček“.
+    const fold = (text) => (text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const matches = (haystack, term) => term.split(/\s+/).filter(Boolean).every(word => haystack.includes(word));
+
+    // Textové hledání zaměstnance. Možnosti nativního výběru se neschovávají atributem
+    // hidden (Safari ho u <option> ignoruje), ale výběr se za psaní znovu sestaví jen
+    // z odpovídajících položek a první z nich se rovnou vybere.
     const search = document.getElementById('employee-search');
     const select = document.getElementById('employee-select');
+    const hint = document.getElementById('employee-hint');
     if (search && select) {
-        const options = [...select.querySelectorAll('option[data-search]')];
-        search.addEventListener('input', () => {
-            const term = search.value.trim().toLowerCase();
-            let firstVisible = null;
-            for (const option of options) {
-                const match = term === '' || option.dataset.search.includes(term);
-                option.hidden = !match;
-                if (match && firstVisible === null) firstVisible = option;
+        const all = [...select.querySelectorAll('option[data-search]')].map(option => ({
+            value: option.value,
+            label: option.textContent.trim(),
+            search: fold(option.dataset.search),
+            selected: option.selected,
+        }));
+        const placeholder = select.querySelector('option[value=""]');
+        const hintText = hint ? hint.textContent : '';
+
+        const rebuild = (term) => {
+            const folded = fold(term.trim());
+            const found = folded === '' ? all : all.filter(item => matches(item.search, folded));
+            const current = select.value;
+            select.innerHTML = '';
+            if (placeholder && (folded === '' || found.length === 0)) select.appendChild(placeholder.cloneNode(true));
+            for (const item of found.slice(0, 300)) {
+                const option = document.createElement('option');
+                option.value = item.value;
+                option.textContent = item.label;
+                select.appendChild(option);
             }
-            // Když aktuálně vybraná možnost neodpovídá hledání, vyber první odpovídající.
-            const selected = select.selectedOptions[0];
-            if (term !== '' && (!selected || selected.hidden) && firstVisible)
-                select.value = firstVisible.value;
+            // Zůstane vybraný ten, kdo hledání odpovídá; jinak první nalezený.
+            if (found.some(item => item.value === current) && current !== '') select.value = current;
+            else if (folded !== '' && found.length > 0) select.value = found[0].value;
+            select.size = folded !== '' && found.length > 1 ? Math.min(found.length, 8) : 1;
+            if (hint) {
+                hint.textContent = folded === ''
+                    ? hintText
+                    : found.length === 0
+                        ? `Nikdo neodpovídá „${term.trim()}“ — zkuste část jména, oddělení nebo osobní číslo.`
+                        : `${found.length} odpovídá${found.length > 300 ? ' (zobrazeno 300)' : ''}.`;
+            }
+        };
+
+        search.addEventListener('input', () => rebuild(search.value));
+        // Enter v hledání nemá odeslat formulář, jen potvrdit první nalezený.
+        search.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') { event.preventDefault(); select.focus(); }
         });
     }
 
-    // Filtr čteček — skrývá řádky se zaškrtávátky podle textu.
+    // Filtr čteček — skrývá řádky se zaškrtávátky podle textu (také bez diakritiky).
     const readerSearch = document.getElementById('reader-search');
     const readerList = document.getElementById('reader-list');
     if (readerSearch && readerList) {
-        const rows = [...readerList.querySelectorAll('.checkbox-row')];
+        const rows = [...readerList.querySelectorAll('.checkbox-row')].map(row => ({ row, text: fold(row.textContent) }));
         readerSearch.addEventListener('input', () => {
-            const term = readerSearch.value.trim().toLowerCase();
-            for (const row of rows)
-                row.style.display = term === '' || row.textContent.toLowerCase().includes(term) ? '' : 'none';
+            const term = fold(readerSearch.value.trim());
+            for (const item of rows)
+                item.row.style.display = term === '' || matches(item.text, term) ? '' : 'none';
         });
     }
 })();
