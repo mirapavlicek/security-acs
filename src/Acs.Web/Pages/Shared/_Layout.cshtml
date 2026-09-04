@@ -7,6 +7,15 @@
     var attention = isAuthenticated
         ? await Attention.GetAsync(User, Context.RequestAborted)
         : new Acs.Infrastructure.Notifications.AttentionCounts(0, 0, 0);
+
+    // Zvýraznění aktuální položky v navigaci podle cesty Razor Page (např. "/Requests/Detail").
+    var currentPage = ViewContext.RouteData.Values["page"]?.ToString() ?? "";
+    string Active(string prefix) => prefix == "/Index"
+        ? (currentPage == "/Index" ? "active" : "")
+        : (currentPage.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? "active" : "");
+    var inCatalog = currentPage.StartsWith("/Catalog/", StringComparison.OrdinalIgnoreCase) || currentPage == "/Reports";
+    var inAdmin = currentPage.StartsWith("/Admin/", StringComparison.OrdinalIgnoreCase)
+                  || currentPage == "/CardQueue" || currentPage == "/Parking/Queue";
 }
 <!DOCTYPE html>
 <html lang="cs" data-theme="@theme">
@@ -25,54 +34,86 @@
 
     @if (isAuthenticated)
     {
-        <nav class="mainnav">
-            <a asp-page="/Index">Přehled</a>
-            <a asp-page="/Requests/Index">
+        @* Hlavní navigace: pět nejčastějších cílů přímo, číselníky a správa ve dvou rozbalovacích skupinách. *@
+        <nav class="mainnav" aria-label="Hlavní navigace">
+            <a asp-page="/Index" class="@Active("/Index")">Přehled</a>
+            <a asp-page="/Requests/Index" class="@Active("/Requests/")">
                 Žádosti
                 @if (attention.PendingApprovals > 0)
                 {
                     <span class="nav-badge" title="@attention.PendingApprovals položek čeká na vaše schválení">@attention.PendingApprovals</span>
                 }
             </a>
-            <a asp-page="/MyAccess">Moje přístupy</a>
-            <a asp-page="/Parking/Index">
-                Parkování
-                @if (attention.ParkingQueue > 0)
-                {
-                    <span class="nav-badge" title="@attention.ParkingQueue parkovacích povolení čeká na vydání">@attention.ParkingQueue</span>
-                }
-            </a>
-            <a asp-page="/Plans">Plány</a>
+            <a asp-page="/MyAccess" class="@Active("/MyAccess")">Moje přístupy</a>
+            <a asp-page="/Parking/Index" class="@Active("/Parking/")">Parkování</a>
+            <a asp-page="/Plans" class="@Active("/Plans")">Plány</a>
+
             @if (HasRole("CatalogManager"))
             {
-                <a asp-page="/Catalog/Readers/Index">Čtečky</a>
-                <a asp-page="/Catalog/AccessLevels/Index">Úrovně</a>
-                <a asp-page="/Catalog/Groups/Index">Skupiny</a>
-                <a asp-page="/Catalog/Employees/Index">Zaměstnanci</a>
-                <a asp-page="/Catalog/Places">Budovy</a>
-                <a asp-page="/Catalog/Parking/Sites">Areály</a>
-                <a asp-page="/Catalog/Parking/PermitTypes">Druhy povolení</a>
-                <a asp-page="/Catalog/Matrices/Index">Matice</a>
-                <a asp-page="/Catalog/AutoRules">Auto-zařazení</a>
-                <a asp-page="/Reports">Reporty</a>
+                <details class="navmenu @(inCatalog ? "active" : "")">
+                    <summary>Číselníky</summary>
+                    <div class="navmenu-panel">
+                        <span class="navmenu-group">Přístupy</span>
+                        <a asp-page="/Catalog/Readers/Index">Čtečky</a>
+                        <a asp-page="/Catalog/AccessLevels/Index">Úrovně přístupu</a>
+                        <a asp-page="/Catalog/Groups/Index">Skupiny čteček</a>
+                        <a asp-page="/Catalog/Places">Budovy a místnosti</a>
+                        <span class="navmenu-group">Parkování</span>
+                        <a asp-page="/Catalog/Parking/Sites">Areály</a>
+                        <a asp-page="/Catalog/Parking/PermitTypes">Druhy povolení</a>
+                        <span class="navmenu-group">Lidé a schvalování</span>
+                        <a asp-page="/Catalog/Employees/Index">Zaměstnanci</a>
+                        <a asp-page="/Catalog/Matrices/Index">Schvalovací matice</a>
+                        <a asp-page="/Catalog/AutoRules">Auto-zařazení</a>
+                        <a asp-page="/Reports">Reporty</a>
+                    </div>
+                </details>
             }
-            @if (HasRole("CardAdmin"))
+
+            @if (HasRole("CardAdmin") || HasRole("ParkingAdmin"))
             {
-                <a asp-page="/CardQueue">
-                    Fronta karet
-                    @if (attention.CardQueue > 0)
-                    {
-                        <span class="nav-badge" title="@attention.CardQueue položek čeká na zadání do WIN-PAK">@attention.CardQueue</span>
-                    }
-                </a>
-            }
-            @if (User.IsInRole("Admin"))
-            {
-                <a asp-page="/Admin/Users/Index">Uživatelé</a>
-                <a asp-page="/Admin/Automation">Automatizace</a>
-                <a asp-page="/Admin/Settings">Nastavení</a>
-                <a asp-page="/Admin/ConnectorUpdate">Konektor</a>
-                <a asp-page="/Admin/Audit">Audit</a>
+                var queueTotal = (HasRole("CardAdmin") ? attention.CardQueue : 0) + (HasRole("ParkingAdmin") ? attention.ParkingQueue : 0);
+                <details class="navmenu @(inAdmin ? "active" : "")">
+                    <summary>
+                        Správa
+                        @if (queueTotal > 0)
+                        {
+                            <span class="nav-badge" title="@queueTotal položek čeká ve frontách">@queueTotal</span>
+                        }
+                    </summary>
+                    <div class="navmenu-panel">
+                        <span class="navmenu-group">Fronty</span>
+                        @if (HasRole("CardAdmin"))
+                        {
+                            <a asp-page="/CardQueue">
+                                Fronta karet
+                                @if (attention.CardQueue > 0)
+                                {
+                                    <span class="nav-badge">@attention.CardQueue</span>
+                                }
+                            </a>
+                        }
+                        @if (HasRole("ParkingAdmin"))
+                        {
+                            <a asp-page="/Parking/Queue">
+                                Fronta parkování
+                                @if (attention.ParkingQueue > 0)
+                                {
+                                    <span class="nav-badge">@attention.ParkingQueue</span>
+                                }
+                            </a>
+                        }
+                        @if (User.IsInRole("Admin"))
+                        {
+                            <span class="navmenu-group">Systém</span>
+                            <a asp-page="/Admin/Users/Index">Uživatelé a role</a>
+                            <a asp-page="/Admin/Automation">Automatizace</a>
+                            <a asp-page="/Admin/Settings">Nastavení</a>
+                            <a asp-page="/Admin/ConnectorUpdate">WIN-PAK konektor</a>
+                            <a asp-page="/Admin/Audit">Audit</a>
+                        }
+                    </div>
+                </details>
             }
         </nav>
     }
@@ -121,12 +162,15 @@
     <span>ACS · acs.fnmh.network</span>
 </footer>
 <script>
-// Menu uživatele se zavře kliknutím jinam nebo klávesou Esc.
+// Rozbalovací nabídky (číselníky, správa, uživatel): otevřená je vždy jen jedna,
+// zavírají se kliknutím jinam nebo klávesou Esc.
 (() => {
-    const menu = document.querySelector('details.usermenu');
-    if (!menu) return;
-    document.addEventListener('click', e => { if (!menu.contains(e.target)) menu.open = false; });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') menu.open = false; });
+    const menus = [...document.querySelectorAll('details.navmenu, details.usermenu')];
+    if (menus.length === 0) return;
+    const closeAll = except => menus.forEach(m => { if (m !== except) m.open = false; });
+    menus.forEach(m => m.addEventListener('toggle', () => { if (m.open) closeAll(m); }));
+    document.addEventListener('click', e => { if (!menus.some(m => m.contains(e.target))) closeAll(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(); });
 })();
 </script>
 @await RenderSectionAsync("Scripts", required: false)

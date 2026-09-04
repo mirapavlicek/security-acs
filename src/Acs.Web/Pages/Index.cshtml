@@ -2,99 +2,142 @@
 @model Acs.Web.Pages.IndexModel
 @{
     ViewData["Title"] = "Přehled";
+    var a = Model.Attention;
 }
 <h1>Přehled</h1>
 
-<div class="cards-grid">
-    <div class="card">
-        <h2 style="margin-top:0">Moje přístupy</h2>
-        <p class="muted">Přehled přístupů, které máte přiděleny, a stav vašich žádostí.</p>
-        <a class="btn" asp-page="/MyAccess">Otevřít</a>
-    </div>
-    <div class="card">
-        <h2 style="margin-top:0">Nová žádost</h2>
-        <p class="muted">Žádost o přístup ke čtečce včetně automatického doplnění řetězce (chodba, patro…).</p>
-        <a class="btn" asp-page="/Requests/New">Podat žádost</a>
-    </div>
-    <div class="card">
-        <h2 style="margin-top:0">
-            Ke schválení
-            @if (Model.Attention.PendingApprovals > 0)
+@if (a.PendingApprovals > 0 || (Model.IsCardAdmin && a.CardQueue > 0) || (Model.IsParkingAdmin && a.ParkingQueue > 0))
+{
+    <section class="dash-section">
+        <h2>Čeká na vás</h2>
+        <div class="tile-grid">
+            @if (a.PendingApprovals > 0)
             {
-                <span class="nav-badge card-badge">@Model.Attention.PendingApprovals</span>
+                <a class="tile tile-attention" asp-page="/Requests/Index">
+                    <span class="tile-count">@a.PendingApprovals</span>
+                    <span class="tile-title">Ke schválení</span>
+                    <span class="tile-desc">položek čeká na vaše rozhodnutí (včetně zástupů)</span>
+                </a>
             }
-        </h2>
-        <p class="muted">
-            @if (Model.Attention.PendingApprovals > 0)
+            @if (Model.IsCardAdmin && a.CardQueue > 0)
             {
-                <span class="attention-dot"></span>
-                <strong>@Model.Attention.PendingApprovals</strong> @:položek čeká na vaše rozhodnutí (včetně zástupů).
+                <a class="tile tile-attention" asp-page="/CardQueue">
+                    <span class="tile-count">@a.CardQueue</span>
+                    <span class="tile-title">Fronta karet</span>
+                    <span class="tile-desc">schválených přístupů k zadání do WIN-PAK</span>
+                </a>
             }
-            else
+            @if (Model.IsParkingAdmin && a.ParkingQueue > 0)
             {
-                @:Žádosti čekající na vaše rozhodnutí (včetně zástupů). Teď nic nečeká.
+                <a class="tile tile-attention" asp-page="/Parking/Queue">
+                    <span class="tile-count">@a.ParkingQueue</span>
+                    <span class="tile-title">Fronta parkování</span>
+                    <span class="tile-desc">parkovacích povolení k vydání nebo odebrání</span>
+                </a>
             }
-        </p>
-        <a class="btn" asp-page="/Requests/Index">Otevřít žádosti</a>
+        </div>
+    </section>
+}
+
+<section class="dash-section">
+    <h2>Moje</h2>
+    <div class="tile-grid">
+        <a class="tile" asp-page="/MyAccess">
+            @if (Model.HasEmployee)
+            {
+                <span class="tile-count">@Model.MyActiveAccesses</span>
+            }
+            <span class="tile-title">Moje přístupy</span>
+            <span class="tile-desc">přidělené přístupy, stav žádostí, žádost o odebrání</span>
+        </a>
+        <a class="tile" asp-page="/Requests/New">
+            <span class="tile-title">Nová žádost o přístup</span>
+            <span class="tile-desc">čtečka nebo skupina, řetězec chodeb se doplní sám</span>
+        </a>
+        <a class="tile" asp-page="/Requests/Index">
+            @if (a.MyPending > 0)
+            {
+                <span class="tile-count">@a.MyPending</span>
+            }
+            <span class="tile-title">Žádosti</span>
+            <span class="tile-desc">@(a.MyPending > 0 ? "mých položek ještě není vyřízeno" : "moje žádosti a schvalování")</span>
+        </a>
+        <a class="tile" asp-page="/Parking/Index">
+            @if (Model.HasEmployee)
+            {
+                <span class="tile-count">@Model.MyActivePermits</span>
+            }
+            <span class="tile-title">Parkování</span>
+            <span class="tile-desc">parkovací povolení na SPZ nebo funkci, kartička za sklo</span>
+        </a>
+        <a class="tile" asp-page="/Plans">
+            <span class="tile-title">Plány pater</span>
+            <span class="tile-desc">kde jsou čtečky a kam mám přístup</span>
+        </a>
+        <a class="tile" asp-page="/Deputies">
+            <span class="tile-title">Zástupy</span>
+            <span class="tile-desc">kdo schvaluje za mě, když nejsem k dispozici</span>
+        </a>
     </div>
-    @if (User.IsInRole("Admin") || User.IsInRole("CardAdmin"))
-    {
-        <div class="card">
-            <h2 style="margin-top:0">
-                Fronta správce karet
-                @if (Model.Attention.CardQueue > 0)
-                {
-                    <span class="nav-badge card-badge">@Model.Attention.CardQueue</span>
-                }
-            </h2>
-            <p class="muted">
-                @if (Model.Attention.CardQueue > 0)
-                {
-                    <span class="attention-dot"></span>
-                    <strong>@Model.Attention.CardQueue</strong> @:schválených položek čeká na zadání do WIN-PAK.
-                }
-                else
-                {
-                    @:Schválené žádosti k zadání do WIN-PAK (API / ruční potvrzení). Fronta je prázdná.
-                }
-            </p>
-            <a class="btn" asp-page="/CardQueue">Otevřít frontu</a>
+</section>
+
+@if (Model.IsCardAdmin || Model.IsParkingAdmin)
+{
+    <section class="dash-section">
+        <h2>Fronty</h2>
+        <div class="tile-grid">
+            @if (Model.IsCardAdmin)
+            {
+                <a class="tile @(a.CardQueue > 0 ? "tile-attention" : "")" asp-page="/CardQueue">
+                    <span class="tile-count">@a.CardQueue</span>
+                    <span class="tile-title">Fronta správce karet</span>
+                    <span class="tile-desc">@(a.CardQueue > 0 ? "položek čeká na zadání do WIN-PAK" : "fronta je prázdná")</span>
+                </a>
+            }
+            @if (Model.IsParkingAdmin)
+            {
+                <a class="tile @(a.ParkingQueue > 0 ? "tile-attention" : "")" asp-page="/Parking/Queue">
+                    <span class="tile-count">@a.ParkingQueue</span>
+                    <span class="tile-title">Fronta správce parkování</span>
+                    <span class="tile-desc">@(a.ParkingQueue > 0 ? "povolení k vydání nebo odebrání" : "fronta je prázdná")</span>
+                </a>
+            }
         </div>
-    }
-    @if (User.IsInRole("Admin") || User.IsInRole("ParkingAdmin"))
-    {
-        <div class="card">
-            <h2 style="margin-top:0">
-                Fronta správce parkování
-                @if (Model.Attention.ParkingQueue > 0)
-                {
-                    <span class="nav-badge card-badge">@Model.Attention.ParkingQueue</span>
-                }
-            </h2>
-            <p class="muted">
-                @if (Model.Attention.ParkingQueue > 0)
-                {
-                    <span class="attention-dot"></span>
-                    <strong>@Model.Attention.ParkingQueue</strong> @:parkovacích povolení čeká na vydání nebo odebrání.
-                }
-                else
-                {
-                    @:Schválená parkovací povolení k vydání (kartička za sklo). Fronta je prázdná.
-                }
-            </p>
-            <a class="btn" asp-page="/Parking/Queue">Otevřít frontu</a>
+    </section>
+}
+
+@if (Model.IsCatalogManager)
+{
+    <section class="dash-section">
+        <h2>Číselníky</h2>
+        <div class="tile-grid tile-grid-compact">
+            <a class="tile" asp-page="/Catalog/Readers/Index"><span class="tile-count">@Model.ReaderCount</span><span class="tile-title">Čtečky</span><span class="tile-desc">aktivních, sync z WIN-PAK</span></a>
+            <a class="tile" asp-page="/Catalog/AccessLevels/Index"><span class="tile-title">Úrovně přístupu</span><span class="tile-desc">access levely WIN-PAK</span></a>
+            <a class="tile" asp-page="/Catalog/Groups/Index"><span class="tile-count">@Model.GroupCount</span><span class="tile-title">Skupiny čteček</span><span class="tile-desc">i vnořené, vlastní matice</span></a>
+            <a class="tile" asp-page="/Catalog/Places"><span class="tile-count">@Model.BuildingCount</span><span class="tile-title">Budovy</span><span class="tile-desc">části, patra, chodby, místnosti</span></a>
+            <a class="tile" asp-page="/Catalog/Employees/Index"><span class="tile-count">@Model.EmployeeCount</span><span class="tile-title">Zaměstnanci</span><span class="tile-desc">z AD, karty a SPZ</span></a>
+            <a class="tile" asp-page="/Catalog/Matrices/Index"><span class="tile-count">@Model.MatrixCount</span><span class="tile-title">Schvalovací matice</span><span class="tile-desc">úrovně a schvalovatelé</span></a>
+            <a class="tile" asp-page="/Catalog/AutoRules"><span class="tile-title">Auto-zařazení</span><span class="tile-desc">oddělení → skupina čteček</span></a>
+            <a class="tile" asp-page="/Catalog/Parking/Sites"><span class="tile-count">@Model.SiteCount</span><span class="tile-title">Areály</span><span class="tile-desc">Motol, Homolka…</span></a>
+            <a class="tile" asp-page="/Catalog/Parking/PermitTypes"><span class="tile-count">@Model.PermitTypeCount</span><span class="tile-title">Druhy povolení</span><span class="tile-desc">vazba, matice, kartička</span></a>
+            <a class="tile" asp-page="/Reports"><span class="tile-count">@Model.IssuedPermitCount</span><span class="tile-title">Reporty</span><span class="tile-desc">kdo má kam, vydaná povolení · PDF / CSV</span></a>
         </div>
-    }
-    @if (User.IsInRole("Admin"))
-    {
-        <div class="card">
-            <h2 style="margin-top:0">Stav systému</h2>
-            <table class="data">
-                <tr><td>Uživatelů</td><td>@Model.UserCount</td></tr>
-                <tr><td>Zaměstnanců</td><td>@Model.EmployeeCount</td></tr>
-                <tr><td>Čteček</td><td>@Model.ReaderCount</td></tr>
-                <tr><td>WIN-PAK konektor</td><td>@Model.WinPakStatus</td></tr>
-            </table>
+    </section>
+}
+
+@if (Model.IsAdmin)
+{
+    <section class="dash-section">
+        <h2>Systém</h2>
+        <div class="tile-grid tile-grid-compact">
+            <a class="tile" asp-page="/Admin/Users/Index"><span class="tile-count">@Model.UserCount</span><span class="tile-title">Uživatelé a role</span><span class="tile-desc">AD účty, lokální admin, role</span></a>
+            <a class="tile" asp-page="/Admin/Automation"><span class="tile-title">Automatizace</span><span class="tile-desc">offboarding, expirace, připomínky</span></a>
+            <a class="tile" asp-page="/Admin/Settings"><span class="tile-title">Nastavení</span><span class="tile-desc">AD, WIN-PAK, SMTP, zdroje dat</span></a>
+            <a class="tile" asp-page="/Admin/ConnectorUpdate">
+                <span class="tile-title">WIN-PAK konektor</span>
+                <span class="tile-desc">stav: <strong>@Model.WinPakStatus</strong></span>
+            </a>
+            <a class="tile" asp-page="/Admin/Audit"><span class="tile-title">Audit</span><span class="tile-desc">kdo, co, kdy</span></a>
         </div>
-    }
-</div>
+    </section>
+}

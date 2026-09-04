@@ -96,9 +96,38 @@ body {
 .brand-mark { font-size: 1.3rem; font-weight: 700; color: var(--primary); letter-spacing: 0.08em; }
 .brand-sub { font-size: 0.7rem; color: var(--muted); }
 
-.mainnav { display: flex; gap: 1rem; flex: 1; flex-wrap: wrap; }
-.mainnav a { color: var(--text); text-decoration: none; padding: 0.35rem 0.6rem; border-radius: 6px; }
-.mainnav a:hover { background: var(--bg); color: var(--primary); }
+.mainnav { display: flex; align-items: center; gap: 0.25rem; flex: 1; flex-wrap: wrap; }
+.mainnav > a, .mainnav .navmenu > summary {
+  color: var(--text); text-decoration: none; padding: 0.4rem 0.7rem; border-radius: 6px;
+  white-space: nowrap; cursor: pointer; list-style: none; line-height: 1.3;
+}
+.mainnav > a:hover, .mainnav .navmenu > summary:hover { background: var(--bg); color: var(--primary); }
+.mainnav > a.active, .mainnav .navmenu.active > summary {
+  color: var(--primary); font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--primary); border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+}
+
+/* Rozbalovací skupiny v navigaci (Číselníky, Správa). */
+.navmenu { position: relative; }
+.navmenu > summary::-webkit-details-marker { display: none; }
+.navmenu > summary::after { content: " ▾"; font-size: 0.8em; color: var(--muted); }
+.navmenu[open] > summary { background: var(--bg); color: var(--primary); }
+.navmenu-panel {
+  position: absolute; left: 0; top: calc(100% + 0.4rem); z-index: 30;
+  min-width: 230px; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 0.35rem; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.navmenu-panel a {
+  color: var(--text); text-decoration: none; padding: 0.42rem 0.6rem; border-radius: 6px; font-size: 0.92rem;
+  white-space: nowrap;
+}
+.navmenu-panel a:hover { background: var(--bg); color: var(--primary); }
+.navmenu-group {
+  color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 0.5rem 0.6rem 0.2rem;
+}
+.navmenu-group:not(:first-child) { border-top: 1px solid var(--border); margin-top: 0.3rem; }
 .nav-soon { color: var(--muted); padding: 0.35rem 0.6rem; cursor: not-allowed; opacity: 0.6; }
 
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 0.8rem; }
@@ -160,6 +189,28 @@ h2 { font-size: 1.15rem; margin: 1.5rem 0 0.6rem; }
 .cards-grid .card { margin-bottom: 0; display: flex; flex-direction: column; }
 .cards-grid .card .btn { margin-top: auto; align-self: flex-start; }
 
+/* Dashboard (Přehled): sekce s dlaždicemi, celá dlaždice je odkaz. */
+.dash-section { margin-bottom: 1.6rem; }
+.dash-section h2 { margin: 0 0 0.6rem; font-size: 1rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.8rem; }
+.tile-grid-compact { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+.tile {
+  position: relative; display: flex; flex-direction: column; gap: 0.15rem; min-height: 96px;
+  padding: 0.9rem 1rem; background: var(--surface); color: var(--text); text-decoration: none;
+  border: 1px solid var(--border); border-radius: 10px;
+  transition: border-color 0.12s, transform 0.12s, box-shadow 0.12s;
+}
+.tile:hover { border-color: var(--primary); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08); }
+.tile-title { font-weight: 600; }
+.tile-desc { font-size: 0.82rem; color: var(--muted); line-height: 1.3; }
+.tile-count { font-size: 1.5rem; font-weight: 700; color: var(--primary); line-height: 1.1; }
+.tile-attention { border-color: var(--danger); }
+.tile-attention .tile-count { color: var(--danger); }
+.tile-attention::before {
+  content: ""; position: absolute; left: -1px; top: 0.9rem; bottom: 0.9rem; width: 3px;
+  background: var(--danger); border-radius: 0 3px 3px 0;
+}
+
 /* Mřížka pro formulářové karty (Nastavení) — na širokém displeji vedle sebe. */
 .settings-grid {
   display: grid;
@@ -189,8 +240,12 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); o
   white-space: nowrap; /* text tlačítka se nikdy nesmí lámat po písmenech */
 }
 .btn:hover { filter: brightness(1.1); }
-.btn-ghost { background: transparent; color: var(--text); border-color: var(--border); margin-top: 0; }
+.btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
 .btn-sm { padding: 0.2rem 0.6rem; font-size: 0.85rem; margin-top: 0; }
+
+/* Řádek akčních tlačítek (nad seznamem, pod formulářem) — všechna zarovnaná na jedné lince. */
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0 0 1rem; }
+.actions .btn, .filterbar .btn, .inline-form .btn { margin-top: 0; }
 .btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 
 .inline-form { display: inline; }
