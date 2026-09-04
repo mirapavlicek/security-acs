@@ -1,0 +1,68 @@
+@page "/ui/update"
+@model Acs.WinPakConnector.Pages.UpdateModel
+@{
+    ViewData["Title"] = "Aktualizace";
+}
+<h1>Aktualizace konektoru</h1>
+<p class="muted">
+    Běží verze <strong>@Model.Status.CurrentVersion</strong>. Server WIN-PAKu nemá přístup na internet — balík releasu
+    (<span class="mono">AcsWinPakConnector-&lt;verze&gt;-win-x64.zip</span>) se sem nahraje odsud nebo ho pošle ACS.
+    Konektor ověří SHA-256 a obsah, pak zastaví službu, zazálohuje instalaci, přepíše soubory (nastavení zůstává),
+    službu spustí a při neúspěchu vrátí zálohu.
+</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+@if (!Model.Status.Supported)
+{
+    <div class="alert alert-error">Výměnu souborů umí konektor jen jako Windows služba; tady se balík jen přijme a ověří.</div>
+}
+
+<div class="card" style="max-width:640px">
+    <h2 style="margin-top:0">Nahrát balík</h2>
+    <form method="post" asp-page-handler="Upload" enctype="multipart/form-data">
+        <label>Balík releasu (zip)</label>
+        <input type="file" name="package" accept=".zip" required />
+        <label>SHA-256 (nepovinné — obsah souboru <span class="mono">.sha256</span> z releasu)</label>
+        <input type="text" name="sha256" class="mono" placeholder="64 hexadecimálních znaků" />
+        <label style="display:inline"><input type="checkbox" name="startNow" value="true" checked /> po ověření rovnou aktualizovat</label>
+        <div class="btn-row">
+            <button class="btn" type="submit">Nahrát</button>
+        </div>
+    </form>
+</div>
+
+@if (Model.Status.Staged is { } staged)
+{
+    <div class="card" style="max-width:640px">
+        <h2 style="margin-top:0">Připravený balík</h2>
+        <table class="data">
+            <tr><th>Verze</th><td>@staged.Version</td></tr>
+            <tr><th>Velikost</th><td>@((staged.Size / 1024.0 / 1024.0).ToString("0.0")) MB</td></tr>
+            <tr><th>SHA-256</th><td class="mono">@staged.Sha256</td></tr>
+            <tr><th>Přijat</th><td>@staged.ReceivedUtc.ToLocalTime().ToString("g")</td></tr>
+            <tr><th>Aktualizace spuštěna</th><td>@(Model.Status.StartedUtc?.ToLocalTime().ToString("g") ?? "ne")</td></tr>
+        </table>
+        @if (Model.Status.Supported && Model.Status.StartedUtc is null)
+        {
+            <form method="post" asp-page-handler="Start" class="btn-row"
+                  onsubmit="return confirm('Aktualizovat konektor na @staged.Version? Služba se na chvíli zastaví.')">
+                <button class="btn" type="submit">Aktualizovat na @staged.Version</button>
+            </form>
+        }
+    </div>
+}
+
+@if (Model.Status.Log is { Length: > 0 } log)
+{
+    <div class="card">
+        <h2 style="margin-top:0">Protokol poslední aktualizace</h2>
+        <pre class="mono muted" style="white-space:pre-wrap">@log</pre>
+    </div>
+}

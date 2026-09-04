@@ -1,0 +1,106 @@
+@page
+@model Acs.Web.Pages.Admin.ConnectorUpdateModel
+@{
+    ViewData["Title"] = "Aktualizace konektoru";
+}
+<h1>WIN-PAK konektor — aktualizace</h1>
+<p class="muted">
+    Server WIN-PAKu nemá přístup na internet. ACS proto vydání konektoru stáhne z GitHubu, ověří SHA-256
+    a pošle ho konektoru (port 52001); ten zastaví službu, zazálohuje instalaci, přepíše soubory (nastavení zůstává),
+    službu spustí a při neúspěchu vrátí zálohu.
+</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="settings-grid">
+<div class="card">
+    <h2 style="margin-top:0">Konektor</h2>
+    @if (Model.ConnectorError is not null)
+    {
+        <div class="alert alert-error">Konektor neodpovídá: @Model.ConnectorError</div>
+        <p class="muted">Pokud právě probíhá aktualizace, je to očekávané — za minutu stránku obnovte.</p>
+    }
+    else if (Model.Info is { } info)
+    {
+        <table class="data">
+            <tr><th>Běžící verze</th><td><strong>@info.Version</strong></td></tr>
+            <tr><th>Režim</th><td>@info.ProviderMode</td></tr>
+            <tr><th>Účet</th><td>@info.AccountName</td></tr>
+            @if (Model.Status is { } status)
+            {
+                <tr><th>Samoaktualizace</th><td>@(status.Supported ? "podporována" : "nepodporována (konektor neběží jako Windows služba)")</td></tr>
+                @if (status.Staged is { } staged)
+                {
+                    <tr><th>Připravený balík</th><td>@staged.Version (@((staged.Size / 1024.0 / 1024.0).ToString("0.0")) MB, přijat @staged.ReceivedUtc.ToLocalTime().ToString("g"))</td></tr>
+                    <tr><th>Aktualizace spuštěna</th><td>@(status.StartedUtc?.ToLocalTime().ToString("g") ?? "ne")</td></tr>
+                }
+            }
+        </table>
+        @if (Model.Status is { Supported: true, Staged: not null, StartedUtc: null })
+        {
+            <form method="post" asp-page-handler="Start" class="btn-row"
+                  onsubmit="return confirm('Spustit aktualizaci konektoru na @Model.Status.Staged.Version? Služba se na chvíli zastaví.')">
+                <button class="btn" type="submit">Spustit aktualizaci na @Model.Status.Staged.Version</button>
+            </form>
+        }
+    }
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">Vlastní balík</h2>
+    <p class="hint">Když ACS na GitHub nedosáhne: stáhněte <span class="mono">AcsWinPakConnector-&lt;verze&gt;-win-x64.zip</span> jinde a pošlete ho odsud.</p>
+    <form method="post" asp-page-handler="Upload" enctype="multipart/form-data">
+        <input type="file" name="package" accept=".zip" required />
+        <label style="display:inline"><input type="checkbox" name="startNow" value="true" checked /> rovnou aktualizovat</label>
+        <div class="btn-row"><button class="btn btn-sm" type="submit">Poslat konektoru</button></div>
+    </form>
+</div>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">Vydání konektoru</h2>
+    @if (Model.ReleasesError is not null)
+    {
+        <div class="alert alert-error">Seznam vydání z GitHubu se nenačetl: @Model.ReleasesError</div>
+    }
+    <table class="data">
+        <thead><tr><th>Verze</th><th>Vydáno</th><th>Název</th><th>Balík</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var release in Model.Releases)
+        {
+            var current = Model.IsCurrent(release);
+            <tr>
+                <td><strong>@release.Version</strong> @if (current) { <span class="badge badge-primary">běží</span> }</td>
+                <td class="muted">@release.PublishedAt?.ToLocalTime().ToString("g")</td>
+                <td>@release.Name</td>
+                <td class="muted">@((release.PackageSize / 1024.0 / 1024.0).ToString("0.0")) MB@(release.Sha256Url is null ? " (bez SHA-256!)" : "")</td>
+                <td>
+                    @if (!current && Model.ConnectorError is null)
+                    {
+                        <form method="post" asp-page-handler="Push" asp-route-version="@release.Version" class="inline-form"
+                              onsubmit="return confirm('Poslat konektoru verzi @release.Version a aktualizovat? Služba konektoru se na chvíli zastaví.')">
+                            <input type="hidden" name="startNow" value="true" />
+                            <button class="btn btn-sm" type="submit">Aktualizovat na @release.Version</button>
+                        </form>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+@if (Model.Status?.Log is { Length: > 0 } log)
+{
+    <div class="card">
+        <h2 style="margin-top:0">Protokol poslední aktualizace konektoru</h2>
+        <pre class="mono muted" style="white-space:pre-wrap">@log</pre>
+    </div>
+}

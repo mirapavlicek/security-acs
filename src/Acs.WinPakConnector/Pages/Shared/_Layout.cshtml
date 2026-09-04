@@ -1,4 +1,4 @@
-@{
+﻿@{
     var isAuthenticated = User.Identity?.IsAuthenticated == true;
 }
 <!DOCTYPE html>
@@ -23,6 +23,7 @@
             <a asp-page="/Settings">Nastavení</a>
             <a asp-page="/Features/Index">Funkce</a>
             <a asp-page="/Diagnostics">Diagnostika</a>
+            <a asp-page="/Update">Aktualizace</a>
             <a href="/openapi/v1.json" target="_blank" rel="noopener">OpenAPI</a>
         </nav>
         <form method="post" asp-page="/Index" asp-page-handler="Logout" class="topbar-right">

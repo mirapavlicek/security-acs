@@ -329,6 +329,20 @@ což konektor neovlivní.
 
 ## Aktualizace konektoru
 
+**Z ACS** (od v1.12.10) — WIN-PAK server nemá internet, aplikační servery ACS
+ano: *Administrace → Konektor* ukáže běžící verzi a vydání na GitHubu; tlačítko
+*Aktualizovat na X* balík stáhne, ověří SHA-256 a pošle konektoru na port
+52001 (`POST /api/v1/update`). Konektor balík znovu ověří (SHA-256, obsah,
+verze z assembly), zastaví službu, zazálohuje instalaci, přepíše soubory
+(`appsettings.Local.json` zůstává), službu spustí a při neúspěchu vrátí
+zálohu — totéž, co dělá skript níže, jen ho spouští konektor sám (skript má
+přibalený). Protokol je pak vidět v ACS i v administraci konektoru
+(*Aktualizace*), kam jde balík nahrát i z prohlížeče, když ACS na GitHub
+nedosáhne. Aktualizace trvá asi minutu; po ní stránku obnovte a zkontrolujte
+Diagnostiku.
+
+Pořadí při souběžné aktualizaci ACS: konektor dřív (viz níže).
+
 **Skriptem** (PowerShell jako administrátor na WIN-PAK serveru; skript je
 v balíku releasu i v repozitáři jako `deploy/Update-WinPakConnector.ps1`):
 

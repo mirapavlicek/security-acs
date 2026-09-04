@@ -29,7 +29,7 @@ param(
     [string]$HealthUrl = 'http://localhost:52001/health',
     [string]$Repo = 'mirapavlicek/security-acs',
     # Soubory, ktere se pri prepisu nechavaji na miste (relativne k InstallDir).
-    [string[]]$Keep = @('appsettings.Local.json', 'appsettings.Production.json', 'logs')
+    [string[]]$Keep = @('appsettings.Local.json', 'appsettings.Production.json', 'logs', 'updates')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -101,7 +101,9 @@ Stop-Service $ServiceName -ErrorAction SilentlyContinue
 (Get-Service $ServiceName).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(60))
 
 Write-Step "Zalohuji do $backup"
-Copy-Item $InstallDir $backup -Recurse
+# Slozka updates (prijate baliky, protokol) se nezalohuje - byla by v zaloze zbytecne a protokol se prave zapisuje.
+& robocopy $InstallDir $backup /E /R:3 /W:2 /NFL /NDL /NJH /NP /XD updates | Out-Null
+if ($LASTEXITCODE -ge 8) { throw "Zaloha selhala (robocopy kod $LASTEXITCODE)." }
 
 Write-Step 'Prepisuji soubory programu (nastaveni zustava)'
 $keepArgs = $Keep | ForEach-Object { if ($_ -like '*.*') { '/XF', $_ } else { '/XD', $_ } }
