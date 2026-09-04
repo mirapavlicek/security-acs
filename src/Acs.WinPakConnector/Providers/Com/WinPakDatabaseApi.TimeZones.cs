@@ -119,9 +119,9 @@ public sealed partial class WinPakDatabaseApi
         return raw is null ? null : MapTimeZone(_com.Wrap(raw));
     }
 
-    /// <summary>Souhrn časových zón čteček účtu, jak ho vrací <c>GetReaderTZDetailsByAccountId</c>.</summary>
+    /// <summary>Souhrn časových zón čteček účtu — <c>GetReaderTZDetailsByAccountId(lAccountID) As String</c> (návratová hodnota, ne výstupní parametr).</summary>
     public string? GetReaderTimeZoneDetails()
-        => ComValue.ToStringOrNull(Call("GetReaderTZDetailsByAccountId", AccountId, null)[1]);
+        => ComValue.ToStringOrNull(CallWithResult("GetReaderTZDetailsByAccountId", AccountId));
 
     /// <summary>Přímý bod a časová zóna čtečky (<c>GetDirectPointTZDetailsofReader</c>).</summary>
     public (string? DeviceId, string? TimeZoneId) GetDirectPointTimeZoneOfReader(long readerId)

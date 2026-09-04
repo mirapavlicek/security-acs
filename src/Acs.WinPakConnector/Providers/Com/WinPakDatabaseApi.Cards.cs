@@ -48,8 +48,8 @@ public sealed partial class WinPakDatabaseApi
         var existing = GetCard(cardNumber);
         var accessLevelIds = ToIds(request.AccessLevelIds ?? existing?.AccessLevelIds);
 
-        // Příručka u AddUpdateCard neuvádí výstupní stavový kód, ostrý WIN-PAK ho má:
-        // ComDispatch ho podle typové informace doplní a vrátí jako výsledek volání.
+        // Skutečná signatura (typová informace ostrého WIN-PAKu): 18 parametrů, žádný
+        // výstupní stav — za 14 z příručky následují čtyři NetAXS volby, bMultiple je Long.
         var status = CallWithResult("AddUpdateCard",
             ComValue.ToLong(existing?.RecordId),                                  // dwRecordID (0 = nová karta)
             cardNumber,                                                           // sCardNo
@@ -63,10 +63,17 @@ public sealed partial class WinPakDatabaseApi
             request.ExpirationDate ?? existing?.ExpirationDate ?? NoExpiration,   // dtExpirationDate
             0,                                                                    // Backdrop1ID
             0,                                                                    // Backdrop2ID
-            accessLevelIds.Length > 1,                                            // bMultiple
-            accessLevelIds);                                                      // alAccessLevelIDs
+            Multiple(accessLevelIds),                                             // bMultiple As Long
+            accessLevelIds,                                                       // alAccessLevelIDs
+            false,                                                                // bTempCard
+            (short)0,                                                             // iNXCardType
+            (short)0,                                                             // nUsageLimits
+            false);                                                               // bLimitedCard
         EnsureWriteSucceeded($"Uložení karty {cardNumber}", status);
     }
+
+    /// <summary>WIN-PAK chce <c>bMultiple As Long</c>: 1 = více přístupových úrovní, 0 = jedna nebo žádná.</summary>
+    private static int Multiple(long[] accessLevelIds) => accessLevelIds.Length > 1 ? 1 : 0;
 
     /// <summary>Stavový kód zápisu, pokud ho WIN-PAK vrátil (návratovou hodnotou nebo doplněným výstupním parametrem).</summary>
     private static void EnsureWriteSucceeded(string operation, object? status)
@@ -96,7 +103,7 @@ public sealed partial class WinPakDatabaseApi
             request.ExpirationDate ?? NoExpiration,
             operatorId,
             operatorName,
-            accessLevelIds.Length > 1,
+            Multiple(accessLevelIds),
             accessLevelIds);
     }
 
@@ -177,7 +184,7 @@ public sealed partial class WinPakDatabaseApi
             request.ExpirationDate ?? existing?.ExpirationDate ?? NoExpiration,
             0,
             0,
-            accessLevelIds.Length > 1,
+            Multiple(accessLevelIds),
             accessLevelIds,
             netAxs.TemporaryCard,
             (short)netAxs.CardType,

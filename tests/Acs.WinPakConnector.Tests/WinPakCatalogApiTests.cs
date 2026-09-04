@@ -165,6 +165,27 @@ public sealed class WinPakCatalogApiTests
     }
 
     [Fact]
+    public void Metody_s_navratovou_hodnotou_se_volaji_s_jedinym_parametrem()
+    {
+        // Typová informace ostrého WIN-PAKu: GetAccountEmailIDs(AccountID) As String,
+        // GetSchedule(RecordId) As Variant… — příručka u nich uváděla výstupní parametr navíc.
+        ArrangeAccounts();
+        App.Returns["GetAccountEmailIDs"] = "a@b.cz";
+        App.Returns["GetReaderTZDetailsByAccountId"] = "<tz/>";
+        App.Returns["LoopTimeZoneByAccountId"] = "<loop/>";
+        App.Returns["GetSchedule"] = new object[] { _com.Record("s", ("ScheduleId", 5L), ("ScheduleName", "Noční")) };
+        var api = CreateApi();
+
+        Assert.Equal("a@b.cz", api.GetAccountEmails());
+        Assert.Equal("<tz/>", api.GetReaderTimeZoneDetails());
+        Assert.Equal("<loop/>", api.GetLoopTimeZones());
+        Assert.Equal("5", api.GetSchedule("5")?.Id);
+
+        foreach (var method in new[] { "GetAccountEmailIDs", "GetReaderTZDetailsByAccountId", "LoopTimeZoneByAccountId", "GetSchedule" })
+            Assert.Single(_com.Call(method).Args);
+    }
+
+    [Fact]
     public void Skupiny_svatku_panelu_jako_cisla_se_doplni_o_jmeno_ze_seznamu_skupin()
     {
         // Ostrý WIN-PAK: GetConfiguredHolidayGroupsByPanel vrací UInt32 id, ne objekty
@@ -306,7 +327,7 @@ public sealed class WinPakCatalogApiTests
         Assert.Equal(new DateTime(2027, 1, 1), args[6]);
         Assert.Equal(4, args[7]);                       // lOperID
         Assert.Equal("acs-service", args[8]);           // sOpName
-        Assert.Equal(true, args[9]);                    // bMultiple
+        Assert.Equal(1, args[9]);                       // bMultiple As Long
         Assert.Equal(new long[] { 4, 5 }, args[10]);
     }
 
@@ -361,7 +382,7 @@ public sealed class WinPakCatalogApiTests
 
         Assert.Equal(3, photo.Size);
         Assert.Equal(Convert.ToBase64String([1, 2, 3]), photo.ContentBase64);
-        Assert.Equal([1001L, 0, null], _com.Call("GetPhoto").Args);
+        Assert.Equal([1001u, 0, null], _com.Call("GetPhoto").Args);
         Assert.DoesNotContain(_com.Calls, c => c.Method == "GetPhotoSize");
     }
 
@@ -380,9 +401,10 @@ public sealed class WinPakCatalogApiTests
     public void Import_podpisu_posila_dekodovane_byty()
     {
         CreateApi().ImportSignature("1001", 1, Convert.ToBase64String([9, 8]));
+        // dwCardHolderID je podle typové informace UInt32.
 
         var args = _com.Call("ImportSig").Args;
-        Assert.Equal(1001L, args[0]);
+        Assert.Equal(1001u, args[0]);
         Assert.Equal(1, args[1]);
         Assert.Equal(new byte[] { 9, 8 }, args[2]);
     }
@@ -472,7 +494,7 @@ public sealed class WinPakCatalogApiTests
     [Fact]
     public void Odznak_kombinuje_data_a_rozmery()
     {
-        App.OutValues["GetBadgeData#1"] = "<badge/>";
+        App.Returns["GetBadgeData"] = "<badge/>";
         App.OutValues["GetBadgeDimension#1"] = 54;
         App.OutValues["GetBadgeDimension#2"] = 86;
 
