@@ -7,6 +7,10 @@
     var attention = isAuthenticated
         ? await Attention.GetAsync(User, Context.RequestAborted)
         : new Acs.Infrastructure.Notifications.AttentionCounts(0, 0, 0);
+
+    // Skupina v menu se zvýrazní, když jsme na některé z jejích stránek.
+    var path = Context.Request.Path.Value ?? "";
+    bool InSection(params string[] prefixes) => prefixes.Any(prefix => path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
 }
 <!DOCTYPE html>
 <html lang="cs" data-theme="@theme">
@@ -43,19 +47,6 @@
                 }
             </a>
             <a asp-page="/Plans">Plány</a>
-            @if (HasRole("CatalogManager"))
-            {
-                <a asp-page="/Catalog/Readers/Index">Čtečky</a>
-                <a asp-page="/Catalog/AccessLevels/Index">Úrovně</a>
-                <a asp-page="/Catalog/Groups/Index">Skupiny</a>
-                <a asp-page="/Catalog/Employees/Index">Zaměstnanci</a>
-                <a asp-page="/Catalog/Places">Budovy</a>
-                <a asp-page="/Catalog/Parking/Sites">Areály</a>
-                <a asp-page="/Catalog/Parking/PermitTypes">Druhy povolení</a>
-                <a asp-page="/Catalog/Matrices/Index">Matice</a>
-                <a asp-page="/Catalog/AutoRules">Auto-zařazení</a>
-                <a asp-page="/Reports">Reporty</a>
-            }
             @if (HasRole("CardAdmin"))
             {
                 <a asp-page="/CardQueue">
@@ -66,13 +57,41 @@
                     }
                 </a>
             }
+            @if (HasRole("CatalogManager"))
+            {
+                <details class="navgroup @(InSection("/Catalog", "/Reports") ? "navgroup-active" : "")">
+                    <summary>Katalog</summary>
+                    <div class="navgroup-panel">
+                        <span class="navgroup-header">Přístupy</span>
+                        <a asp-page="/Catalog/Readers/Index">Čtečky</a>
+                        <a asp-page="/Catalog/AccessLevels/Index">Přístupové úrovně (WIN-PAK)</a>
+                        <a asp-page="/Catalog/Groups/Index">Skupiny čteček</a>
+                        <a asp-page="/Catalog/Matrices/Index">Schvalovací matice</a>
+                        <a asp-page="/Catalog/AutoRules">Automatické zařazení</a>
+                        <span class="navgroup-header">Lidé a místa</span>
+                        <a asp-page="/Catalog/Employees/Index">Zaměstnanci</a>
+                        <a asp-page="/Catalog/Places">Budovy a místnosti</a>
+                        <span class="navgroup-header">Parkování</span>
+                        <a asp-page="/Catalog/Parking/Sites">Areály</a>
+                        <a asp-page="/Catalog/Parking/PermitTypes">Druhy povolení</a>
+                        <span class="navgroup-header">Přehledy</span>
+                        <a asp-page="/Reports">Reporty</a>
+                    </div>
+                </details>
+            }
             @if (User.IsInRole("Admin"))
             {
-                <a asp-page="/Admin/Users/Index">Uživatelé</a>
-                <a asp-page="/Admin/Automation">Automatizace</a>
-                <a asp-page="/Admin/Settings">Nastavení</a>
-                <a asp-page="/Admin/ConnectorUpdate">Konektor</a>
-                <a asp-page="/Admin/Audit">Audit</a>
+                <details class="navgroup @(InSection("/Admin") ? "navgroup-active" : "")">
+                    <summary>Správa</summary>
+                    <div class="navgroup-panel">
+                        <a asp-page="/Admin/Users/Index">Uživatelé a role</a>
+                        <a asp-page="/Admin/Settings">Nastavení</a>
+                        <a asp-page="/Admin/Automation">Automatizace a stav systému</a>
+                        <a asp-page="/Admin/ConnectorUpdate">WIN-PAK konektor</a>
+                        <a asp-page="/Admin/ImportReaders">Import čteček z EKV</a>
+                        <a asp-page="/Admin/Audit">Audit</a>
+                    </div>
+                </details>
             }
         </nav>
     }
@@ -121,12 +140,15 @@
     <span>ACS · acs.fnmh.network</span>
 </footer>
 <script>
-// Menu uživatele se zavře kliknutím jinam nebo klávesou Esc.
+// Rozbalovací nabídky (skupiny v menu, menu uživatele): otevřená je vždy jen jedna,
+// zavře se kliknutím jinam nebo klávesou Esc.
 (() => {
-    const menu = document.querySelector('details.usermenu');
-    if (!menu) return;
-    document.addEventListener('click', e => { if (!menu.contains(e.target)) menu.open = false; });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') menu.open = false; });
+    const menus = [...document.querySelectorAll('details.usermenu, details.navgroup')];
+    if (menus.length === 0) return;
+    for (const menu of menus)
+        menu.addEventListener('toggle', () => { if (menu.open) for (const other of menus) if (other !== menu) other.open = false; });
+    document.addEventListener('click', e => { for (const menu of menus) if (!menu.contains(e.target)) menu.open = false; });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') for (const menu of menus) menu.open = false; });
 })();
 </script>
 @await RenderSectionAsync("Scripts", required: false)

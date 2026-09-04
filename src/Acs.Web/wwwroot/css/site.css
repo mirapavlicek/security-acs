@@ -101,6 +101,28 @@ body {
 .mainnav a:hover { background: var(--bg); color: var(--primary); }
 .nav-soon { color: var(--muted); padding: 0.35rem 0.6rem; cursor: not-allowed; opacity: 0.6; }
 
+/* Skupiny v hlavním menu (Katalog, Správa): jedna položka nahoře, rozbalovací panel pod ní. */
+.navgroup { position: relative; }
+.navgroup > summary {
+  list-style: none; cursor: pointer; color: var(--text); padding: 0.35rem 0.6rem; border-radius: 6px; white-space: nowrap;
+}
+.navgroup > summary::-webkit-details-marker { display: none; }
+.navgroup > summary::after { content: " ▾"; color: var(--muted); font-size: 0.85em; }
+.navgroup > summary:hover, .navgroup[open] > summary { background: var(--bg); color: var(--primary); }
+.navgroup-active > summary { color: var(--primary); font-weight: 600; }
+.navgroup-panel {
+  position: absolute; left: 0; top: calc(100% + 0.4rem); z-index: 30;
+  min-width: 240px; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 0.35rem; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.navgroup-panel a { padding: 0.45rem 0.6rem; font-size: 0.92rem; white-space: nowrap; }
+.navgroup-header {
+  color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 0.5rem 0.6rem 0.15rem;
+}
+.navgroup-header:first-child { padding-top: 0.25rem; }
+
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 0.8rem; }
 
 /* Jméno vpravo nahoře je zároveň nabídka osobního nastavení. */
