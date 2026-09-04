@@ -29,4 +29,9 @@
     <ProjectReference Include="..\Acs.Domain\Acs.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Logo FNMH pro generovaná PDF (kartičky, reporty) — vložené do assembly. -->
+    <EmbeddedResource Include="Pdf\Assets\*.png" LogicalName="Acs.Pdf.Assets.%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

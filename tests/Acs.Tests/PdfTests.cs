@@ -39,6 +39,19 @@ public class PdfTests
     }
 
     [Fact]
+    public void BrandAssets_LogoAndMonogram_AreEmbedded()
+    {
+        using var logo = BrandAssets.Logo();
+        using var grey = BrandAssets.MonogramGrey();
+        using var watermark = BrandAssets.MonogramWatermark();
+
+        // Logo s textem je na šířku (≈ 2,8 : 1), monogram skoro čtvercový.
+        Assert.InRange(logo.PixelWidth / (double)logo.PixelHeight, 2.6, 3.0);
+        Assert.InRange(grey.PixelWidth / (double)grey.PixelHeight, 1.0, 1.25);
+        Assert.Equal(grey.PixelWidth, watermark.PixelWidth);
+    }
+
+    [Fact]
     public void PermitCard_PlateBinding_RendersSinglePage()
     {
         var card = new PermitCardView(

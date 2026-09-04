@@ -17,7 +17,7 @@ public static class TableReportPdf
     private static readonly XColor Muted = XColor.FromArgb(0x63, 0x70, 0x7E);
     private static readonly XColor HeaderFill = XColor.FromArgb(0xEA, 0xF0, 0xF8);
     private static readonly XColor Rule = XColor.FromArgb(0xD8, 0xDE, 0xE6);
-    private static readonly XColor Accent = XColor.FromArgb(0x1F, 0x3F, 0x95);
+    private static readonly XColor Accent = BrandAssets.Blue;
 
     /// <summary>
     /// Vygeneruje report. <paramref name="sections"/> umožňuje rozdělit řádky do
@@ -43,6 +43,8 @@ public static class TableReportPdf
         var cellPadding = PdfText.Mm(1.6);
         var totalWeight = columns.Sum(c => c.Weight);
 
+        using var logo = BrandAssets.Logo();
+
         PdfPage? page = null;
         XGraphics? gfx = null;
         double y = 0, contentWidth = 0, pageBottom = 0;
@@ -63,13 +65,17 @@ public static class TableReportPdf
 
             if (pageNumber == 1)
             {
+                // Logo FNMH vpravo v hlavičce, název a podtitul vlevo.
+                var logoHeight = PdfText.Mm(12);
+                BrandAssets.DrawFitted(gfx, logo,
+                    new XRect(margin + contentWidth - PdfText.Mm(40), y, PdfText.Mm(40), logoHeight), XStringAlignment.Far);
+                var textWidth = contentWidth - PdfText.Mm(44);
                 gfx.DrawString(title, titleFont, new XSolidBrush(Accent),
-                    new XRect(margin, y, contentWidth, titleFont.GetHeight()), XStringFormats.TopLeft);
-                y += titleFont.GetHeight() + PdfText.Mm(1);
+                    new XRect(margin, y, textWidth, titleFont.GetHeight()), XStringFormats.TopLeft);
                 var generated = $"Vygenerováno {DateTime.Now:d. M. yyyy H:mm}" + (subtitle is null ? "" : $" · {subtitle}");
                 gfx.DrawString(generated, subtitleFont, new XSolidBrush(Muted),
-                    new XRect(margin, y, contentWidth, subtitleFont.GetHeight()), XStringFormats.TopLeft);
-                y += subtitleFont.GetHeight() + PdfText.Mm(4);
+                    new XRect(margin, y + titleFont.GetHeight() + PdfText.Mm(1), textWidth, subtitleFont.GetHeight()), XStringFormats.TopLeft);
+                y += Math.Max(logoHeight, titleFont.GetHeight() + PdfText.Mm(1) + subtitleFont.GetHeight()) + PdfText.Mm(4);
             }
         }
 
