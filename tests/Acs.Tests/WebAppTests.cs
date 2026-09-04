@@ -286,6 +286,83 @@ public class WebAppTests(AcsWebFactory factory) : IClassFixture<AcsWebFactory>
         Assert.Contains("Parkovací povolení", await client.GetStringAsync("/Reports?view=parking"));
     }
 
+    [Fact]
+    public async Task Hromadne_odstraneni_ctecek_pres_HTTP_skonci_presmerovanim_a_hlaskou()
+    {
+        const string knownPassword = "Znam3Heslo!Ctecky";
+        int readerId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Acs.Infrastructure.Data.AcsDbContext>();
+            var admin = await db.Users.FirstAsync(u => u.UserName == "admin");
+            admin.PasswordHash = Acs.Infrastructure.Auth.PasswordHasher.Hash(knownPassword);
+            admin.MustChangePassword = false;
+            var reader = new Acs.Domain.Entities.Reader { Name = "Smazatelná", ExternalId = "DEL-1", Source = Acs.Domain.Entities.RecordSource.Imported, IsActive = true };
+            db.Readers.Add(reader);
+            await db.SaveChangesAsync();
+            readerId = reader.Id;
+        }
+
+        var client = CreateClientWithCookies(allowRedirects: false);
+        var loginPage = await client.GetStringAsync("/Account/Login");
+        await client.PostAsync("/Account/Login", new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                ["UserName"] = "admin",
+                ["Password"] = knownPassword,
+                ["__RequestVerificationToken"] = ExtractAntiforgeryToken(loginPage),
+            }));
+
+        var page = await client.GetStringAsync("/Catalog/Readers");
+        // „Označit vše“ nad celým číselníkem: tisíce hodnot readerIds — víc než výchozí limit 1 024 polí formuláře.
+        var form = new List<KeyValuePair<string, string>> { new("__RequestVerificationToken", ExtractAntiforgeryToken(page)), new("readerIds", readerId.ToString()) };
+        form.AddRange(Enumerable.Range(1_000_000, 2_500).Select(id => new KeyValuePair<string, string>("readerIds", id.ToString())));
+        var response = await client.PostAsync("/Catalog/Readers?handler=Delete", new FormUrlEncodedContent(form));
+
+        Assert.Equal(HttpStatusCode.Found, response.StatusCode);
+        Assert.StartsWith("/Catalog/Readers", response.Headers.Location!.ToString());
+        using var scope2 = factory.Services.CreateScope();
+        var db2 = scope2.ServiceProvider.GetRequiredService<Acs.Infrastructure.Data.AcsDbContext>();
+        Assert.False(await db2.Readers.AnyAsync(r => r.Id == readerId));
+    }
+
+    [Fact]
+    public async Task Chybove_odpovedi_maji_HTML_stranku_misto_prazdneho_tela()
+    {
+        var client = CreateClientWithCookies(allowRedirects: false);
+
+        // Bez tokenu ochrany formuláře vrací Razor Pages 400 — dřív s prázdným tělem, které Safari stáhlo jako soubor.
+        var badRequest = await client.PostAsync("/Account/Login", new FormUrlEncodedContent(
+            new Dictionary<string, string> { ["UserName"] = "x", ["Password"] = "y" }));
+        Assert.Equal(HttpStatusCode.BadRequest, badRequest.StatusCode);
+        Assert.Contains("text/html", badRequest.Content.Headers.ContentType?.MediaType);
+        Assert.Contains("Požadavek server nepřijal", await badRequest.Content.ReadAsStringAsync());
+
+        // Neexistující stránka: anonymního uživatele nejdřív pošle na přihlášení, přihlášený dostane 404 se stránkou.
+        const string knownPassword = "Znam3Heslo!Chyby";
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Acs.Infrastructure.Data.AcsDbContext>();
+            var admin = await db.Users.FirstAsync(u => u.UserName == "admin");
+            admin.PasswordHash = Acs.Infrastructure.Auth.PasswordHasher.Hash(knownPassword);
+            admin.MustChangePassword = false;
+            await db.SaveChangesAsync();
+        }
+
+        var loginPage = await client.GetStringAsync("/Account/Login");
+        await client.PostAsync("/Account/Login", new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                ["UserName"] = "admin",
+                ["Password"] = knownPassword,
+                ["__RequestVerificationToken"] = ExtractAntiforgeryToken(loginPage),
+            }));
+
+        var notFound = await client.GetAsync("/Catalog/Neexistuje");
+        Assert.Equal(HttpStatusCode.NotFound, notFound.StatusCode);
+        Assert.Contains("Stránka nebyla nalezena", await notFound.Content.ReadAsStringAsync());
+    }
+
     private static string ExtractBlock(string html, string start, string end)
     {
         var from = html.IndexOf(start, StringComparison.Ordinal);
