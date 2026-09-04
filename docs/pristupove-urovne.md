@@ -15,8 +15,12 @@ WIN-PAKu a mapování na čtečky se psalo ručně. Teď je správa v ACS:
 ACS drží kopii úrovní (`AccessLevels`) a jejich složení (`AccessLevelEntries`:
 čtečka + časová zóna). Zrcadlo plní **synchronizace**:
 
-- tlačítkem na stránce Úrovně, nebo automaticky **spolu se synchronizací
-  čteček** (stejný interval, nastavení *WIN-PAK → Synchronizace čteček*),
+- tlačítkem na stránce Úrovně (běží **na pozadí** — u 55 úrovní je to 55 volání
+  do WIN-PAKu a v HTTP požadavku by vypršela proxy; stránka ukazuje průběh
+  a sama se obnovuje), nebo automaticky **spolu se synchronizací čteček**
+  (stejný interval, nastavení *WIN-PAK → Synchronizace čteček*),
+- seznam úrovní je v zrcadle hned po prvním volání, složení se doplňuje po
+  jedné úrovni a ukládá průběžně — přerušení nic neztratí,
 - seznam úrovní je jedno volání konektoru; složení (`GET
   /api/v1/access-levels/{name}/tree`) jedno volání na úroveň, proto se čte jen
   u nových a změněných úrovní — volba „včetně složení všech úrovní“ vynutí

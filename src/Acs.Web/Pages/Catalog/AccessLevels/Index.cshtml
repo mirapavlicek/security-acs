@@ -2,6 +2,11 @@
 @model Acs.Web.Pages.Catalog.AccessLevels.IndexModel
 @{
     ViewData["Title"] = "Přístupové úrovně";
+    var job = Model.JobStatus;
+}
+@if (job?.Running == true)
+{
+    <meta http-equiv="refresh" content="10" />
 }
 <h1>Přístupové úrovně (WIN-PAK)</h1>
 <p class="muted">
@@ -19,6 +24,24 @@
 {
     <div class="alert alert-error">@Model.ErrorMessage</div>
 }
+@if (job is not null)
+{
+    <div class="alert @(job.Error is not null ? "alert-error" : "alert-success")">
+        <strong>@job.Name</strong>
+        @if (job.Running)
+        {
+            <span> — probíhá @((int)job.Duration.TotalSeconds) s… Seznam úrovní je v zrcadle hned, složení se doplňuje po jedné (jedno volání do WIN-PAKu na úroveň). Stránka se sama obnovuje.</span>
+        }
+        else if (job.Error is not null)
+        {
+            <span> — selhalo po @((int)job.Duration.TotalSeconds) s: @job.Error</span>
+        }
+        else
+        {
+            <span> — dokončeno za @((int)job.Duration.TotalSeconds) s: @job.Result</span>
+        }
+    </div>
+}
 @if (Model.ReadersWithoutLevel > 0)
 {
     <div class="alert alert-error">
@@ -29,7 +52,7 @@
 
 <div class="card filterbar">
     <form method="post" asp-page-handler="Sync" class="inline-form">
-        <button class="btn btn-sm" type="submit">Synchronizovat z WIN-PAK</button>
+        <button class="btn btn-sm" type="submit" disabled="@(job?.Running == true)">Synchronizovat z WIN-PAK</button>
         <label style="display:inline"><input type="checkbox" name="refreshTrees" value="true" /> včetně složení všech úrovní (pomalejší)</label>
     </form>
     <a class="btn btn-sm btn-ghost" asp-page="Index" asp-route-showInactive="@(!Model.ShowInactive)">

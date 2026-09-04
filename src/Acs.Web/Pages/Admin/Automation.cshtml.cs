@@ -12,7 +12,7 @@ public class AutomationModel(
     AutomationService automation,
     HealthCheckService health,
     ReaderSyncService readerSync,
-    AccessLevelSyncService accessLevelSync,
+    SyncJobRunner jobs,
     EmployeeSyncService employeeSync,
     CardSyncService cardSync,
     AccessSyncService accessSync,
@@ -71,7 +71,10 @@ public class AutomationModel(
         var user = User.Identity?.Name;
 
         await TryAsync(messages, "čtečky", async () => (await readerSync.SyncAsync(user)).ToString());
-        await TryAsync(messages, "přístupové úrovně", async () => (await accessLevelSync.SyncAsync(user)).ToString());
+        // Úrovně: jedno volání do WIN-PAKu na úroveň — na pozadí, ať požadavek nevyprší na proxy.
+        var levelsStarted = jobs.Start(Acs.Web.Pages.Catalog.AccessLevels.IndexModel.SyncJob, async (services, ct)
+            => (await services.GetRequiredService<AccessLevelSyncService>().SyncAsync(user, ct: ct)).ToString());
+        messages.Add(levelsStarted ? "přístupové úrovně: spuštěno na pozadí (průběh v Katalog → Úrovně)" : "přístupové úrovně: už běží");
         await TryAsync(messages, "zaměstnanci", async () => (await employeeSync.SyncAsync(user)).ToString());
         await TryAsync(messages, "karty", async () => (await cardSync.SyncAsync(user)).ToString());
         await TryAsync(messages, "auto-zařazení", async () => (await autoAssign.RunAsync(user)).ToString());
