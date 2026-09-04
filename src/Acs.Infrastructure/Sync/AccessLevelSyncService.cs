@@ -78,11 +78,21 @@ public class AccessLevelSyncService(AcsDbContext db, WinPakClient winPak, AuditS
             }
         }
 
+        // Seznam úrovní je v zrcadle hned; složení (jedno volání na úroveň, u 55 úrovní
+        // i minuty) se doplňuje postupně a ukládá po každé úrovni — přerušení nic neztratí.
+        await db.SaveChangesAsync(ct);
+
         foreach (var level in toRefresh)
         {
+            ct.ThrowIfCancellationRequested();
             try
             {
                 await RefreshTreeAsync(level, ct);
+                await db.SaveChangesAsync(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception)
             {
@@ -91,7 +101,6 @@ public class AccessLevelSyncService(AcsDbContext db, WinPakClient winPak, AuditS
             }
         }
 
-        await db.SaveChangesAsync(ct);
         var mapped = await MapSingleReaderLevelsAsync(ct);
 
         var result = new AccessLevelSyncResult(added, updated, deactivated, mapped, treesFailed);

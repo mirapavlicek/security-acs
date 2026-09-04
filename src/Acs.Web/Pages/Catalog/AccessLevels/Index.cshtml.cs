@@ -13,8 +13,13 @@ namespace Acs.Web.Pages.Catalog.AccessLevels;
 /// a ACS ji potřebuje mít namapovanou, aby čtečku mohla přidělovat — proto se tu
 /// ukazuje i mapování.
 /// </summary>
-public class IndexModel(AcsDbContext db, AccessLevelSyncService sync, AccessLevelAdminService admin) : PageModel
+public class IndexModel(AcsDbContext db, AccessLevelAdminService admin, SyncJobRunner jobs) : PageModel
 {
+    public const string SyncJob = "Synchronizace přístupových úrovní z WIN-PAK";
+
+    /// <summary>Synchronizace běží na pozadí — 55 úrovní znamená 55 volání do WIN-PAKu, v HTTP požadavku by vypršela proxy (504).</summary>
+    public SyncJobStatus? JobStatus => jobs.Get(SyncJob);
+
     public List<AccessLevel> Levels { get; private set; } = [];
 
     /// <summary>Kolik čteček ACS má danou úroveň jako svou (Reader.AccessLevelExternalId).</summary>
@@ -41,18 +46,19 @@ public class IndexModel(AcsDbContext db, AccessLevelSyncService sync, AccessLeve
         ReadersWithoutLevel = await db.Readers.CountAsync(r => r.IsActive && r.ExternalId != null && r.AccessLevelExternalId == null);
     }
 
-    public async Task<IActionResult> OnPostSyncAsync(bool refreshTrees)
+    public IActionResult OnPostSync(bool refreshTrees)
     {
-        try
+        // Jméno uživatele zachytit teď — úloha běží po skončení požadavku, kdy je User uvolněný.
+        var userName = User.Identity?.Name;
+        var started = jobs.Start(SyncJob, async (services, ct) =>
         {
-            var result = await sync.SyncAsync(User.Identity?.Name, refreshTrees);
-            Message = $"Synchronizace úrovní: {result}.";
-        }
-        catch (Exception ex)
-        {
-            ErrorMessage = $"Synchronizace se nezdařila: {ex.Message}";
-        }
+            var sync = services.GetRequiredService<AccessLevelSyncService>();
+            return (await sync.SyncAsync(userName, refreshTrees, ct)).ToString();
+        });
 
+        Message = started
+            ? "Synchronizace úrovní běží na pozadí — průběh se zobrazuje na této stránce."
+            : "Synchronizace úrovní už běží.";
         return RedirectToPage();
     }
 
