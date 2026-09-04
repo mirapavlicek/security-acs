@@ -1,6 +1,7 @@
 using System.Text;
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Data;
+using Acs.Infrastructure.Pdf;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -35,6 +36,52 @@ public class ReportsModel(AcsDbContext db, Acs.Infrastructure.Workflow.ReaderGro
             ParkingRows = await LoadParkingAsync();
         else
             Rows = await LoadAsync();
+    }
+
+    /// <summary>Stejný report jako na obrazovce, ale jako PDF (A4 na šířku).</summary>
+    public async Task<IActionResult> OnGetPdfAsync()
+    {
+        byte[] pdf;
+        string fileName;
+        if (View == "parking")
+        {
+            ParkingRows = await LoadParkingAsync();
+            pdf = TableReportPdf.Render(
+                "Parkovací povolení", $"vydaných povolení: {ParkingRows.Count}",
+                [
+                    new PdfColumn("Číslo", 1.1), new PdfColumn("Zaměstnanec", 1.6), new PdfColumn("Oddělení", 1.3),
+                    new PdfColumn("Druh", 1.3), new PdfColumn("SPZ / funkce", 1.5), new PdfColumn("Areály", 1.4),
+                    new PdfColumn("Platnost do", 0.9), new PdfColumn("Vydáno", 0.9),
+                ],
+                [("", ParkingRows.Select(r => new[]
+                {
+                    r.PermitNumber, r.EmployeeName, r.Department, r.TypeName, r.Subject, r.Sites,
+                    r.ValidTo?.ToString("d. M. yyyy") ?? "bez omezení", r.IssuedAt?.ToString("d. M. yyyy"),
+                }).ToList())]);
+            fileName = $"acs-parkovani-{DateTime.UtcNow:yyyyMMdd}.pdf";
+        }
+        else
+        {
+            Rows = await LoadAsync();
+            var byReader = View == "byReader";
+            IReadOnlyList<PdfColumn> columns = byReader
+                ? [new PdfColumn("Zaměstnanec", 1.6), new PdfColumn("Oddělení", 1.4), new PdfColumn("Karta", 0.9), new PdfColumn("Přístup od", 0.9)]
+                : [new PdfColumn("Čtečka", 1.6), new PdfColumn("Umístění", 2.4), new PdfColumn("Přístup od", 0.9)];
+            var groups = byReader ? ByReader : ByEmployee;
+            var sections = groups.Select(g => (
+                    byReader ? $"{g.Key} ({g.Count()} osob)" : $"{g.Key} ({g.Count()} přístupů)",
+                    (IReadOnlyList<string?[]>)g.OrderBy(r => byReader ? r.EmployeeName : r.ReaderName).Select(r => byReader
+                        ? new[] { r.EmployeeName, r.Department, r.CardNumber, r.Since?.ToString("d. M. yyyy") }
+                        : new[] { r.ReaderName, r.Location, r.Since?.ToString("d. M. yyyy") }).ToList()))
+                .ToList();
+            pdf = TableReportPdf.Render(
+                byReader ? "Přístupy podle čtečky" : "Přístupy podle zaměstnance",
+                $"aktivních přístupů: {Rows.Count}", columns, sections);
+            fileName = $"acs-pristupy-{DateTime.UtcNow:yyyyMMdd}.pdf";
+        }
+
+        Response.Headers.ContentDisposition = $"inline; filename=\"{fileName}\"";
+        return File(pdf, "application/pdf");
     }
 
     public async Task<IActionResult> OnGetCsvAsync()

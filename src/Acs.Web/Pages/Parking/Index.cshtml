@@ -9,7 +9,7 @@
 <h1>Parkování</h1>
 <p class="muted">
     Parkovací povolení — vázaná na SPZ vozidla nebo na funkci, pro jeden, více nebo všechny areály.
-    Žádost prochází schvalováním podle druhu povolení a areálů; vydané povolení vytiskne správce parkování jako kartičku za čelní sklo.
+    Žádost prochází schvalováním podle druhu povolení a areálů; k vydanému povolení se generuje kartička za čelní sklo (PDF).
 </p>
 
 @if (Model.Message is not null)
@@ -61,7 +61,7 @@ else
                     <td style="white-space:nowrap">
                         @if (permit.PermitType?.PrintsWindshieldCard == true)
                         {
-                            <a class="btn btn-sm btn-ghost" asp-page="Print" asp-route-id="@permit.Id" target="_blank">Tisk kartičky</a>
+                            <a class="btn btn-sm btn-ghost" asp-page="Print" asp-route-id="@permit.Id" target="_blank">Kartička (PDF)</a>
                         }
                         @if (Model.RevokeRequested.Contains(permit.Id))
                         {

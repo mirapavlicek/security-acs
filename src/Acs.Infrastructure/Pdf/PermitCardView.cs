@@ -1,6 +1,6 @@
 using Acs.Domain.Entities;
 
-namespace Acs.Web.Pages.Shared;
+namespace Acs.Infrastructure.Pdf;
 
 /// <summary>Data pro vykreslení kartičky parkovacího povolení za čelní sklo (partial `_PermitCard`).</summary>
 public record PermitCardView(

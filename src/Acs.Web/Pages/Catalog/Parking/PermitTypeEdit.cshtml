@@ -59,7 +59,7 @@
     <h2 style="margin-top:0">Kartička za čelní sklo</h2>
     <div class="checkbox-row">
         <input type="checkbox" id="printsWindshieldCard" name="printsWindshieldCard" value="true" checked="@Model.Type.PrintsWindshieldCard" />
-        <label for="printsWindshieldCard">K povolení se tiskne kartička</label>
+        <label for="printsWindshieldCard">K povolení se generuje kartička (PDF 150 × 70 mm)</label>
     </div>
     <label>Nadpis kartičky</label>
     <input type="text" name="cardTitle" value="@Model.Type.CardTitle" placeholder="POVOLENÍ K PARKOVÁNÍ" maxlength="128" />
@@ -68,8 +68,8 @@
            placeholder="Platí pro všechna pracoviště FNMH (Motol i Homolka)" maxlength="256" />
     <p class="muted">Název druhu se na kartičce tiskne velkými písmeny pod nadpisem (např. „VEDENÍ NEMOCNICE“).</p>
 
-    <p class="muted">Náhled (po uložení se aktualizuje):</p>
-    <partial name="_PermitCard" model="Acs.Web.Pages.Shared.PermitCardView.Sample(Model.Type)" />
+    <p class="muted">Náhled (po uložení se aktualizuje; výsledné PDF má stejné rozložení):</p>
+    <partial name="_PermitCard" model="Acs.Infrastructure.Pdf.PermitCardView.Sample(Model.Type)" />
 </div>
 </div>
 

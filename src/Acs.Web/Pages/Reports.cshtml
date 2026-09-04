@@ -15,7 +15,10 @@
             <option value="parking" selected="@(Model.View == "parking")">Parkovací povolení (kdo má jaké povolení, SPZ, areály)</option>
         </select>
     </form>
-    <a class="btn btn-sm" style="float:right" href="/Reports?handler=Csv&view=@Model.View">Export CSV</a>
+    <span style="float:right;display:flex;gap:0.4rem">
+        <a class="btn btn-sm" href="/Reports?handler=Pdf&view=@Model.View" target="_blank">Export PDF</a>
+        <a class="btn btn-sm btn-ghost" href="/Reports?handler=Csv&view=@Model.View">Export CSV</a>
+    </span>
 </div>
 
 @if (Model.View == "parking")
