@@ -121,7 +121,7 @@ else
     <label>Zdůvodnění</label>
     <textarea name="justification" rows="3" placeholder="Proč je povolení potřeba"></textarea>
 
-    <div style="margin-top:0.8rem">
+    <div class="actions" style="margin:0.8rem 0 0">
         <button class="btn" type="submit" disabled="@(Model.MyEmployeeId is null && !Model.CanActForOthers)">Podat žádost</button>
         <a class="btn btn-ghost" asp-page="Index">Zpět</a>
     </div>

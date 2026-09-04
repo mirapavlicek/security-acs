@@ -7,8 +7,10 @@
 }
 <h1>Žádosti</h1>
 
-<a class="btn" asp-page="New">+ Nová žádost o přístup</a>
-<a class="btn btn-ghost" asp-page="/Parking/New">+ Žádost o parkovací povolení</a>
+<div class="actions">
+    <a class="btn" asp-page="New">+ Nová žádost o přístup</a>
+    <a class="btn btn-ghost" asp-page="/Parking/New">+ Žádost o parkovací povolení</a>
+</div>
 
 @if (Model.PendingForMe.Count > 0)
 {
