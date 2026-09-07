@@ -196,7 +196,7 @@
     <p class="muted">Zaměstnanci se načítají z AD; čísla karet buď z MSSQL dotazu, nebo z integrační služby, která se ptá po osobním čísle.</p>
     @if (Model.CardsApiProbe is not null)
     {
-        <div class="alert @(Model.CardsApiProbe.StartsWith("Zkouška selhala") || Model.CardsApiProbe.StartsWith("Konektor z odpovědi nepřečetl") ? "alert-error" : "alert-success")" style="white-space:pre-wrap;font-family:var(--mono, monospace);font-size:0.85rem">@Model.CardsApiProbe</div>
+        <div class="alert @(Model.CardsApiProbe.StartsWith("Přečteno") ? "alert-success" : "alert-error")" style="white-space:pre-wrap;font-family:var(--mono, monospace);font-size:0.85rem">@Model.CardsApiProbe</div>
     }
     <form method="post" asp-page-handler="Cards">
         <label>Zdroj karet</label>

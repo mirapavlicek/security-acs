@@ -173,9 +173,28 @@ public sealed class IdentifiersApiCardSourceTests : IDisposable
         var source = new IdentifiersApiCardSource(new HttpClient(new Stub((_, _) => Json("""{"items":[{"cardNo":"42"}]}"""))),
             new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, "Authorization-Key", "k", null, null, CardApiAuth.ApiKey));
 
-        var (raw, parsed) = await source.ProbeAsync("13483");
+        var probe = await source.ProbeAsync("13483");
 
-        Assert.Contains("\"cardNo\":\"42\"", raw);
-        Assert.Equal("42", Assert.Single(parsed).Value);
+        Assert.True(probe.Success);
+        Assert.Contains("\"cardNo\":\"42\"", probe.Body);
+        Assert.Equal("42", Assert.Single(probe.Parsed).Value);
+        Assert.Contains("\"employeeNo\":\"13483\"", probe.RequestBody);
+        Assert.Contains("\"idIdentifierSubType\":3", probe.RequestBody);
+    }
+
+    [Fact]
+    public async Task Zkouska_u_chyby_vrati_stav_a_telo_misto_vyjimky()
+    {
+        var source = new IdentifiersApiCardSource(new HttpClient(new Stub((_, _) => new HttpResponseMessage(HttpStatusCode.NotFound)
+            { Content = new StringContent("{\"title\":\"Not Found\"}", Encoding.UTF8, "application/problem+json") })),
+            new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, null, null, null, null));
+
+        var probe = await source.ProbeAsync("999");
+
+        Assert.False(probe.Success);
+        Assert.Equal(404, probe.StatusCode);
+        Assert.Contains("problem+json", probe.ContentType);
+        Assert.Contains("Not Found", probe.Body);
+        Assert.Empty(probe.Parsed);
     }
 }

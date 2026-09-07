@@ -216,11 +216,41 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         }
     }
 
-    /// <summary>Zkouška z Nastavení: surová odpověď a co z ní konektor přečte.</summary>
-    public async Task<(string Raw, IReadOnlyList<ApiIdentifier> Parsed)> ProbeAsync(string employeeNo, CancellationToken ct = default)
+    /// <summary>Výsledek zkoušky z Nastavení — všechno, co je třeba k rozlišení „špatná adresa“, „jiný formát čísla“ a „jiné schéma odpovědi“.</summary>
+    public sealed record ProbeResult(
+        string Url,
+        string RequestBody,
+        int StatusCode,
+        string? ReasonPhrase,
+        string? ContentType,
+        string Body,
+        IReadOnlyList<ApiIdentifier> Parsed)
     {
-        var raw = await PostAsync(employeeNo, ct);
-        return (raw, Parse(raw));
+        public bool Success => StatusCode is >= 200 and < 300;
+    }
+
+    /// <summary>Zkouška z Nastavení: odeslaný požadavek, odpověď se stavem a hlavičkami a co z ní konektor přečte.</summary>
+    public async Task<ProbeResult> ProbeAsync(string employeeNo, CancellationToken ct = default)
+    {
+        var requestBody = JsonSerializer.Serialize(new { employeeNo, idIdentifierSubType = options.SubType });
+        using var request = BuildRequest(employeeNo);
+        using var response = await http.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        var parsed = response.IsSuccessStatusCode ? SafeParse(body) : [];
+        return new ProbeResult(options.Url, requestBody, (int)response.StatusCode, response.ReasonPhrase,
+            response.Content.Headers.ContentType?.ToString(), body, parsed);
+    }
+
+    private static IReadOnlyList<ApiIdentifier> SafeParse(string body)
+    {
+        try
+        {
+            return Parse(body);
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 
     private async Task<IReadOnlyList<ApiIdentifier>> QueryAsync(string employeeNo, CancellationToken ct)
@@ -236,19 +266,25 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         }
     }
 
-    private async Task<string> PostAsync(string employeeNo, CancellationToken ct)
+    private HttpRequestMessage BuildRequest(string employeeNo)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, options.Url)
+        var request = new HttpRequestMessage(HttpMethod.Post, options.Url)
         {
             Content = JsonContent.Create(new { employeeNo, idIdentifierSubType = options.SubType }),
         };
+        request.Headers.Accept.ParseAdd("application/json");
         if (options.Auth == CardApiAuth.ApiKey && !string.IsNullOrWhiteSpace(options.ApiKey))
             request.Headers.TryAddWithoutValidation(string.IsNullOrWhiteSpace(options.ApiKeyHeader) ? "X-Api-Key" : options.ApiKeyHeader, options.ApiKey);
         if (options.Auth == CardApiAuth.Basic && !string.IsNullOrWhiteSpace(options.User))
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic",
                 Convert.ToBase64String(Encoding.UTF8.GetBytes($"{options.User}:{options.Password}")));
         // Windows (NTLM/Negotiate) vyřizuje handler klienta podle Credentials.
+        return request;
+    }
 
+    private async Task<string> PostAsync(string employeeNo, CancellationToken ct)
+    {
+        using var request = BuildRequest(employeeNo);
         using var response = await http.SendAsync(request, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
