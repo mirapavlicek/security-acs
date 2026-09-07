@@ -1,7 +1,54 @@
 @page "{id:int?}"
+@using Acs.Infrastructure.Sync
 @model Acs.Web.Pages.Catalog.AccessLevels.EditModel
 @{
     ViewData["Title"] = Model.Id is null ? "Nová přístupová úroveň" : $"Přístupová úroveň: {Model.Name}";
+
+    void RenderBranch(AccessTreeBranch branch, bool nested)
+    {
+        <details class="tree-node @(nested ? "tree-child" : "")" open>
+            <summary>
+                @(branch.Name.Length == 0 ? Model.Name : branch.Name)
+                <span class="badge">@branch.ReaderCount čteček</span>
+            </summary>
+            <div class="tree-body">
+                @if (branch.Readers.Count > 0)
+                {
+                    <div class="tree-readers">
+                    @foreach (var reader in branch.Readers.OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase))
+                    {
+                        var row = Model.TreeReaders.GetValueOrDefault(reader.Name);
+                        var acs = row?.ReaderId is not null;
+                        var noId = acs && Model.ReadersWithoutId.Contains(row!.ReaderName!);
+                        <div class="tree-reader @(acs ? "" : "unknown") @(noId ? "no-id" : "")">
+                            <div class="tree-reader-no" title="Název čtečky ve WIN-PAKu">@reader.Name</div>
+                            <div class="tree-reader-acs">
+                                @if (acs)
+                                {
+                                    <a href="@Url.Page("/Catalog/Readers/Edit", new { id = row!.ReaderId })">@row.ReaderName</a>
+                                    @if (row.Location is not null) { <small>@row.Location</small> }
+                                    @if (noId) { <small style="color:var(--danger)">bez id WIN-PAKu</small> }
+                                }
+                                else
+                                {
+                                    <span title="Pod tímto číslem ACS žádnou čtečku nemá — synchronizujte čtečky nebo je naimportujte z EKV.">v ACS neznámá</span>
+                                }
+                            </div>
+                            @if (reader.TimeZoneName is not null)
+                            {
+                                <div class="tree-reader-tz"><span class="badge" title="Časová zóna, ve které na čtečce úroveň platí">@reader.TimeZoneName</span></div>
+                            }
+                        </div>
+                    }
+                    </div>
+                }
+                @foreach (var child in branch.Children.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    RenderBranch(child, true);
+                }
+            </div>
+        </details>
+    }
 }
 <h1>@ViewData["Title"]</h1>
 <p class="muted">
@@ -28,6 +75,23 @@
 {
     <div class="alert alert-error">Časové zóny se z WIN-PAKu nenačetly: @Model.TimeZonesError — bez nich nejde úroveň uložit.</div>
 }
+@if (Model.ReadersWithoutId.Count > 0)
+{
+    <div class="alert alert-error">
+        Úroveň obsahuje @Model.ReadersWithoutId.Count čteček, které ACS zná jen z dokumentace a nemá k nim id z WIN-PAKu
+        (@string.Join(", ", Model.ReadersWithoutId.Take(5))@(Model.ReadersWithoutId.Count > 5 ? ", …" : "")).
+        Uložení by je z úrovně vyřadilo, proto je zápis vypnutý — nejdřív synchronizujte <a asp-page="/Catalog/Readers/Index">čtečky</a>,
+        aby k nim id přibylo.
+    </div>
+}
+@if (Model.UnknownReaders.Count > 0)
+{
+    <div class="alert alert-error">
+        Ve WIN-PAKu má úroveň @Model.UnknownReaders.Count čteček, které ACS nezná
+        (@string.Join(", ", Model.UnknownReaders.Take(8))@(Model.UnknownReaders.Count > 8 ? ", …" : "")).
+        Uložení by je z úrovně vyřadilo — synchronizujte <a asp-page="/Catalog/Readers/Index">čtečky</a> nebo je naimportujte z EKV.
+    </div>
+}
 
 <form method="post">
     <div class="card" style="max-width:640px">
@@ -39,18 +103,21 @@
 
     <div class="card">
         <h2 style="margin-top:0">Čtečky v úrovni</h2>
-        <p class="hint">Čtečky, které už mají svou úroveň, jsou označené — zařazení do další úrovně je v pořádku (třeba společné vchody).</p>
+        <p class="hint">Zaškrtnuté jsou čtečky, které úroveň má podle WIN-PAKu (spárované podle id nebo čísla čtečky). Čtečky, které už mají svou úroveň, jsou označené — zařazení do další úrovně je v pořádku (třeba společné vchody).</p>
         <table class="data">
-            <thead><tr><th style="width:1%"></th><th>Čtečka</th><th>Budova</th><th>WIN-PAK id</th><th>Časová zóna</th></tr></thead>
+            <thead><tr><th style="width:1%"></th><th>Čtečka</th><th>Umístění</th><th>WIN-PAK id</th><th>Časová zóna</th></tr></thead>
             <tbody>
-            @foreach (var reader in Model.Readers)
+            @foreach (var reader in Model.Readers.OrderByDescending(r => Model.Selected.ContainsKey(r.Id)).ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase))
             {
                 var selected = Model.Selected.TryGetValue(reader.Id, out var tz);
                 <tr>
                     <td><input type="checkbox" name="readerIds" value="@reader.Id" checked="@selected" /></td>
                     <td>@reader.Name @if (reader.HasLevel) { <span class="badge" title="Čtečka už má namapovanou svou úroveň">má úroveň</span> }</td>
-                    <td class="muted">@reader.Building</td>
-                    <td class="mono muted">@reader.ExternalId</td>
+                    <td class="muted">@(reader.Location ?? reader.Building)</td>
+                    <td class="mono muted">
+                        @if (reader.ExternalId is null) { <span style="color:var(--danger)" title="Čtečka z dokumentace, WIN-PAK ji ACS zatím nepřiřadil id">bez id</span> }
+                        else { @reader.ExternalId }
+                    </td>
                     <td>
                         <select name="tz_@reader.Id" style="width:auto">
                             @foreach (var zone in Model.TimeZones)
@@ -70,15 +137,33 @@
     </div>
 
     <div class="btn-row">
-        <button class="btn" type="submit" disabled="@(Model.TimeZonesError is not null)">@(Model.Id is null ? "Založit ve WIN-PAKu" : "Uložit do WIN-PAKu")</button>
+        <button class="btn" type="submit" disabled="@(!Model.CanSave)">@(Model.Id is null ? "Založit ve WIN-PAKu" : "Uložit do WIN-PAKu")</button>
         <a class="btn btn-ghost" asp-page="Index">Zpět</a>
     </div>
 </form>
 
 @if (Model.AccessTree is { Length: > 0 })
 {
-    <div class="card">
+    <div class="card access-tree">
         <h2 style="margin-top:0">Strom přístupů podle WIN-PAKu</h2>
-        <pre class="mono muted" style="white-space:pre-wrap">@Model.AccessTree</pre>
+        @if (Model.Outline is { Count: > 0 })
+        {
+            <p class="hint">
+                Větve (areál → budova) a čtečky tak, jak je úroveň má ve WIN-PAKu. U čtečky je její číslo z WIN-PAKu,
+                pod ním čtečka ACS, se kterou je spárovaná, a časová zóna, ve které na ní úroveň platí.
+            </p>
+            @foreach (var root in Model.Outline)
+            {
+                RenderBranch(root, false);
+            }
+        }
+        else if (Model.Outline is { Count: 0 })
+        {
+            <p class="muted">Úroveň nemá ve WIN-PAKu žádné čtečky.</p>
+        }
+        <details style="margin-top:0.8rem">
+            <summary class="muted" style="cursor:pointer">Surový strom (XML), jak ho vrací WIN-PAK</summary>
+            <pre class="mono muted" style="white-space:pre-wrap;font-size:0.8rem">@Model.AccessTree</pre>
+        </details>
     </div>
 }

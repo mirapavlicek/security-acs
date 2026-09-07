@@ -247,7 +247,15 @@ public class AccessLevelEntry
     /// <summary>Id čtečky ve WIN-PAKu (<c>HWDeviceID</c>), stejné jako <see cref="Reader.ExternalId"/>.</summary>
     public string? ReaderExternalId { get; set; }
 
+    /// <summary>Název čtečky ve stromu WIN-PAKu — u čteček z EKV je to jejich číslo (<see cref="Reader.DeviceNumber"/>).</summary>
     public string? ReaderName { get; set; }
+
+    /// <summary>
+    /// Čtečka ACS, se kterou se položka spárovala (podle id WIN-PAKu, nebo podle čísla
+    /// čtečky, když strom id nenese). Null = ve stromu je čtečka, kterou ACS nezná.
+    /// </summary>
+    public int? ReaderId { get; set; }
+    public Reader? Reader { get; set; }
 
     public string? TimeZoneExternalId { get; set; }
 

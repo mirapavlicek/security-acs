@@ -277,6 +277,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); o
 }
 .btn:hover { filter: brightness(1.1); }
 .btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-sm { padding: 0.2rem 0.6rem; font-size: 0.85rem; margin-top: 0; }
 
 /* Řádek akčních tlačítek (nad seznamem, pod formulářem) — všechna zarovnaná na jedné lince. */
@@ -308,6 +309,23 @@ details.tree-node[open] > summary::before { content: "▾ "; }
 details.tree-node > summary:hover { background: color-mix(in srgb, var(--primary) 6%, var(--surface)); }
 details.tree-floor { margin-left: 1rem; }
 details.tree-node > .tree-body { padding: 0.4rem 0 0.6rem 1rem; }
+
+/* Strom přístupů úrovně z WIN-PAKu: větve jako rozbalovací uzly, čtečky jako karty v mřížce. */
+.access-tree details.tree-node > summary { font-weight: 600; }
+.access-tree details.tree-node > summary .badge { margin-left: 0.4rem; font-weight: 400; }
+.access-tree .tree-child { margin-left: 1.2rem; border-left: 2px solid var(--border); padding-left: 0.6rem; }
+.tree-readers { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 0.5rem; padding: 0.5rem 0; }
+.tree-reader {
+  border: 1px solid var(--border); border-radius: 8px; padding: 0.45rem 0.65rem; background: var(--surface);
+  display: flex; flex-direction: column; gap: 0.15rem; min-width: 0;
+}
+.tree-reader .tree-reader-no { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 600; letter-spacing: 0.02em; }
+.tree-reader .tree-reader-acs { font-size: 0.88rem; overflow-wrap: anywhere; }
+.tree-reader .tree-reader-acs small { display: block; color: var(--muted); }
+.tree-reader .tree-reader-tz { margin-top: 0.2rem; }
+.tree-reader.unknown { border-style: dashed; }
+.tree-reader.unknown .tree-reader-acs { color: var(--muted); font-style: italic; }
+.tree-reader.no-id { border-color: var(--danger); }
 
 table.data { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 8px; overflow: hidden; }
 table.data th, table.data td { text-align: left; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--border); font-size: 0.92rem; overflow-wrap: anywhere; }

@@ -98,6 +98,8 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
             e.Property(x => x.TimeZoneName).HasMaxLength(256);
             e.HasOne(x => x.AccessLevel).WithMany(a => a.Entries)
                 .HasForeignKey(x => x.AccessLevelId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.ReaderId);
+            e.HasOne(x => x.Reader).WithMany().HasForeignKey(x => x.ReaderId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<BuildingSection>(e =>
