@@ -191,6 +191,9 @@ public class Employee
     /// <summary>Card holder id ve WIN-PAK (jedno na osobu).</summary>
     public string? WinPakCardHolderId { get; set; }
 
+    /// <summary>Id osoby v parkovacím systému (vrací konektor při založení — vzor A).</summary>
+    public string? ParkingSystemId { get; set; }
+
     /// <summary>
     /// Primární číslo karty — zkratka pro zobrazení a hledání.
     /// Úplný seznam (více karet, SPZ, PIN…) je v <see cref="Identifiers"/>.

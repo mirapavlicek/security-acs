@@ -1,6 +1,7 @@
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Data;
+using Acs.Infrastructure.Integration;
 using Acs.Infrastructure.Notifications;
 using Acs.Infrastructure.Pdf;
 using Microsoft.EntityFrameworkCore;
@@ -10,12 +11,21 @@ namespace Acs.Infrastructure.Workflow;
 /// <summary>
 /// Fronta správce parkování: schválená parkovací povolení se vydávají (číslo povolení,
 /// kartička za sklo, zápis SPZ mezi identifikátory zaměstnance) a odebírají.
-/// Obraz <see cref="CardAdminService"/> pro parkování — bez WIN-PAK; napojení na
-/// parkovací systém přijde přes integrační API, SPZ jsou už teď k dispozici jako
-/// <see cref="EmployeeIdentifier"/> typu <see cref="IdentifierType.LicensePlate"/>.
+/// Obraz <see cref="CardAdminService"/> pro parkování. SPZ jsou k dispozici jako
+/// <see cref="EmployeeIdentifier"/> typu <see cref="IdentifierType.LicensePlate"/> (online
+/// autorizace u brány přes integrační API) a po vydání / odebrání se stav volitelně předá
+/// konektoru parkovacího systému (<see cref="ParkingProvisioningService"/>).
 /// </summary>
-public class ParkingAdminService(AcsDbContext db, AuditService audit, INotificationService? notifier = null)
+public class ParkingAdminService(AcsDbContext db, AuditService audit, INotificationService? notifier = null,
+    ParkingProvisioningService? provisioning = null)
 {
+    /// <summary>Předá stav zaměstnance do parkovacího systému, je-li předávání zapnuté (chyba se zapíše k povolení).</summary>
+    public async Task<ParkingProvisioningResult> PushToParkingSystemAsync(int employeeId, string? userName,
+        CancellationToken ct = default)
+        => provisioning is null
+            ? new ParkingProvisioningResult(false, false, "předávání do parkovacího systému není k dispozici")
+            : await provisioning.SyncEmployeeAsync(employeeId, userName, ct);
+
     /// <summary>Schválené parkovací položky (udělení i odebrání) čekající na správce parkování.</summary>
     public Task<List<AccessRequestItem>> GetQueueAsync(CancellationToken ct = default)
         => ParkingItems()
@@ -125,6 +135,8 @@ public class ParkingAdminService(AcsDbContext db, AuditService audit, INotificat
             + (permit.ParkingSpot is null ? "" : $", místo {permit.ParkingSpot.DisplayName()}"), ct);
         if (notifier is not null)
             await notifier.NotifyDecidedAsync(item.Id, ct);
+        if (provisioning is not null)
+            await provisioning.SyncEmployeeAsync(permit.EmployeeId, userName, ct);
     }
 
     /// <summary>
@@ -224,6 +236,8 @@ public class ParkingAdminService(AcsDbContext db, AuditService audit, INotificat
             item.ParkingPermitId!.Value.ToString(), reason, ct);
         if (notifier is not null)
             await notifier.NotifyDecidedAsync(item.Id, ct);
+        if (provisioning is not null)
+            await provisioning.SyncEmployeeAsync(item.ParkingPermit!.EmployeeId, userName, ct);
     }
 
     /// <summary>
@@ -282,6 +296,8 @@ public class ParkingAdminService(AcsDbContext db, AuditService audit, INotificat
         await audit.LogAsync(userName, auditAction, "ParkingPermit", permitId.ToString(), reason, ct);
         if (notifier is not null)
             await notifier.NotifyDecidedAsync(revokeItem.Id, ct);
+        if (provisioning is not null)
+            await provisioning.SyncEmployeeAsync(permit.EmployeeId, userName, ct);
     }
 
     /// <summary>Označí udělení jako odebrané a deaktivuje SPZ identifikátory založené při vydání.</summary>

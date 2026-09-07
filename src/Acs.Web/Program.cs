@@ -5,6 +5,7 @@ using Acs.Infrastructure.Auth;
 using Acs.Infrastructure.Data;
 using Acs.Infrastructure.Settings;
 using Acs.Infrastructure.WinPak;
+using Acs.Web.Api;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authorization;
@@ -88,6 +89,17 @@ builder.Services.AddScoped<Acs.Infrastructure.Workflow.ReaderGroupService>();
 builder.Services.AddScoped<Acs.Infrastructure.Workflow.RequestWorkflowService>();
 builder.Services.AddScoped<Acs.Infrastructure.Workflow.CardAdminService>();
 builder.Services.AddScoped<Acs.Infrastructure.Workflow.ParkingAdminService>();
+
+// Integrace parkovacího systému (GreenCenter): online autorizace u vjezdu, události, čtení
+// stavu (integrační API) a předání povolení konektoru (vzor A).
+builder.Services.AddScoped<Acs.Infrastructure.Integration.GateAuthorizationService>();
+builder.Services.AddScoped<Acs.Infrastructure.Integration.IntegrationEventService>();
+builder.Services.AddScoped<Acs.Infrastructure.Integration.IntegrationCatalogService>();
+builder.Services.AddHttpClient<Acs.Infrastructure.Integration.ParkingConnectorClient>(
+    client => client.Timeout = TimeSpan.FromSeconds(15));
+builder.Services.AddScoped<Acs.Infrastructure.Integration.ParkingProvisioningService>();
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new Acs.Web.Api.UtcDateTimeConverter()));
 
 // ---------- Autentizace a autorizace ----------
 builder.Services
@@ -451,6 +463,9 @@ app.MapGet("/floors/{id:int}/schema", async (int id, AcsDbContext db) =>
         ? Results.NotFound()
         : Results.File(floor.SchemaImage, floor.SchemaContentType ?? "image/png");
 });
+
+// Integrační API pro parkovací systém (X-Api-Key, viz docs/integrace/greencenter.md).
+app.MapIntegrationApi();
 
 app.MapRazorPages();
 

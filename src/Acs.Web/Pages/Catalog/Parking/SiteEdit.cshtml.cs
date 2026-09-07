@@ -31,7 +31,7 @@ public class SiteEditModel(AcsDbContext db, AuditService audit) : PageModel
     }
 
     public async Task<IActionResult> OnPostSaveAsync(int id, string name, string? code, string? description,
-        int sortOrder, int? approvalMatrixId, string? isActive)
+        int sortOrder, int? approvalMatrixId, string? isActive, string? gateExternalIds = null)
     {
         var site = await db.Sites.FindAsync(id);
         if (site is null)
@@ -46,6 +46,9 @@ public class SiteEditModel(AcsDbContext db, AuditService audit) : PageModel
         site.Name = name.Trim();
         site.Code = string.IsNullOrWhiteSpace(code) ? null : code.Trim().ToUpperInvariant();
         site.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        site.GateExternalIds = string.IsNullOrWhiteSpace(gateExternalIds)
+            ? null
+            : string.Join(", ", gateExternalIds.Split([',', ';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
         site.SortOrder = sortOrder;
         site.ApprovalMatrixId = approvalMatrixId;
         site.IsActive = isActive == "true";

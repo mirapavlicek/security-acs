@@ -343,6 +343,7 @@ a:hover { text-decoration: underline; }
 
 .badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.75rem; border: 1px solid var(--border); color: var(--muted); }
 .badge-primary { border-color: var(--primary); color: var(--primary); }
+.badge-danger { border-color: var(--danger); color: var(--danger); }
 
 /* Červený indikátor „něco na vás čeká“ — v navigaci i na dlaždicích. */
 .nav-badge {

@@ -1,0 +1,138 @@
+@page
+@using Acs.Domain.Entities
+@using Acs.Web.Pages
+@model Acs.Web.Pages.Admin.IntegrationEventsModel
+@{
+    ViewData["Title"] = "Události parkovacího systému";
+}
+<h1>Události parkovacího systému</h1>
+<p class="muted">
+    Rozhodnutí ACS u brány (online autorizace) a průjezdy nahlášené parkovacím systémem. Slouží
+    k dohledání, proč závora někoho nepustila — kamera mohla značku přečíst špatně, povolení mohlo
+    vypršet nebo chybí párování vjezdu na areál. Rozhodování se z těchto záznamů nedělá.
+</p>
+
+<div class="card">
+    <p class="muted" style="margin-top:0">
+        Za posledních 24 h: <strong>@Model.TotalLast24h</strong> událostí, z toho <strong>@Model.DeniedLast24h</strong> zamítnutí.
+        @if (Model.LastReceivedAt is { } last)
+        {
+            <text>Poslední přijatá @last.ToLocalTime().ToString("d. M. yyyy H:mm:ss").</text>
+        }
+        else
+        {
+            <text>Zatím nic nepřišlo — zkontrolujte Nastavení → Parkovací systém a API klíč.</text>
+        }
+    </p>
+    <form method="get" class="inline-form" style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:end">
+        <div>
+            <label>SPZ / vjezd / jméno / trace id</label>
+            <input type="text" name="Search" value="@Model.Search" placeholder="1AB2345" />
+        </div>
+        <div>
+            <label>Areál</label>
+            <select name="SiteId">
+                <option value="">— všechny —</option>
+                @foreach (var site in Model.Sites)
+                {
+                    <option value="@site.Id" selected="@(site.Id == Model.SiteId)">@site.Name</option>
+                }
+            </select>
+        </div>
+        <div class="checkbox-row">
+            <input type="checkbox" id="DeniedOnly" name="DeniedOnly" value="true" checked="@Model.DeniedOnly" />
+            <label for="DeniedOnly">Jen zamítnutí</label>
+        </div>
+        <button class="btn" type="submit">Filtrovat</button>
+    </form>
+</div>
+
+<div class="card">
+    <table class="data">
+        <thead>
+        <tr><th>Kdy</th><th>Druh</th><th>Areál / vjezd</th><th>Identifikátor</th><th>Zaměstnanec</th><th>Výsledek</th><th>Důvod</th><th>Detail</th></tr>
+        </thead>
+        <tbody>
+        @foreach (var e in Model.Events)
+        {
+            <tr>
+                <td class="muted" style="white-space:nowrap">@e.OccurredAt.ToLocalTime().ToString("d. M. yyyy H:mm:ss")</td>
+                <td>
+                    @MyAccessModel.GateEventText(e)
+                    @if (e.Direction is { Length: > 0 })
+                    {
+                        <span class="muted">(@e.Direction)</span>
+                    }
+                </td>
+                <td>
+                    @if (e.Site is not null)
+                    {
+                        <text>@e.Site.Name</text>
+                        @if (e.AccessPointId is { Length: > 0 })
+                        {
+                            <span class="muted">· @e.AccessPointId</span>
+                        }
+                    }
+                    else
+                    {
+                        <span class="badge badge-danger" title="Vjezd není spárovaný s areálem (Číselníky → Areály)">@(e.AccessPointId ?? "—")</span>
+                    }
+                </td>
+                <td>
+                    @if (e.CredentialValue is { Length: > 0 })
+                    {
+                        <code>@e.CredentialValue</code>
+                        @if (e.CredentialType is { } type)
+                        {
+                            <span class="muted">@MyAccessModel.IdentifierTypeName(type)</span>
+                        }
+                        @if (e.Confidence is { } confidence)
+                        {
+                            <span class="muted" title="Spolehlivost čtení kamerou">@confidence.ToString("P0")</span>
+                        }
+                    }
+                </td>
+                <td>
+                    @if (e.Employee is not null)
+                    {
+                        <a asp-page="/Catalog/Employees/Edit" asp-route-id="@e.Employee.Id">@e.Employee.FullName</a>
+                    }
+                    else
+                    {
+                        <span class="muted">—</span>
+                    }
+                </td>
+                <td>
+                    @if (e.Decision is { Length: > 0 })
+                    {
+                        <span class="badge @(e.Decision == "deny" ? "badge-danger" : "badge-primary")">@(e.Decision == "deny" ? "zamítnuto" : "povoleno")</span>
+                    }
+                </td>
+                <td class="muted">@MyAccessModel.ReasonText(e.DecisionReason)</td>
+                <td class="muted" style="font-size:0.8rem">
+                    @if (e.ExternalId is { Length: > 0 })
+                    {
+                        <div>id: @e.ExternalId</div>
+                    }
+                    @if (e.TraceId is { Length: > 0 })
+                    {
+                        <div>trace: @e.TraceId</div>
+                    }
+                    @if (e.Details is { Length: > 0 })
+                    {
+                        <div>@e.Details</div>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Events.Count == 0)
+    {
+        <p class="muted">Žádné události.</p>
+    }
+    else if (Model.Events.Count == IntegrationEventsModel.PageSize)
+    {
+        <p class="muted">Zobrazeno posledních @IntegrationEventsModel.PageSize — zúžte filtr.</p>
+    }
+</div>

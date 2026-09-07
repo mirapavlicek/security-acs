@@ -1,8 +1,10 @@
 @page
 @using Acs.Domain.Entities
+@using Acs.Web.Pages.Shared
 @model Acs.Web.Pages.MyAccessModel
 @{
     ViewData["Title"] = "Moje přístupy";
+    var now = DateTime.UtcNow;
 }
 <h1>Moje přístupy</h1>
 
@@ -20,13 +22,175 @@
     <div class="card">
         <p class="muted">K vašemu účtu není přiřazen žádný zaměstnanec — kontaktujte správce číselníků
         (párování probíhá podle AD účtu v kartě zaměstnance).</p>
+        <p class="muted">Po spárování tu uvidíte své přístupy ke dveřím, identifikátory (karty, SPZ),
+        vjezdy a parkovací povolení i poslední průjezdy bránou.</p>
     </div>
 }
 else
 {
-    <p class="muted">Přístupy zaměstnance @Model.Employee.FullName (karta @(Model.Employee.CardNumber ?? "—")).</p>
+    <p class="muted">
+        Přístupy zaměstnance @Model.Employee.FullName
+        @if (Model.Employee.PersonalNumber is { Length: > 0 })
+        {
+            <text>(os. číslo @Model.Employee.PersonalNumber)</text>
+        }
+        — dveře podle WIN-PAK, vjezdy podle vydaných parkovacích povolení.
+    </p>
 
-    <h2>Aktivní přístupy</h2>
+    <h2>Identifikátory</h2>
+    <div class="card">
+        <table class="data">
+            <thead><tr><th>Druh</th><th>Hodnota</th><th>Stav</th><th>Platnost</th><th>Poznámka</th></tr></thead>
+            <tbody>
+            @foreach (var identifier in Model.Identifiers)
+            {
+                var valid = identifier.IsValidAt(now);
+                <tr class="@(valid ? "" : "muted")">
+                    <td>@MyAccessModel.IdentifierTypeName(identifier.Type)</td>
+                    <td><code>@identifier.Value</code></td>
+                    <td>
+                        @if (valid)
+                        {
+                            <span class="badge badge-primary">platí</span>
+                        }
+                        else if (!identifier.IsActive)
+                        {
+                            <span class="badge">neaktivní</span>
+                        }
+                        else
+                        {
+                            <span class="badge">mimo platnost</span>
+                        }
+                    </td>
+                    <td class="muted">
+                        @if (identifier.ValidFrom is null && identifier.ValidTo is null)
+                        {
+                            <text>bez omezení</text>
+                        }
+                        else
+                        {
+                            <text>@(identifier.ValidFrom?.ToString("d. M. yyyy") ?? "…") – @(identifier.ValidTo?.ToString("d. M. yyyy") ?? "bez omezení")</text>
+                        }
+                    </td>
+                    <td class="muted">@identifier.Note</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (Model.Identifiers.Count == 0)
+        {
+            <p class="muted">
+                Žádné identifikátory. Karta se načítá ze zdroje karet, SPZ vzniká vydáním parkovacího povolení
+                (<a asp-page="/Parking/New">požádat</a>) nebo ji doplní správce číselníků v kartě zaměstnance.
+            </p>
+        }
+    </div>
+
+    <h2>Vjezdy a parkování</h2>
+    <div class="card">
+        @if (Model.ParkingItems.Count > 0)
+        {
+            <p class="muted" style="margin-top:0">
+                Vjezd právě teď platí do:
+                @if (Model.AllSitesAccessible)
+                {
+                    <strong>všech areálů</strong>
+                }
+                else if (Model.AccessibleSites.Count == 0)
+                {
+                    <strong>žádného areálu</strong> <span>(povolení jsou mimo platnost)</span>
+                }
+                else
+                {
+                    @foreach (var site in Model.AccessibleSites)
+                    {
+                        <span class="badge badge-primary">@site.Name</span>
+                    }
+                }
+            </p>
+        }
+        <table class="data">
+            <thead><tr><th>Číslo</th><th>Druh</th><th>SPZ / funkce</th><th>Areály (vjezdy)</th><th>Místo</th><th>Platnost</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var item in Model.ParkingItems)
+            {
+                var permit = item.ParkingPermit!;
+                var valid = permit.IsValidAt(now);
+                <tr class="@(valid ? "" : "muted")">
+                    <td><a asp-page="/Parking/Permit" asp-route-id="@permit.Id">@(permit.PermitNumber ?? "—")</a></td>
+                    <td>@permit.PermitType?.Name</td>
+                    <td>@permit.SubjectText()</td>
+                    <td>@permit.SitesText()</td>
+                    <td>@(permit.ParkingSpot is { } spot ? spot.DisplayName() : "—")</td>
+                    <td class="muted">
+                        @permit.ValidFrom.ToString("d. M. yyyy") – @(permit.ValidTo?.ToString("d. M. yyyy") ?? "bez omezení")
+                        @if (!valid)
+                        {
+                            <span class="badge">mimo platnost</span>
+                        }
+                    </td>
+                    <td style="white-space:nowrap">
+                        @if (permit.PermitType?.PrintsWindshieldCard == true)
+                        {
+                            <a class="btn btn-sm btn-ghost" asp-page="/Parking/Print" asp-route-id="@permit.Id" target="_blank">Kartička (PDF)</a>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (Model.ParkingItems.Count == 0)
+        {
+            <p class="muted">Nemáte vydané žádné parkovací povolení — bez něj brána SPZ nepustí.</p>
+        }
+        @if (Model.PendingParkingItems.Count > 0)
+        {
+            <h3>Čeká na vyřízení</h3>
+            <table class="data">
+                <thead><tr><th>Žádost</th><th>Druh</th><th>SPZ / funkce</th><th>Areály</th><th>Stav</th></tr></thead>
+                <tbody>
+                @foreach (var item in Model.PendingParkingItems)
+                {
+                    var permit = item.ParkingPermit!;
+                    <tr>
+                        <td><a asp-page="/Requests/Detail" asp-route-id="@item.RequestId">#@item.RequestId</a></td>
+                        <td>@permit.PermitType?.Name</td>
+                        <td>@permit.SubjectText()</td>
+                        <td>@permit.SitesText()</td>
+                        <td><span class="@StatusText.PillClass(item.Status)">@StatusText.Label(item)</span></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+        <p class="muted" style="margin-bottom:0">
+            <a asp-page="/Parking/Index">Parkování — žádost o povolení, odebrání, historie</a>
+        </p>
+    </div>
+
+    @if (Model.RecentGateEvents.Count > 0)
+    {
+        <h2>Poslední průjezdy bránou</h2>
+        <div class="card">
+            <table class="data">
+                <thead><tr><th>Kdy</th><th>Areál / vjezd</th><th>SPZ / karta</th><th>Výsledek</th><th>Důvod</th></tr></thead>
+                <tbody>
+                @foreach (var e in Model.RecentGateEvents)
+                {
+                    <tr>
+                        <td class="muted">@e.OccurredAt.ToLocalTime().ToString("d. M. yyyy H:mm")</td>
+                        <td>@(e.Site?.Name ?? e.AccessPointId ?? "—")</td>
+                        <td><code>@e.CredentialValue</code></td>
+                        <td><span class="badge @(e.Decision == "deny" ? "badge-danger" : "badge-primary")">@MyAccessModel.GateEventText(e)</span></td>
+                        <td class="muted">@MyAccessModel.ReasonText(e.DecisionReason)</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <h2>Aktivní přístupy (dveře)</h2>
     <div class="card">
         <table class="data">
             <thead><tr><th>Čtečka</th><th>Umístění</th><th>Stav</th><th>Od</th><th></th></tr></thead>

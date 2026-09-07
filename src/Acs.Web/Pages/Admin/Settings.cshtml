@@ -211,6 +211,54 @@
 </div>
 
 <div class="card">
+    <h2 style="margin-top:0">Parkovací systém (GreenCenter)</h2>
+    <p class="muted">
+        Vjezdy na SPZ. Parkovací systém se dotazuje ACS přes integrační API
+        <code>@Model.IntegrationApiUrl</code> (hlavička <code>X-Api-Key</code>) — online autorizace
+        u brány, hlášení průjezdů a čtení povolení; ACS naopak může vydaná povolení předávat
+        konektoru systému. Postup napojení: <a asp-page="/Admin/IntegrationEvents">události z brány</a>,
+        <code>docs/integrace/greencenter.md</code>. Areály se na vjezdy párují v Číselníky → Areály
+        (pole „Vjezdy v parkovacím systému“).
+    </p>
+    <form method="post" asp-page-handler="ParkingSystem">
+        <div class="checkbox-row">
+            <input type="checkbox" id="ParkingSystemEnabled" name="ParkingSystemEnabled" value="true"
+                   checked="@(Model.Values[SettingKeys.ParkingSystemEnabled] == "true")" />
+            <label for="ParkingSystemEnabled">Integrační API zapnuté (bez klíče zůstává zavřené)</label>
+        </div>
+        <label>API klíč, kterým se parkovací systém prokazuje ACS (prázdné = ponechat@(Model.ParkingApiKeySet ? ", nastaveno" : ", zatím nenastaveno"))</label>
+        <input type="password" name="ParkingSystemApiKey" autocomplete="new-password" />
+        <label>Povolené IP adresy volajícího (oddělené čárkou, i s maskou; prázdné = bez omezení)</label>
+        <input type="text" name="ParkingSystemAllowedIps" value="@Model.Values[SettingKeys.ParkingSystemAllowedIps]"
+               placeholder="10.20.30.5, 10.20.31.0/24" />
+        <label>Keš rozhodnutí při výpadku ACS (sekundy, 0 = nekešovat)</label>
+        <input type="number" name="ParkingSystemCacheTtlSeconds" value="@Model.Values[SettingKeys.ParkingSystemCacheTtlSeconds]" placeholder="300" />
+        <div class="checkbox-row">
+            <input type="checkbox" id="ParkingSystemExitAlwaysAllowed" name="ParkingSystemExitAlwaysAllowed" value="true"
+                   checked="@(Model.Values[SettingKeys.ParkingSystemExitAlwaysAllowed] != "false")" />
+            <label for="ParkingSystemExitAlwaysAllowed">Výjezd povolit vždy (vozidlo nesmí zůstat zavřené v areálu; důvod se zaznamená)</label>
+        </div>
+        <h3>Konektor parkovacího systému (zápis povolení — vzor A)</h3>
+        <label>Adresa konektoru (prázdné = ACS do systému nezapisuje)</label>
+        <input type="text" name="ParkingSystemConnectorBaseUrl" value="@Model.Values[SettingKeys.ParkingSystemConnectorBaseUrl]"
+               placeholder="https://parking-connector:8443" />
+        <label>API klíč konektoru (prázdné = ponechat)</label>
+        <input type="password" name="ParkingSystemConnectorApiKey" autocomplete="new-password" />
+        <div class="checkbox-row">
+            <input type="checkbox" id="ParkingSystemPushEnabled" name="ParkingSystemPushEnabled" value="true"
+                   checked="@(Model.Values[SettingKeys.ParkingSystemPushEnabled] == "true")" />
+            <label for="ParkingSystemPushEnabled">Předávat vydaná a odebraná povolení do konektoru automaticky</label>
+        </div>
+        <button class="btn" type="submit">Uložit</button>
+        <button class="btn btn-ghost" type="submit" asp-page-handler="ParkingSystemTest">Otestovat konektor</button>
+    </form>
+    @if (Model.ParkingSystemTestResult is not null)
+    {
+        <p class="muted">Test konektoru: @Model.ParkingSystemTestResult</p>
+    }
+</div>
+
+<div class="card">
     <h2 style="margin-top:0">Notifikace (SMTP)</h2>
     <form method="post" asp-page-handler="Smtp">
         <label>SMTP server</label>
