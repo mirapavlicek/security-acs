@@ -20,7 +20,14 @@ ACS drží kopii úrovní (`AccessLevels`) a jejich složení (`AccessLevelEntri
   a sama se obnovuje), nebo automaticky **spolu se synchronizací čteček**
   (stejný interval, nastavení *WIN-PAK → Synchronizace čteček*),
 - seznam úrovní je v zrcadle hned po prvním volání, složení se doplňuje po
-  jedné úrovni a ukládá průběžně — přerušení nic neztratí,
+  jedné úrovni a ukládá průběžně — přerušení nic neztratí; stránka ukazuje,
+  kolikátá úroveň se právě čte a kolik jich selhalo,
+- když WIN-PAK na strom neodpovídá (konektor volání po 90 s opustí — viz
+  `CallTimeoutSeconds`), ACS to po **třech neúspěších v řadě vzdá** (za běhu
+  po šesti), místo aby u 55 úrovní čekala přes hodinu na nic; seznam úrovní
+  zůstane v zrcadle a výsledek i audit řeknou, co konektor hlásil (typicky
+  „WIN-PAK neodpověděl na GetAccessTreeAsync do 90 s“ → na serveru WIN-PAK visí
+  COM+ komponenta, restartujte ji; nebo 501 v režimu MSSQL, který strom neumí),
 - seznam úrovní je jedno volání konektoru; složení (`GET
   /api/v1/access-levels/{name}/tree`) jedno volání na úroveň, proto se čte jen
   u nových a změněných úrovní — volba „včetně složení všech úrovní“ vynutí

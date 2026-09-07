@@ -53,7 +53,7 @@ public class IndexModel(AcsDbContext db, AccessLevelAdminService admin, SyncJobR
         var started = jobs.Start(SyncJob, async (services, ct) =>
         {
             var sync = services.GetRequiredService<AccessLevelSyncService>();
-            return (await sync.SyncAsync(userName, refreshTrees, ct)).ToString();
+            return (await sync.SyncAsync(userName, refreshTrees, p => jobs.Report(SyncJob, p), ct)).ToString();
         });
 
         Message = started

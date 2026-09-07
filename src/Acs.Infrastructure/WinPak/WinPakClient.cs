@@ -78,11 +78,44 @@ public class WinPakClient(HttpClient httpClient, SettingsService settings)
         return request;
     }
 
+    /// <summary>
+    /// Chyba konektoru i s jeho zprávou (<c>{ "error": "…" }</c>) — pouhý stavový kód
+    /// („500“) správci neřekne, že WIN-PAK neodpověděl do 90 s nebo že režim MSSQL strom neumí.
+    /// </summary>
+    private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        if (response.IsSuccessStatusCode)
+            return;
+
+        string? detail = null;
+        try
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            if (!string.IsNullOrWhiteSpace(body))
+            {
+                using var json = System.Text.Json.JsonDocument.Parse(body);
+                detail = json.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                    && json.RootElement.TryGetProperty("error", out var error)
+                    ? error.GetString()
+                    : body;
+            }
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or HttpRequestException or IOException)
+        {
+            // Tělo není JSON nebo se nedočetlo — stačí stavový kód.
+        }
+
+        var message = $"WIN-PAK konektor vrátil {(int)response.StatusCode} {response.ReasonPhrase}";
+        if (!string.IsNullOrWhiteSpace(detail))
+            message += $": {detail.Trim()}";
+        throw new HttpRequestException(message, null, response.StatusCode);
+    }
+
     private async Task<T?> GetAsync<T>(string path, CancellationToken ct)
     {
         using var request = await BuildRequestAsync(HttpMethod.Get, path, ct);
         using var response = await httpClient.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<T>(ct);
     }
 
@@ -92,7 +125,7 @@ public class WinPakClient(HttpClient httpClient, SettingsService settings)
         if (body is not null)
             request.Content = JsonContent.Create(body);
         using var response = await httpClient.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
     }
 
     public Task<WinPakInfo?> GetInfoAsync(CancellationToken ct = default)
@@ -142,7 +175,7 @@ public class WinPakClient(HttpClient httpClient, SettingsService settings)
             $"api/v1/cardholders/{Uri.EscapeDataString(cardHolderId)}/access-levels", ct);
         request.Content = JsonContent.Create(new { accessLevelId });
         using var response = await httpClient.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
     }
 
     public async Task RevokeAccessLevelAsync(string cardHolderId, string accessLevelId, CancellationToken ct = default)
@@ -150,7 +183,7 @@ public class WinPakClient(HttpClient httpClient, SettingsService settings)
         using var request = await BuildRequestAsync(HttpMethod.Delete,
             $"api/v1/cardholders/{Uri.EscapeDataString(cardHolderId)}/access-levels/{Uri.EscapeDataString(accessLevelId)}", ct);
         using var response = await httpClient.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
     }
 
     /// <summary>Karta podle čísla — null, pokud ji WIN-PAK nezná.</summary>
@@ -162,7 +195,7 @@ public class WinPakClient(HttpClient httpClient, SettingsService settings)
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return null;
 
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<WinPakCard>(ct);
     }
 

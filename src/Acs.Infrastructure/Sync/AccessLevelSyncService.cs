@@ -1,20 +1,31 @@
+using System.Diagnostics;
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Data;
 using Acs.Infrastructure.WinPak;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Acs.Infrastructure.Sync;
 
-public record AccessLevelSyncResult(int Added, int Updated, int Deactivated, int ReadersMapped, int TreesFailed)
+public record AccessLevelSyncResult(
+    int Added, int Updated, int Deactivated, int ReadersMapped, int TreesFailed,
+    int TreesLoaded = 0, int TreesSkipped = 0, string? LastTreeError = null)
 {
     public override string ToString()
     {
         var text = $"přidáno {Added}, aktualizováno {Updated}, deaktivováno {Deactivated}";
+        if (TreesLoaded > 0)
+            text += $", složení načteno u {TreesLoaded}";
         if (ReadersMapped > 0)
             text += $", čtečkám doplněno mapování: {ReadersMapped}";
         if (TreesFailed > 0)
             text += $", strom přístupů se nepodařilo načíst u {TreesFailed}";
+        if (TreesSkipped > 0)
+            text += $" — čtení složení zastaveno, {TreesSkipped} úrovní se nečetlo";
+        if (LastTreeError is not null)
+            text += $" (poslední chyba: {LastTreeError})";
         return text;
     }
 }
@@ -29,14 +40,29 @@ public record AccessLevelSyncResult(int Added, int Updated, int Deactivated, int
 /// mohla čtečku přidělovat. Dosud se mapování psalo ručně; tady se doplní samo,
 /// kde je jednoznačné a kde ještě chybí.
 /// </summary>
-public class AccessLevelSyncService(AcsDbContext db, WinPakClient winPak, AuditService audit)
+public class AccessLevelSyncService(AcsDbContext db, WinPakClient winPak, AuditService audit,
+    ILogger<AccessLevelSyncService>? logger = null)
 {
-    public async Task<AccessLevelSyncResult> SyncAsync(string? userName, bool refreshTrees = false, CancellationToken ct = default)
+    private readonly ILogger _logger = logger ?? NullLogger<AccessLevelSyncService>.Instance;
+
+    /// <summary>
+    /// Po kolika neúspěšných stromech v řadě (bez jediného úspěchu) se čtení složení vzdá.
+    /// Když WIN-PAK neodpovídá, každý pokus trvá až do limitu konektoru (90 s) — u 55 úrovní
+    /// by se čekalo přes hodinu na výsledek, který je jasný po třech pokusech.
+    /// </summary>
+    public const int GiveUpAfterConsecutiveFailures = 3;
+
+    /// <summary>Stop i uprostřed úspěšného běhu, když WIN-PAK přestane odpovídat.</summary>
+    public const int GiveUpAfterConsecutiveFailuresLater = 6;
+
+    public async Task<AccessLevelSyncResult> SyncAsync(string? userName, bool refreshTrees = false,
+        Action<string>? progress = null, CancellationToken ct = default)
     {
+        progress?.Invoke("načítám seznam úrovní z WIN-PAKu…");
         var remote = await winPak.GetAccessLevelsAsync(ct);
         var existing = await db.AccessLevels.Include(a => a.Entries).ToDictionaryAsync(a => a.ExternalId, ct);
 
-        int added = 0, updated = 0, deactivated = 0, treesFailed = 0;
+        int added = 0, updated = 0, deactivated = 0;
         var now = DateTime.UtcNow;
         var toRefresh = new List<AccessLevel>();
 
@@ -81,31 +107,69 @@ public class AccessLevelSyncService(AcsDbContext db, WinPakClient winPak, AuditS
         // Seznam úrovní je v zrcadle hned; složení (jedno volání na úroveň, u 55 úrovní
         // i minuty) se doplňuje postupně a ukládá po každé úrovni — přerušení nic neztratí.
         await db.SaveChangesAsync(ct);
+        _logger.LogInformation("Přístupové úrovně: seznam zrcadlen ({Count} úrovní), složení se načte u {ToRefresh}.",
+            remote.Count, toRefresh.Count);
 
-        foreach (var level in toRefresh)
+        int treesLoaded = 0, treesFailed = 0, treesSkipped = 0, consecutiveFailures = 0;
+        string? lastError = null;
+        for (var i = 0; i < toRefresh.Count; i++)
         {
+            var level = toRefresh[i];
             ct.ThrowIfCancellationRequested();
+            progress?.Invoke(Describe(i, toRefresh.Count, level.Name, treesLoaded, treesFailed, lastError));
+
+            var watch = Stopwatch.StartNew();
             try
             {
                 await RefreshTreeAsync(level, ct);
                 await db.SaveChangesAsync(ct);
+                treesLoaded++;
+                consecutiveFailures = 0;
+                _logger.LogDebug("Strom úrovně „{Level}“ načten za {Elapsed:0.0} s ({Entries} položek).",
+                    level.Name, watch.Elapsed.TotalSeconds, level.Entries.Count);
             }
             catch (OperationCanceledException)
             {
                 throw;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 // Strom je doplněk; úroveň sama je v zrcadle i bez něj.
                 treesFailed++;
+                consecutiveFailures++;
+                lastError = ex.Message;
+                _logger.LogWarning(ex, "Strom úrovně „{Level}“ se nepodařilo načíst (po {Elapsed:0.0} s).",
+                    level.Name, watch.Elapsed.TotalSeconds);
+
+                var giveUp = treesLoaded == 0
+                    ? consecutiveFailures >= GiveUpAfterConsecutiveFailures
+                    : consecutiveFailures >= GiveUpAfterConsecutiveFailuresLater;
+                if (giveUp && i + 1 < toRefresh.Count)
+                {
+                    treesSkipped = toRefresh.Count - i - 1;
+                    _logger.LogError("Čtení složení úrovní zastaveno po {Failures} neúspěších v řadě; {Skipped} úrovní se nečetlo. Poslední chyba: {Error}",
+                        consecutiveFailures, treesSkipped, lastError);
+                    break;
+                }
             }
         }
 
+        progress?.Invoke("doplňuji mapování čteček…");
         var mapped = await MapSingleReaderLevelsAsync(ct);
 
-        var result = new AccessLevelSyncResult(added, updated, deactivated, mapped, treesFailed);
+        var result = new AccessLevelSyncResult(added, updated, deactivated, mapped, treesFailed, treesLoaded, treesSkipped, lastError);
         await audit.LogAsync(userName, "access-levels-synced", "AccessLevel", null, result.ToString(), ct);
         return result;
+    }
+
+    private static string Describe(int index, int total, string current, int loaded, int failed, string? lastError)
+    {
+        var text = $"složení {index + 1}/{total}, aktuálně „{current}“";
+        if (loaded > 0)
+            text += $", načteno {loaded}";
+        if (failed > 0)
+            text += $", selhalo {failed}" + (lastError is null ? "" : $" (poslední chyba: {lastError})");
+        return text;
     }
 
     /// <summary>Znovu načte strom jedné úrovně (po zápisu z ACS).</summary>

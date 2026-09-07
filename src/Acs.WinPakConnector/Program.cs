@@ -73,6 +73,8 @@ app.UseExceptionHandler(exceptionApp => exceptionApp.Run(async context =>
         // Zápis odmítnutý WIN-PAKem je chyba požadavku, ne konektoru.
         WinPakOperationException e => (StatusCodes.Status422UnprocessableEntity, e.Message),
         InvalidOperationException e => (StatusCodes.Status502BadGateway, e.Message),
+        // Uvázlé COM volání opuštěné po limitu — ACS má vědět proč, ne jen „500“.
+        TimeoutException e => (StatusCodes.Status504GatewayTimeout, e.Message),
         _ => (StatusCodes.Status500InternalServerError, "Interní chyba konektoru."),
     };
     context.Response.StatusCode = status;
