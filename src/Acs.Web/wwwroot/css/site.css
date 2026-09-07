@@ -71,6 +71,42 @@ html[data-theme="contrast"] {
   --success: #69f0ae;
 }
 
+/* Sparta — klubové barvy AC Sparta Praha: rudá (primární), žlutá (akcent) a tmavě modrá (text). */
+html[data-theme="sparta"] {
+  --bg: #f7f3f2;
+  --surface: #ffffff;
+  --text: #1a2140;
+  --muted: #6d6472;
+  --primary: #a6192e;
+  --primary-contrast: #ffffff;
+  --border: #e5d6d8;
+  --danger: #d84315;  /* rudá je primární, chyby proto dostanou oranžovočervený odstín */
+  --success: #2e7d32;
+  --accent: #ffd100;
+  --accent-contrast: #1a2140;
+}
+/* Rudá hlavička se žlutým lemem jako na dresu; text v hlavičce bílý, aktivní položka žlutá. */
+html[data-theme="sparta"] .topbar { background: var(--primary); border-bottom: 3px solid var(--accent); }
+html[data-theme="sparta"] .brand-mark { color: #ffffff; }
+html[data-theme="sparta"] .brand-sub { color: rgba(255, 255, 255, 0.78); }
+html[data-theme="sparta"] .mainnav > a,
+html[data-theme="sparta"] .mainnav .navmenu > summary { color: #ffffff; }
+html[data-theme="sparta"] .mainnav > a:hover,
+html[data-theme="sparta"] .mainnav .navmenu > summary:hover,
+html[data-theme="sparta"] .navmenu[open] > summary { background: rgba(255, 255, 255, 0.14); color: #ffffff; }
+html[data-theme="sparta"] .mainnav > a.active,
+html[data-theme="sparta"] .mainnav .navmenu.active > summary { color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); }
+html[data-theme="sparta"] .navmenu > summary::after { color: rgba(255, 255, 255, 0.75); }
+html[data-theme="sparta"] .mainnav .nav-badge { background: var(--accent); color: var(--accent-contrast); }
+html[data-theme="sparta"] .user-badge { color: #ffffff; border-color: rgba(255, 255, 255, 0.5); }
+html[data-theme="sparta"] .user-badge:hover,
+html[data-theme="sparta"] .usermenu[open] > .user-badge { color: var(--accent); border-color: var(--accent); }
+html[data-theme="sparta"] .theme-form select { background: rgba(255, 255, 255, 0.14); color: #ffffff; border-color: rgba(255, 255, 255, 0.5); }
+html[data-theme="sparta"] .theme-form select option { background: var(--surface); color: var(--text); }
+html[data-theme="sparta"] .tile-count { color: var(--primary); }
+html[data-theme="sparta"] .tile:hover { border-color: var(--accent); }
+html[data-theme="sparta"] .btn:not(.btn-ghost):not(.btn-danger):hover { filter: none; background: #8f1527; border-color: #8f1527; }
+
 /* ===== Základ ===== */
 * { box-sizing: border-box; }
 body {

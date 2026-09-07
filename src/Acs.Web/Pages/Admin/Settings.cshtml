@@ -19,9 +19,9 @@
         <input type="text" name="AppTitle" value="@Model.Values[SettingKeys.AppTitle]" />
         <label>Výchozí barevné téma</label>
         <select name="DefaultTheme">
-            @foreach (var t in new[] { "light", "dark", "blue", "green", "purple", "contrast" })
+            @foreach (var (t, label) in Acs.Web.Pages.Shared.Themes.All)
             {
-                <option value="@t" selected="@(Model.Values[SettingKeys.DefaultTheme] == t)">@t</option>
+                <option value="@t" selected="@(Model.Values[SettingKeys.DefaultTheme] == t)">@label (@t)</option>
             }
         </select>
         <button class="btn" type="submit">Uložit</button>
