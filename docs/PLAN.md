@@ -380,11 +380,13 @@ zástupy, řetěz fází, notifikace, připomínky); položka žádosti
     InnoDB a primární klíče — s EF Core migracemi zajistíme.
 
 **Parkování**
-19. Napojení na parkovací systém (GreenCenter): vydání povolení je zatím
-    ruční krok správce parkování; SPZ se ale už zapisují jako identifikátory
-    zaměstnance, takže online autorizace vjezdu přes integrační API na ně
-    může rovnou navázat. Má se SPZ do parkovacího systému propisovat
-    automaticky při vydání, nebo stačí dotaz u brány?
+19. Napojení na parkovací systém (GreenCenter): strana ACS je hotová pro
+    všechny tři vzory — online autorizace u brány a hlášení průjezdů
+    (`/api/integration/v1`), čtení povolení pro vlastní synchronizaci
+    systému i předání povolení konektoru při vydání / odebrání
+    ([integrace/greencenter.md](integrace/greencenter.md)). Zbývá získat
+    dokumentaci API GreenCenter (registrace u výrobce) a podle možností
+    systému zvolit vzor; adaptér na GPSW se dopíše až podle ní.
 20. Kartička za sklo se generuje jako **PDF** (150 × 70 mm). Je potřeba i
     potisk plastových karet (jiný rozměr / šablona tiskárny)? Má na kartičce
     být i jméno držitele u povolení na funkci (současný stav: ano)?

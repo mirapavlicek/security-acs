@@ -114,7 +114,7 @@ objekt s jiným druhem.
 | Skupina druhu `diners`, `parking` | **chybí** | Potřeba zobecnit skupinu na druh + atributy. |
 | Přístupový bod | `Reader` | Dnes jen dveřní čtečka; potřeba druh a brány/terminály. |
 | Oprávnění | `AccessRequestItem` ve stavu `PushedToWinPak` / `ManuallyConfirmed` | Oprávnění je dnes odvozené ze žádosti; pro API se hodí samostatný pohled. |
-| Událost | **chybí** | Dnes se do ACS události nehlásí. |
+| Událost | `IntegrationEvent` | Průjezdy a rozhodnutí u brány přes `POST /events` a `POST /authorization-checks`; přehled ve Správa → Parkovací systém — události. |
 | Cílový systém | `SettingKeys` `WinPak:*` | Potřeba evidence více integrací místo jedné sady klíčů. |
 
 ### Terminologie
@@ -224,7 +224,8 @@ akceptovatelná podle kritérií v kapitole 7.
 > **K doplnění zadavatelem:** u GreenCenter potřebujeme vědět, co to v areálu
 > obsluhuje (vjezdy a parkování, technologie budov, něco dalšího) a jestli má
 > vlastní evidenci osob. Podle toho se vybere vzor A, B, nebo C. Do té doby je
-> návrh držený tak, aby vyhověl každé z těch možností.
+> návrh držený tak, aby vyhověl každé z těch možností — a ACS má všechny tři
+> implementované, viz [greencenter.md](greencenter.md).
 
 ---
 
@@ -354,8 +355,10 @@ aby ACS neměl dvě cesty pro totéž.
    povolení má vlastní schvalovací matici, areál volitelně další; viz
    `docs/PLAN.md`, kapitola 5 F). Při vydání povolení se SPZ zapíší jako
    identifikátory zaměstnance s platností povolení — přesně ty, na které se
-   ptá `POST /authorization-checks`. Zbývá rozhodnout, zda se SPZ do
-   parkovacího systému i propisují (vzor A), nebo stačí online dotaz (vzor C).
+   ptá `POST /authorization-checks`. ACS má hotové všechny tři vzory
+   (online autorizace a události, čtecí endpointy, konektor) — viz
+   [greencenter.md](greencenter.md); který se použije, závisí na možnostech
+   parkovacího systému.
 3. **Stravování** — kdo je zdrojem cenových hladin: jídelna (a ACS jen páruje),
    nebo se definují v ACS?
 4. **Návštěvy a externisté** — mají vjezd a stravování řešit i pro osoby, které
