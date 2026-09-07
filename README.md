@@ -70,6 +70,9 @@ více nebo všechny areály přidělené konkrétnímu zaměstnanci, schvalován
 stejným jádrem (matice druhu → matice areálů, zástupy, notifikace), fronta
 **správce parkování** (nová role) s vydáním čísla, zápisem SPZ mezi
 identifikátory zaměstnance a **kartičkou za čelní sklo jako PDF** (i hromadně);
+číselník **parkovacích míst** s přiřazením povolení a **cedulí A4 „Vyhrazené
+parkování“** na sloupek (SPZ všech platných povolení na místě jako skutečné
+značky, hromadně za celý areál);
 reporty přístupů a povolení se exportují do **PDF** a CSV; expirace a
 offboarding povolení odebírají automaticky. PDF se generuje na serveru
 (PDFsharp, MIT) — potřebuje TrueType písmo s diakritikou (`dejavu-sans-fonts`,
