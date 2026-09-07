@@ -30,7 +30,8 @@
         <strong>@job.Name</strong>
         @if (job.Running)
         {
-            <span> — probíhá @((int)job.Duration.TotalSeconds) s… Seznam úrovní je v zrcadle hned, složení se doplňuje po jedné (jedno volání do WIN-PAKu na úroveň). Stránka se sama obnovuje.</span>
+            <span> — probíhá @((int)job.Duration.TotalSeconds) s@(job.Progress is null ? "…" : $": {job.Progress}.")</span>
+            <br /><small class="muted">Seznam úrovní je v zrcadle hned, složení se doplňuje po jedné (jedno volání do WIN-PAKu na úroveň, když WIN-PAK neodpovídá, čeká se na každé až 90 s). Po několika neúspěších v řadě se čtení složení zastaví. Stránka se sama obnovuje.</small>
         }
         else if (job.Error is not null)
         {

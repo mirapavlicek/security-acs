@@ -33,6 +33,12 @@ public sealed class AccessLevelManagementTests : IDisposable
 
         public List<(HttpMethod Method, string Path, string? Body)> Writes { get; } = [];
 
+        /// <summary>Když je nastaveno, každý dotaz na strom skončí jako uvázlý WIN-PAK (504 s touto zprávou).</summary>
+        public string? TreeError { get; set; }
+        /// <summary>Omezí <see cref="TreeError"/> jen na vyjmenované úrovně (null = všechny).</summary>
+        public HashSet<string>? TreeErrorOnly { get; set; }
+        public int TreeRequests { get; private set; }
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             var path = Uri.UnescapeDataString(request.RequestUri!.AbsolutePath);
@@ -44,7 +50,15 @@ public sealed class AccessLevelManagementTests : IDisposable
                     return Json(TimeZones);
                 if (path.EndsWith("/tree"))
                 {
+                    TreeRequests++;
                     var name = path.Split('/')[^2];
+                    if (TreeError is not null && (TreeErrorOnly is null || TreeErrorOnly.Contains(name)))
+                    {
+                        return new HttpResponseMessage(HttpStatusCode.GatewayTimeout)
+                        {
+                            Content = new StringContent(JsonSerializer.Serialize(new { error = TreeError }), Encoding.UTF8, "application/json"),
+                        };
+                    }
                     return Json(new { accessTree = Trees.GetValueOrDefault(name) });
                 }
 
@@ -154,6 +168,63 @@ public sealed class AccessLevelManagementTests : IDisposable
 
         await sync.SyncAsync("test", refreshTrees: true);
         Assert.Empty((await _db.AccessLevels.Include(a => a.Entries).SingleAsync()).Entries);
+    }
+
+    /// <summary>
+    /// Na ostrém serveru běžela synchronizace 28 minut a složení se nedoplnilo u žádné úrovně:
+    /// WIN-PAK na každý strom neodpověděl, konektor po 90 s volání opustil a ACS chybu potichu
+    /// spolkla a šla na další z 55 úrovní. Teď se po třech neúspěších v řadě čtení vzdá, seznam
+    /// úrovní zůstane v zrcadle a výsledek řekne, co WIN-PAK hlásil.
+    /// </summary>
+    [Fact]
+    public async Task Sync_se_vzda_cteni_slozeni_kdyz_WinPak_neodpovida_a_rekne_proc()
+    {
+        for (var i = 1; i <= 10; i++)
+            _connector.Levels.Add(new { id = i.ToString(), name = $"AL {i}", description = (string?)null });
+        _connector.TreeError = "WIN-PAK neodpověděl na GetAccessTreeAsync do 90 s";
+        var reports = new List<string>();
+
+        var result = await new AccessLevelSyncService(_db, _client, _audit)
+            .SyncAsync("test", progress: reports.Add);
+
+        Assert.Equal(10, result.Added);
+        Assert.Equal(AccessLevelSyncService.GiveUpAfterConsecutiveFailures, result.TreesFailed);
+        Assert.Equal(AccessLevelSyncService.GiveUpAfterConsecutiveFailures, _connector.TreeRequests);
+        Assert.Equal(10 - AccessLevelSyncService.GiveUpAfterConsecutiveFailures, result.TreesSkipped);
+        Assert.Contains("504", result.LastTreeError);
+        Assert.Contains("neodpověděl na GetAccessTreeAsync do 90 s", result.LastTreeError);
+        Assert.Contains("čtení složení zastaveno", result.ToString());
+
+        // Seznam úrovní je v zrcadle i bez složení; průběh hlásil pořadí i aktuální úroveň.
+        Assert.Equal(10, await _db.AccessLevels.CountAsync(a => a.IsActive));
+        Assert.Contains(reports, r => r.StartsWith("složení 1/10, aktuálně „AL 1“"));
+        Assert.Contains(reports, r => r.Contains("selhalo 2"));
+        Assert.Contains(await _db.AuditLogs.ToListAsync(), a => a.Action == "access-levels-synced" && a.Details!.Contains("zastaveno"));
+    }
+
+    [Fact]
+    public async Task Sync_pokracuje_pres_ojedinely_neuspech_stromu()
+    {
+        _connector.Levels.Add(new { id = "3", name = "AL Serverovna", description = (string?)null });
+        _connector.Levels.Add(new { id = "4", name = "AL Vchody", description = (string?)null });
+        _connector.Trees["AL Serverovna"] = TreeWithOneReader;
+        var sync = new AccessLevelSyncService(_db, _client, _audit);
+        await sync.SyncAsync("test");
+        Assert.Equal(2, _connector.TreeRequests);
+
+        // Druhý běh na vyžádání: strom jedné úrovně selže, druhé ne — po jednom neúspěchu se to nevzdává.
+        _connector.TreeError = "chyba";
+        _connector.TreeErrorOnly = ["AL Serverovna"];
+        _connector.Trees["AL Vchody"] = TreeWithOneReader;
+        var result = await new AccessLevelSyncService(_db, _client, _audit).SyncAsync("test", refreshTrees: true);
+
+        Assert.Equal(1, result.TreesFailed);
+        Assert.Equal(1, result.TreesLoaded);
+        Assert.Equal(0, result.TreesSkipped);
+        Assert.Equal(4, _connector.TreeRequests);
+        var levels = await _db.AccessLevels.Include(a => a.Entries).ToListAsync();
+        Assert.Single(levels.Single(a => a.Name == "AL Serverovna").Entries); // původní složení zůstalo
+        Assert.Single(levels.Single(a => a.Name == "AL Vchody").Entries);     // nové se načetlo
     }
 
     [Fact]

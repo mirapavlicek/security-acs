@@ -7,7 +7,7 @@ namespace Acs.Infrastructure.Sync;
 /// <summary>Stav dlouhoběžící synchronizace, kterou uživatel spustil z GUI.</summary>
 public record SyncJobStatus(
     string Name, bool Running, DateTime StartedAt, DateTime? FinishedAt,
-    string? Result, string? Error)
+    string? Result, string? Error, string? Progress = null)
 {
     public TimeSpan Duration => (FinishedAt ?? DateTime.UtcNow) - StartedAt;
 }
@@ -27,6 +27,16 @@ public class SyncJobRunner(IServiceScopeFactory scopeFactory, ILogger<SyncJobRun
     public SyncJobStatus? Get(string name) => _jobs.GetValueOrDefault(name);
 
     public bool IsRunning(string name) => _jobs.GetValueOrDefault(name)?.Running == true;
+
+    /// <summary>
+    /// Průběžný stav běžící úlohy („složení 12/55, aktuálně …“) — stránka ho ukazuje vedle
+    /// uplynulého času, aby bylo vidět, že se něco děje a kde to případně drhne.
+    /// </summary>
+    public void Report(string name, string progress)
+    {
+        if (_jobs.TryGetValue(name, out var status) && status.Running)
+            _jobs[name] = status with { Progress = progress };
+    }
 
     /// <summary>
     /// Spustí úlohu na pozadí. Vrací false, pokud už stejná úloha běží.
