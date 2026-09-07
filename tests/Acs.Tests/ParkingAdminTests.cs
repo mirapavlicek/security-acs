@@ -240,6 +240,147 @@ public sealed class ParkingAdminTests : IDisposable
         Assert.Empty(await _parking.GetIssuedAsync("9ZZ9999"));
     }
 
+    private async Task<ParkingSpot> SpotAsync(Site site, string code)
+    {
+        var spot = new ParkingSpot { SiteId = site.Id, Code = code };
+        _db.ParkingSpots.Add(spot);
+        await _db.SaveChangesAsync();
+        return spot;
+    }
+
+    [Fact]
+    public async Task Issue_WithSpot_AssignsSpot_AndCardShowsIt()
+    {
+        var spot = await SpotAsync(_motol, "A-12");
+        var item = await ApprovedItemAsync("8AN5201");
+
+        await _parking.IssueAsync(item.Id, _admin.Id, null, "admin", spot.Id);
+
+        var issued = await _parking.GetItemAsync(item.Id);
+        Assert.Equal(spot.Id, issued!.ParkingPermit!.ParkingSpotId);
+        Assert.Equal("A-12 · Motol", issued.ParkingPermit.ParkingSpot!.DisplayName());
+        Assert.Equal("A-12", Acs.Infrastructure.Pdf.PermitCardView.For(issued.ParkingPermit, _employee).SpotCode);
+    }
+
+    [Fact]
+    public async Task Issue_WithSpotOutsidePermitSites_IsRefused()
+    {
+        var homolka = new Site { Name = "Homolka" };
+        _db.Sites.Add(homolka);
+        await _db.SaveChangesAsync();
+        var spot = await SpotAsync(homolka, "H-1");
+        var item = await ApprovedItemAsync("8AN5201");
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _parking.IssueAsync(item.Id, _admin.Id, null, "admin", spot.Id));
+        Assert.Contains("mimo areály", ex.Message);
+        Assert.Equal(RequestStatus.Approved, (await _db.AccessRequestItems.FindAsync(item.Id))!.Status);
+    }
+
+    [Fact]
+    public async Task AssignSpot_ChangesAndClearsSpot_RefusesInactiveSpot()
+    {
+        var spot = await SpotAsync(_motol, "A-12");
+        var inactive = new ParkingSpot { SiteId = _motol.Id, Code = "A-99", IsActive = false };
+        _db.ParkingSpots.Add(inactive);
+        await _db.SaveChangesAsync();
+        var item = await IssuedItemAsync("8AN5201");
+        var permitId = item.ParkingPermitId!.Value;
+
+        await _parking.AssignSpotAsync(permitId, spot.Id, "admin");
+        Assert.Equal(spot.Id, (await _db.ParkingPermits.FindAsync(permitId))!.ParkingSpotId);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _parking.AssignSpotAsync(permitId, inactive.Id, "admin"));
+
+        await _parking.AssignSpotAsync(permitId, null, "admin");
+        Assert.Null((await _db.ParkingPermits.FindAsync(permitId))!.ParkingSpotId);
+    }
+
+    [Fact]
+    public async Task AssignSpot_RefusesRevokedPermit()
+    {
+        var spot = await SpotAsync(_motol, "A-12");
+        var item = await IssuedItemAsync("8AN5201");
+        await _parking.RevokeAsync(item.ParkingPermitId!.Value, _admin.Id, "konec", "admin");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _parking.AssignSpotAsync(item.ParkingPermitId!.Value, spot.Id, "admin"));
+    }
+
+    [Fact]
+    public async Task SpotSign_ListsOnlyIssuedValidPermits_OnTheSpot()
+    {
+        var spot = await SpotAsync(_motol, "A-12");
+        var other = await SpotAsync(_motol, "B-1");
+
+        // Platné povolení se dvěma SPZ na místě.
+        var valid = await ApprovedItemAsync("8AN5201", "6AT1765");
+        await _parking.IssueAsync(valid.Id, _admin.Id, null, "admin", spot.Id);
+
+        // Další zaměstnanci (jeden druh povolení smí mít zaměstnanec jen jednou): odebrané a expirované
+        // povolení na místě, povolení na jiném místě — nic z toho se na ceduli A-12 nesmí objevit.
+        async Task<AccessRequestItem> OtherApprovedAsync(string lastName, string plate)
+        {
+            var employee = new Employee { FirstName = "Eva", LastName = lastName, IsActive = true };
+            _db.Employees.Add(employee);
+            await _db.SaveChangesAsync();
+            var request = await _workflow.CreateParkingRequestAsync(_admin.Id, employee.Id,
+                new ParkingRequestInput(_type.Id, false, [_motol.Id], [plate], null, null, DateTime.UtcNow.AddMonths(6), "test"),
+                requesterCanActForOthers: true);
+            await _workflow.DecideAsync(request.Items[0].Id, _admin.Id, true, null, isAdmin: true);
+            return request.Items[0];
+        }
+
+        var revoked = await OtherApprovedAsync("Odebraná", "1RE0001");
+        await _parking.IssueAsync(revoked.Id, _admin.Id, null, "admin", spot.Id);
+        await _parking.RevokeAsync(revoked.ParkingPermitId!.Value, _admin.Id, "konec", "admin");
+
+        var expired = await OtherApprovedAsync("Expirovaná", "1EX0002");
+        await _parking.IssueAsync(expired.Id, _admin.Id, null, "admin", spot.Id);
+        (await _db.ParkingPermits.FindAsync(expired.ParkingPermitId))!.ValidTo = DateTime.UtcNow.AddDays(-1);
+        await _db.SaveChangesAsync();
+
+        var elsewhere = await OtherApprovedAsync("Jinde", "1EL0003");
+        await _parking.IssueAsync(elsewhere.Id, _admin.Id, null, "admin", other.Id);
+
+        // Schválené, ale nevydané povolení na místo ani nejde přiřadit — na ceduli nikdy není.
+        await OtherApprovedAsync("Čekající", "1PE0004");
+
+        var sign = await _parking.GetSpotSignAsync(spot.Id);
+
+        Assert.NotNull(sign);
+        Assert.Equal("A-12", sign!.SpotCode);
+        Assert.Equal("Motol", sign.SiteName);
+        Assert.Equal(["8AN 5201", "6AT 1765"], sign.Rows.Select(r => r.Text).ToArray());
+        Assert.All(sign.Rows, r => Assert.True(r.IsPlate));
+
+        var siteSigns = await _parking.GetSiteSignsAsync(_motol.Id);
+        Assert.Equal(2, siteSigns.Count);
+        Assert.Equal(["1EL 0003"], siteSigns.Single(s => s.SpotCode == "B-1").Rows.Select(r => r.Text).ToArray());
+
+        Assert.Null(await _parking.GetSpotSignAsync(9999));
+    }
+
+    [Fact]
+    public async Task SpotSign_FunctionPermit_RendersFunctionRow()
+    {
+        var functionType = new ParkingPermitType { Name = "Vedení", Binding = PermitBinding.Function };
+        _db.ParkingPermitTypes.Add(functionType);
+        await _db.SaveChangesAsync();
+        var spot = await SpotAsync(_motol, "V-1");
+
+        var request = await _workflow.CreateParkingRequestAsync(_admin.Id, _employee.Id,
+            new ParkingRequestInput(functionType.Id, false, [_motol.Id], null, "Ředitel", null, null, "test"),
+            requesterCanActForOthers: true);
+        await _workflow.DecideAsync(request.Items[0].Id, _admin.Id, true, null, isAdmin: true);
+        await _parking.IssueAsync(request.Items[0].Id, _admin.Id, null, "admin", spot.Id);
+
+        var sign = await _parking.GetSpotSignAsync(spot.Id);
+        var row = Assert.Single(sign!.Rows);
+        Assert.False(row.IsPlate);
+        Assert.Equal("Ředitel", row.Text);
+    }
+
     private AutomationService CreateAutomation()
     {
         var http = new HttpClient(new StubHandler(_ => (HttpStatusCode.NoContent, "")));

@@ -146,7 +146,7 @@ public static class ParkingSpotSignPdf
 
         // Výška značky podle volného místa; poměr stran ≈ 4,5 : 1 jako u skutečné SPZ.
         var slot = area.Height / rowsPerColumn;
-        var plateHeight = Math.Min(PdfText.Mm(29), slot * 0.78);
+        var plateHeight = Math.Min(PdfText.Mm(29), slot * 0.84);
         var plateWidth = Math.Min(plateHeight * 4.5, columnWidth);
         plateHeight = plateWidth / 4.5;
         var gap = Math.Min(PdfText.Mm(7), slot - plateHeight);
