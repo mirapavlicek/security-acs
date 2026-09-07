@@ -18,7 +18,17 @@ souběžně; zaměstnanec bez karty smí dostat `404` — to není chyba.
 
 ## Přihlášení
 
-- **Windows účet domény (NTLM/Negotiate)** — výchozí volba pro interní službu:
+Služba na dotaz bez přihlášení odpovídá `401 … "No valid token available."` —
+chce **token** v hlavičce `Authorization: Bearer`.
+
+- **Token z přihlášení** — ACS pošle na přihlašovací endpoint služby
+  `POST` s tělem podle šablony (výchozí `{"username":"{user}","password":"{password}"}`;
+  `{user}`/`{password}` je zadaný účet, bez něj servisní účet pro AD), z odpovědi
+  vezme token (`token`, `accessToken`, `access_token`, `jwt`… i o úroveň hlouběji
+  v `data`/`result`; nebo název pole zadejte) a posílá ho jako Bearer. Token drží
+  50 minut. Adresu endpointu a tvar těla najdete ve Swaggeru služby.
+- **Pevný token** — vydaný správcem služby, vloží se do nastavení.
+- **Windows účet domény (NTLM/Negotiate)** — pro služby s integrovaným přihlášením:
   bez vyplněného uživatele se použije **servisní účet, kterým ACS čte AD**
   (Nastavení → Active Directory), jiný účet jde zadat jako `DOMÉNA\uživatel`
   nebo `uživatel@doména`. Na Linuxu vyřídí NTLM .NET sám; pro Kerberos je na

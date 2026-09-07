@@ -217,16 +217,26 @@
             @{ var cardsAuth = Model.Values[SettingKeys.CardsApiAuth] ?? "None"; }
             <select name="CardsApiAuth">
                 <option value="None" selected="@(cardsAuth == "None")">bez přihlášení</option>
-                <option value="Windows" selected="@(cardsAuth == "Windows")">Windows účet domény (NTLM/Negotiate) — servisní účet z nastavení AD</option>
+                <option value="Token" selected="@(cardsAuth == "Token")">Token z přihlášení (POST uživatel + heslo na endpoint služby, pak Bearer)</option>
+                <option value="Bearer" selected="@(cardsAuth == "Bearer")">Pevný token (Authorization: Bearer)</option>
+                <option value="Windows" selected="@(cardsAuth == "Windows")">Windows účet domény (NTLM/Negotiate)</option>
                 <option value="ApiKey" selected="@(cardsAuth == "ApiKey")">API klíč v hlavičce</option>
                 <option value="Basic" selected="@(cardsAuth == "Basic")">Basic (uživatel a heslo)</option>
             </select>
-            <p class="hint">U Windows účtu se bez vyplněného uživatele použije servisní účet pro bind do AD (Nastavení → Active Directory); jiný účet zadejte níže jako <span class="mono">DOMÉNA\uživatel</span> nebo <span class="mono">uživatel@doména</span>.</p>
+            <p class="hint">Služba Identifiers odpovídá „No valid token available“ — chce token. Buď ho vydává natrvalo (<em>Pevný token</em>), nebo se získává přihlášením (<em>Token z přihlášení</em>): adresu přihlašovacího endpointu a tvar těla najdete ve Swaggeru služby. U <em>Token</em> a <em>Windows</em> se bez vyplněného uživatele použije servisní účet pro bind do AD.</p>
+            <label>Pevný token (prázdné = ponechat)</label>
+            <input type="password" name="CardsApiBearerToken" autocomplete="new-password" />
+            <label>Přihlašovací endpoint (pro Token z přihlášení)</label>
+            <input type="text" name="CardsApiTokenUrl" value="@Model.Values[SettingKeys.CardsApiTokenUrl]" placeholder="https://ws-integrations.nnh.local/api/v0/Auth/Login" />
+            <label>Tělo přihlášení — <span class="mono">{user}</span> a <span class="mono">{password}</span> se nahradí (prázdné = výchozí)</label>
+            <input type="text" name="CardsApiTokenBody" class="mono" value="@Model.Values[SettingKeys.CardsApiTokenBody]" placeholder='{"username":"{user}","password":"{password}"}' />
+            <label>Pole s tokenem v odpovědi (prázdné = najde se: token, accessToken, access_token, jwt…)</label>
+            <input type="text" name="CardsApiTokenField" value="@Model.Values[SettingKeys.CardsApiTokenField]" placeholder="token" style="width:14rem" />
             <label>Hlavička s API klíčem (prázdné = X-Api-Key)</label>
             <input type="text" name="CardsApiKeyHeader" value="@Model.Values[SettingKeys.CardsApiKeyHeader]" placeholder="X-Api-Key" />
             <label>API klíč (prázdné = ponechat)</label>
             <input type="password" name="CardsApiKey" autocomplete="new-password" />
-            <label>Uživatel (Basic, nebo jiný Windows účet než pro AD)</label>
+            <label>Uživatel (Basic, Token z přihlášení, nebo jiný Windows účet než pro AD)</label>
             <input type="text" name="CardsApiUser" value="@Model.Values[SettingKeys.CardsApiUser]" autocomplete="off" placeholder="prázdné = účet z nastavení AD" />
             <label>Heslo (prázdné = ponechat)</label>
             <input type="password" name="CardsApiPassword" autocomplete="new-password" />

@@ -113,6 +113,10 @@ public static class CardApiAuth
     public const string Basic = "Basic";
     /// <summary>NTLM/Negotiate účtem domény — výchozí je servisní účet, kterým ACS čte AD.</summary>
     public const string Windows = "Windows";
+    /// <summary>Pevný token v hlavičce <c>Authorization: Bearer</c>.</summary>
+    public const string Bearer = "Bearer";
+    /// <summary>Token získaný přihlášením na endpoint služby (uživatel a heslo, tělo podle šablony).</summary>
+    public const string Token = "Token";
 }
 
 /// <summary>Identifikátor tak, jak ho vrátilo integrační API, po rozboru odpovědi.</summary>
@@ -129,7 +133,17 @@ public record ApiIdentifier(string Value, DateTime? ValidFrom, DateTime? ValidTo
 /// </summary>
 public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCardSource.Options options) : ICardSource
 {
-    public sealed record Options(string Url, int SubType, string? ApiKeyHeader, string? ApiKey, string? User, string? Password, string Auth = CardApiAuth.None);
+    public sealed record Options(
+        string Url, int SubType, string? ApiKeyHeader, string? ApiKey, string? User, string? Password, string Auth = CardApiAuth.None,
+        string? BearerToken = null, string? TokenUrl = null, string? TokenBody = null, string? TokenField = null);
+
+    public const string DefaultTokenBody = "{\"username\":\"{user}\",\"password\":\"{password}\"}";
+
+    private string? _token;
+    private DateTime _tokenObtainedUtc;
+
+    /// <summary>Popis posledního získání tokenu pro zkoušku (stav, tělo) — bez tokenu samotného.</summary>
+    public string? TokenStepDescription { get; private set; }
 
     private const int Parallelism = 4;
 
@@ -143,7 +157,7 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         var auth = await settings.GetAsync(SettingKeys.CardsApiAuth, ct) ?? CardApiAuth.None;
         var user = await settings.GetAsync(SettingKeys.CardsApiUser, ct);
         var password = await settings.GetAsync(SettingKeys.CardsApiPassword, ct);
-        if (auth == CardApiAuth.Windows && string.IsNullOrWhiteSpace(user))
+        if (auth is CardApiAuth.Windows or CardApiAuth.Token && string.IsNullOrWhiteSpace(user))
         {
             // Stejný servisní účet, kterým ACS čte AD — jedny přihlašovací údaje pro obě služby domény.
             user = await settings.GetAsync(SettingKeys.LdapBindUser, ct);
@@ -153,7 +167,11 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         var options = new Options(url, subType,
             await settings.GetAsync(SettingKeys.CardsApiKeyHeader, ct),
             await settings.GetAsync(SettingKeys.CardsApiKey, ct),
-            user, password, auth);
+            user, password, auth,
+            await settings.GetAsync(SettingKeys.CardsApiBearerToken, ct),
+            await settings.GetAsync(SettingKeys.CardsApiTokenUrl, ct),
+            await settings.GetAsync(SettingKeys.CardsApiTokenBody, ct),
+            await settings.GetAsync(SettingKeys.CardsApiTokenField, ct));
 
         // Interní služba často běží s certifikátem vlastní CA, kterou nody neznají.
         var ignoreTls = await settings.GetAsync(SettingKeys.CardsApiIgnoreTls, ct) == "true";
@@ -233,7 +251,7 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
     public async Task<ProbeResult> ProbeAsync(string employeeNo, CancellationToken ct = default)
     {
         var requestBody = JsonSerializer.Serialize(new { employeeNo, idIdentifierSubType = options.SubType });
-        using var request = BuildRequest(employeeNo);
+        using var request = await BuildRequestAsync(employeeNo, ct);
         using var response = await http.SendAsync(request, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
         var parsed = response.IsSuccessStatusCode ? SafeParse(body) : [];
@@ -266,13 +284,17 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         }
     }
 
-    private HttpRequestMessage BuildRequest(string employeeNo)
+    private async Task<HttpRequestMessage> BuildRequestAsync(string employeeNo, CancellationToken ct)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, options.Url)
         {
             Content = JsonContent.Create(new { employeeNo, idIdentifierSubType = options.SubType }),
         };
         request.Headers.Accept.ParseAdd("application/json");
+        if (options.Auth == CardApiAuth.Bearer && !string.IsNullOrWhiteSpace(options.BearerToken))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.BearerToken.Trim());
+        if (options.Auth == CardApiAuth.Token)
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await GetTokenAsync(ct));
         if (options.Auth == CardApiAuth.ApiKey && !string.IsNullOrWhiteSpace(options.ApiKey))
             request.Headers.TryAddWithoutValidation(string.IsNullOrWhiteSpace(options.ApiKeyHeader) ? "X-Api-Key" : options.ApiKeyHeader, options.ApiKey);
         if (options.Auth == CardApiAuth.Basic && !string.IsNullOrWhiteSpace(options.User))
@@ -282,9 +304,93 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         return request;
     }
 
+    /// <summary>
+    /// Přihlášení na endpoint služby a token z odpovědi. Tělo podle šablony
+    /// ({user}, {password}); token se hledá pod obvyklými názvy i o úroveň hlouběji
+    /// (data/result), nebo je odpověď rovnou řetězec. Drží se 50 minut na instanci.
+    /// </summary>
+    private async Task<string> GetTokenAsync(CancellationToken ct)
+    {
+        if (_token is not null && DateTime.UtcNow - _tokenObtainedUtc < TimeSpan.FromMinutes(50))
+            return _token;
+        if (string.IsNullOrWhiteSpace(options.TokenUrl))
+            throw new InvalidOperationException("Přihlášení tokenem: není nastavená adresa přihlašovacího endpointu (Nastavení → Karty).");
+        if (string.IsNullOrWhiteSpace(options.User))
+            throw new InvalidOperationException("Přihlášení tokenem: není zadaný uživatel ani servisní účet pro AD.");
+
+        var body = (string.IsNullOrWhiteSpace(options.TokenBody) ? DefaultTokenBody : options.TokenBody)
+            .Replace("{user}", JsonEncodedText.Encode(options.User).ToString())
+            .Replace("{password}", JsonEncodedText.Encode(options.Password ?? "").ToString());
+        using var request = new HttpRequestMessage(HttpMethod.Post, options.TokenUrl)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Accept.ParseAdd("application/json");
+
+        using var response = await http.SendAsync(request, ct);
+        var text = await response.Content.ReadAsStringAsync(ct);
+        var shown = text.Length > 600 ? text[..600] + "…" : text;
+        if (!response.IsSuccessStatusCode)
+        {
+            TokenStepDescription = $"Přihlášení {options.TokenUrl}: {(int)response.StatusCode} {response.ReasonPhrase}\n{shown}";
+            throw new HttpRequestException($"Přihlášení na {options.TokenUrl} odpovědělo {(int)response.StatusCode}: {Truncate(text, 300)}", null, response.StatusCode);
+        }
+
+        var token = ExtractToken(text, options.TokenField);
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            TokenStepDescription = $"Přihlášení {options.TokenUrl}: {(int)response.StatusCode}, ale v odpovědi není token (zadejte název pole)\n{shown}";
+            throw new InvalidOperationException($"Přihlášení na {options.TokenUrl} proběhlo, ale v odpovědi není token — zadejte název pole s tokenem. Odpověď: {Truncate(text, 300)}");
+        }
+
+        TokenStepDescription = $"Přihlášení {options.TokenUrl}: {(int)response.StatusCode}, token získán ({token.Length} znaků).";
+        _token = token;
+        _tokenObtainedUtc = DateTime.UtcNow;
+        return token;
+    }
+
+    private static readonly string[] TokenProperties = ["token", "accessToken", "access_token", "jwt", "id_token", "idToken", "bearer", "authToken"];
+    private static readonly string[] TokenContainers = ["data", "result", "response", "payload"];
+
+    public static string? ExtractToken(string body, string? field)
+    {
+        body = body.Trim();
+        if (body.Length == 0)
+            return null;
+        if (!body.StartsWith('{') && !body.StartsWith('['))
+            return body.Trim('"');
+
+        using var document = JsonDocument.Parse(body);
+        var root = document.RootElement;
+        if (root.ValueKind == JsonValueKind.String)
+            return root.GetString();
+        if (root.ValueKind != JsonValueKind.Object)
+            return null;
+
+        var names = string.IsNullOrWhiteSpace(field) ? TokenProperties : [field.Trim()];
+        foreach (var name in names)
+        {
+            if (TryGet(root, name, out var value) && value.ValueKind == JsonValueKind.String)
+                return value.GetString();
+        }
+
+        foreach (var container in TokenContainers)
+        {
+            if (!TryGet(root, container, out var inner) || inner.ValueKind != JsonValueKind.Object)
+                continue;
+            foreach (var name in names)
+            {
+                if (TryGet(inner, name, out var value) && value.ValueKind == JsonValueKind.String)
+                    return value.GetString();
+            }
+        }
+
+        return null;
+    }
+
     private async Task<string> PostAsync(string employeeNo, CancellationToken ct)
     {
-        using var request = BuildRequest(employeeNo);
+        using var request = await BuildRequestAsync(employeeNo, ct);
         using var response = await http.SendAsync(request, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)

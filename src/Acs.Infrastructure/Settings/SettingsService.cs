@@ -61,8 +61,14 @@ public static class SettingKeys
     public const string CardsSource = "Cards:Source";
     public const string CardsApiUrl = "Cards:ApiUrl";
     public const string CardsApiSubType = "Cards:ApiSubType";
-    /// <summary>None | ApiKey | Basic | Windows (NTLM/Negotiate účtem z LDAP, nebo zadaným)</summary>
+    /// <summary>None | ApiKey | Basic | Windows | Bearer (pevný token) | Token (přihlášení na endpoint služby)</summary>
     public const string CardsApiAuth = "Cards:ApiAuth";
+    public const string CardsApiBearerToken = "Cards:ApiBearerToken";     // secret
+    public const string CardsApiTokenUrl = "Cards:ApiTokenUrl";
+    /// <summary>Tělo přihlášení; {user} a {password} se nahradí. Výchozí {"username":"{user}","password":"{password}"}.</summary>
+    public const string CardsApiTokenBody = "Cards:ApiTokenBody";
+    /// <summary>Název pole s tokenem v odpovědi přihlášení; prázdné = najde se (token, accessToken, access_token, jwt…).</summary>
+    public const string CardsApiTokenField = "Cards:ApiTokenField";
     public const string CardsApiKeyHeader = "Cards:ApiKeyHeader";
     public const string CardsApiKey = "Cards:ApiKey";           // secret
     public const string CardsApiUser = "Cards:ApiUser";
@@ -97,7 +103,7 @@ public static class SettingKeys
     public static readonly HashSet<string> SecretKeys =
     [
         LdapBindPassword, WinPakApiKey, EmployeeMssqlConnectionString, EmployeeApiKey, SmtpPassword,
-        CardsMssqlConnectionString, CardsApiKey, CardsApiPassword,
+        CardsMssqlConnectionString, CardsApiKey, CardsApiPassword, CardsApiBearerToken,
     ];
 }
 
