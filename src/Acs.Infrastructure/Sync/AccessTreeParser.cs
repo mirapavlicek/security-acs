@@ -38,8 +38,7 @@ public static class AccessTreeParser
         {
             var values = Values(element);
             var readerId = First(values, ReaderIdKeys);
-            var readerName = First(values, ReaderNameKeys)
-                             ?? (IsReaderElement(element) ? Attribute(element, "name") : null);
+            var readerName = ReaderName(element, values);
             if (readerId is null && readerName is null)
                 continue;
 
@@ -61,16 +60,29 @@ public static class AccessTreeParser
             .ToList();
     }
 
-    private static bool IsReaderElement(XElement element)
+    /// <summary>
+    /// Název čtečky: pojmenovaný atribut/prvek (<c>ReaderName</c>, <c>DeviceName</c>…), nebo — u prvku,
+    /// který je sám čtečkou (<c>&lt;Reader&gt;</c>) — obecné <c>Name</c> jako atribut i podřízený prvek.
+    /// Tak vypadá strom z WIN-PAKu 4.9: <c>&lt;Reader&gt;&lt;Name&gt;334001&lt;/Name&gt;&lt;Parent&gt;23 MOC&lt;/Parent&gt;&lt;Timezone&gt;Always On&lt;/Timezone&gt;&lt;/Reader&gt;</c>.
+    /// </summary>
+    internal static string? ReaderName(XElement element, Dictionary<string, string> values)
+    {
+        var named = First(values, ReaderNameKeys);
+        if (named is not null)
+            return named;
+        if (!IsReaderElement(element))
+            return null;
+        var generic = First(values, ["name"]);
+        return string.IsNullOrWhiteSpace(generic) ? null : generic;
+    }
+
+    internal static bool IsReaderElement(XElement element)
     {
         var name = element.Name.LocalName.ToLowerInvariant();
         return name.Contains("reader") || name.Contains("entrance") || name.Contains("device");
     }
 
-    private static string? Attribute(XElement element, string name)
-        => element.Attributes().FirstOrDefault(a => a.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase))?.Value;
-
-    private static string? First(Dictionary<string, string> values, string[] keys)
+    internal static string? First(Dictionary<string, string> values, string[] keys)
     {
         foreach (var key in keys)
         {
@@ -82,7 +94,7 @@ public static class AccessTreeParser
     }
 
     /// <summary>Atributy a jednoduché podřízené prvky jako slovník s klíči malými písmeny.</summary>
-    private static Dictionary<string, string> Values(XElement element, bool includeAncestors = false, bool includeDescendants = false)
+    internal static Dictionary<string, string> Values(XElement element, bool includeAncestors = false, bool includeDescendants = false)
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 

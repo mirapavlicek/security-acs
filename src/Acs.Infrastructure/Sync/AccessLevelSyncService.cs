@@ -11,13 +11,18 @@ namespace Acs.Infrastructure.Sync;
 
 public record AccessLevelSyncResult(
     int Added, int Updated, int Deactivated, int ReadersMapped, int TreesFailed,
-    int TreesLoaded = 0, int TreesSkipped = 0, string? LastTreeError = null)
+    int TreesLoaded = 0, int TreesSkipped = 0, string? LastTreeError = null,
+    int EntriesPaired = 0, int EntriesUnknown = 0)
 {
     public override string ToString()
     {
         var text = $"přidáno {Added}, aktualizováno {Updated}, deaktivováno {Deactivated}";
         if (TreesLoaded > 0)
             text += $", složení načteno u {TreesLoaded}";
+        if (EntriesPaired > 0)
+            text += $", čteček ve stromech spárováno s ACS: {EntriesPaired}";
+        if (EntriesUnknown > 0)
+            text += $", čteček ve stromech ACS nezná: {EntriesUnknown}";
         if (ReadersMapped > 0)
             text += $", čtečkám doplněno mapování: {ReadersMapped}";
         if (TreesFailed > 0)
@@ -154,12 +159,58 @@ public class AccessLevelSyncService(AcsDbContext db, WinPakClient winPak, AuditS
             }
         }
 
-        progress?.Invoke("doplňuji mapování čteček…");
+        progress?.Invoke("páruji čtečky a doplňuji mapování…");
+        var (paired, unknown) = await PairEntriesAsync(ct);
         var mapped = await MapSingleReaderLevelsAsync(ct);
 
-        var result = new AccessLevelSyncResult(added, updated, deactivated, mapped, treesFailed, treesLoaded, treesSkipped, lastError);
+        var result = new AccessLevelSyncResult(added, updated, deactivated, mapped, treesFailed, treesLoaded, treesSkipped, lastError,
+            paired, unknown);
         await audit.LogAsync(userName, "access-levels-synced", "AccessLevel", null, result.ToString(), ct);
         return result;
+    }
+
+    private ReaderMatcher? _matcher;
+
+    private async Task<ReaderMatcher> MatcherAsync(CancellationToken ct)
+        => _matcher ??= new ReaderMatcher(await db.Readers.ToListAsync(ct));
+
+    /// <summary>
+    /// Spáruje položky všech aktivních úrovní s čtečkami ACS — i ty načtené dřív, protože
+    /// čtečky mohly přibýt (import z EKV, synchronizace) až po stromu. Vrací počet
+    /// spárovaných položek a počet čteček ze stromů, které ACS nezná.
+    /// </summary>
+    public async Task<(int Paired, int Unknown)> PairEntriesAsync(CancellationToken ct = default)
+    {
+        var matcher = await MatcherAsync(ct);
+        var entries = await db.AccessLevelEntries.Where(e => e.AccessLevel!.IsActive).ToListAsync(ct);
+
+        var unknown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var paired = 0;
+        foreach (var entry in entries)
+        {
+            if (Pair(entry, matcher))
+                paired++;
+            else if (entry.ReaderId is null)
+                unknown.Add(entry.ReaderName ?? entry.ReaderExternalId ?? "?");
+        }
+
+        if (db.ChangeTracker.HasChanges())
+            await db.SaveChangesAsync(ct);
+        return (paired, unknown.Count);
+    }
+
+    /// <summary>Doplní položce čtečku ACS (a z ní id WIN-PAKu, když ho strom nenesl). True = položka je spárovaná.</summary>
+    private static bool Pair(AccessLevelEntry entry, ReaderMatcher matcher)
+    {
+        var reader = matcher.Match(entry);
+        if (reader is null)
+            return entry.ReaderId is not null;
+
+        entry.ReaderId = reader.Id;
+        entry.Reader = reader;
+        if (entry.ReaderExternalId is null && !string.IsNullOrWhiteSpace(reader.ExternalId))
+            entry.ReaderExternalId = reader.ExternalId;
+        return true;
     }
 
     private static string Describe(int index, int total, string current, int loaded, int failed, string? lastError)
@@ -190,9 +241,13 @@ public class AccessLevelSyncService(AcsDbContext db, WinPakClient winPak, AuditS
         if (parsed is null)
             return; // strom je, ale není to XML, kterému rozumíme — položky nechat, surový strom je uložený
 
+        var matcher = await MatcherAsync(ct);
         level.Entries.Clear();
         foreach (var entry in parsed)
+        {
+            Pair(entry, matcher);
             level.Entries.Add(entry);
+        }
     }
 
     /// <summary>
@@ -202,12 +257,15 @@ public class AccessLevelSyncService(AcsDbContext db, WinPakClient winPak, AuditS
     /// </summary>
     private async Task<int> MapSingleReaderLevelsAsync(CancellationToken ct)
     {
-        var singles = await db.AccessLevels
-            .Where(a => a.IsActive && a.Entries.Count == 1 && a.Entries.All(e => e.ReaderExternalId != null))
-            .Select(a => new { a.ExternalId, ReaderExternalId = a.Entries.First().ReaderExternalId! })
+        // Úroveň „jedné čtečky“ = všechny položky spárované s touž čtečkou ACS (třeba ve dvou zónách).
+        var levels = await db.AccessLevels
+            .Where(a => a.IsActive && a.Entries.Count > 0 && a.Entries.All(e => e.ReaderId != null))
+            .Select(a => new { a.ExternalId, ReaderIds = a.Entries.Select(e => e.ReaderId!.Value).ToList() })
             .ToListAsync(ct);
 
-        var byReader = singles.GroupBy(s => s.ReaderExternalId)
+        var byReader = levels.Select(l => (l.ExternalId, ReaderIds: l.ReaderIds.Distinct().ToList()))
+            .Where(l => l.ReaderIds.Count == 1)
+            .GroupBy(l => l.ReaderIds[0])
             .Where(g => g.Count() == 1)
             .ToDictionary(g => g.Key, g => g.First().ExternalId);
         if (byReader.Count == 0)
@@ -215,11 +273,11 @@ public class AccessLevelSyncService(AcsDbContext db, WinPakClient winPak, AuditS
 
         var readerIds = byReader.Keys.ToList();
         var readers = await db.Readers
-            .Where(r => r.ExternalId != null && readerIds.Contains(r.ExternalId) && r.AccessLevelExternalId == null)
+            .Where(r => readerIds.Contains(r.Id) && r.AccessLevelExternalId == null)
             .ToListAsync(ct);
 
         foreach (var reader in readers)
-            reader.AccessLevelExternalId = byReader[reader.ExternalId!];
+            reader.AccessLevelExternalId = byReader[reader.Id];
 
         if (readers.Count > 0)
             await db.SaveChangesAsync(ct);

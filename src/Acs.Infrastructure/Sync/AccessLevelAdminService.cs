@@ -122,10 +122,12 @@ public class AccessLevelAdminService(AcsDbContext db, WinPakClient winPak, Acces
         level.Entries.Clear();
         for (var i = 0; i < definition.ReaderIds.Count; i++)
         {
+            var reader = readers.GetValueOrDefault(definition.ReaderIds[i]);
             level.Entries.Add(new AccessLevelEntry
             {
                 ReaderExternalId = definition.ReaderIds[i],
-                ReaderName = readers.GetValueOrDefault(definition.ReaderIds[i])?.Name,
+                ReaderName = reader?.Name,
+                ReaderId = reader?.Id,
                 TimeZoneExternalId = definition.ReaderTimeZoneIds[i],
                 TimeZoneName = timeZones.GetValueOrDefault(definition.ReaderTimeZoneIds[i])?.Name,
             });
@@ -150,11 +152,11 @@ public class AccessLevelAdminService(AcsDbContext db, WinPakClient winPak, Acces
     /// <summary>Úroveň s jedinou čtečkou je úroveň té čtečky — doplní se jí mapování, pokud žádné nemá.</summary>
     private async Task MapSingleReaderAsync(AccessLevel level, CancellationToken ct)
     {
-        if (level.Entries.Select(e => e.ReaderExternalId).Distinct().Count() != 1)
+        var readerIds = level.Entries.Select(e => e.ReaderId).Distinct().ToList();
+        if (readerIds is not [int readerId])
             return;
 
-        var readerExternalId = level.Entries[0].ReaderExternalId;
-        var reader = await db.Readers.FirstOrDefaultAsync(r => r.ExternalId == readerExternalId && r.AccessLevelExternalId == null, ct);
+        var reader = await db.Readers.FirstOrDefaultAsync(r => r.Id == readerId && r.AccessLevelExternalId == null, ct);
         if (reader is null)
             return;
 

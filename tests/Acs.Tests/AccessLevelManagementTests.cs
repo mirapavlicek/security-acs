@@ -311,4 +311,120 @@ public sealed class AccessLevelManagementTests : IDisposable
         Assert.Null(AccessTreeParser.Parse(null));
         Assert.Empty(AccessTreeParser.Parse("<AccessLevel />")!);
     }
+
+    /// <summary>Strom z WIN-PAKu 4.9 (Motol): větve s rodičem, čtečky jen s názvem (= číslo čtečky) a názvem zóny, žádná id.</summary>
+    private const string MotolTree =
+        "<AccessTree><Branch><Name>FN Motol</Name><Parent>AccessArea</Parent></Branch>"
+        + "<Branch><Name>23 MOC</Name><Parent>FN Motol</Parent></Branch>"
+        + "<Reader><Name>334001</Name><Parent>23 MOC</Parent><Timezone>Always On</Timezone></Reader>"
+        + "<Reader><Name>334002</Name><Parent>23 MOC</Parent><Timezone>Always On</Timezone></Reader>"
+        + "<Reader><Name>341011</Name><Parent>23 MOC</Parent><Timezone>Pracovní doba</Timezone></Reader></AccessTree>";
+
+    [Fact]
+    public void Parser_rozumi_stromu_WinPaku_49_s_vetvemi_a_ctečkami_bez_id()
+    {
+        var entries = AccessTreeParser.Parse(MotolTree)!;
+
+        Assert.Equal(["334001", "334002", "341011"], entries.Select(e => e.ReaderName).Order());
+        Assert.All(entries, e => Assert.Null(e.ReaderExternalId));
+        Assert.Equal("Pracovní doba", entries.Single(e => e.ReaderName == "341011").TimeZoneName);
+        Assert.Equal("Always On", entries.First(e => e.ReaderName == "334001").TimeZoneName);
+    }
+
+    [Fact]
+    public void Osnova_stromu_sklada_vetve_do_hierarchie_a_ctecky_pod_ne()
+    {
+        var roots = AccessTreeOutline.Parse(MotolTree)!;
+
+        var motol = Assert.Single(roots);
+        Assert.Equal("FN Motol", motol.Name);
+        Assert.Empty(motol.Readers);
+        var moc = Assert.Single(motol.Children);
+        Assert.Equal("23 MOC", moc.Name);
+        Assert.Equal(3, moc.Readers.Count);
+        Assert.Equal(3, motol.ReaderCount);
+        Assert.Equal(("334001", "Always On"), (moc.Readers[0].Name, moc.Readers[0].TimeZoneName));
+
+        // Strom bez větví (jiná instalace): jeden bezejmenný kořen se všemi čtečkami.
+        var flat = AccessTreeOutline.Parse(TreeWithOneReader)!;
+        Assert.Equal("", Assert.Single(flat).Name);
+        Assert.Equal("Serverovna", Assert.Single(flat[0].Readers).Name);
+
+        Assert.Null(AccessTreeOutline.Parse("není xml"));
+        Assert.Empty(AccessTreeOutline.Parse("<AccessTree />")!);
+    }
+
+    /// <summary>
+    /// Strom Motolu nenese id čteček, jen jejich čísla — a ACS má čtečky z dokumentace EKV právě
+    /// pod číslem. Synchronizace je spáruje: položka dostane čtečku ACS (a z ní id WIN-PAKu, když
+    /// ho čtečka má), detail úrovně ji ukáže zaškrtnutou a úroveň s jedinou čtečkou se jí namapuje.
+    /// </summary>
+    [Fact]
+    public async Task Sync_sparuje_ctecky_ze_stromu_podle_cisla_a_doplni_id()
+    {
+        var documented = new Reader { DeviceNumber = "334001", Name = "334001 — 23-50216 — DÍLNA", Source = RecordSource.Imported };
+        var synced = new Reader { ExternalId = "77", Name = "334002", Source = RecordSource.Imported };
+        var withZeroId = new Reader { ExternalId = "0", DeviceNumber = "0341011", Name = "341011 — SKLAD", Source = RecordSource.Imported };
+        var otherWithZeroId = new Reader { ExternalId = "0", Name = "Vrátnice", Source = RecordSource.Manual };
+        _db.Readers.AddRange(documented, synced, withZeroId, otherWithZeroId);
+        await _db.SaveChangesAsync();
+
+        _connector.Levels.Add(new { id = "3", name = "23 MOC", description = (string?)null });
+        _connector.Levels.Add(new { id = "5", name = "Jen dílna", description = (string?)null });
+        _connector.Trees["23 MOC"] = MotolTree;
+        _connector.Trees["Jen dílna"] = "<AccessTree><Reader><Name>334001</Name><Timezone>Always On</Timezone></Reader></AccessTree>";
+
+        var result = await new AccessLevelSyncService(_db, _client, _audit).SyncAsync("test");
+
+        Assert.Equal(4, result.EntriesPaired);
+        Assert.Equal(0, result.EntriesUnknown);
+        var level = await _db.AccessLevels.Include(a => a.Entries).SingleAsync(a => a.Name == "23 MOC");
+        var byName = level.Entries.ToDictionary(e => e.ReaderName!);
+        Assert.Equal(documented.Id, byName["334001"].ReaderId);
+        Assert.Null(byName["334001"].ReaderExternalId);                 // čtečka z dokumentace id nemá — nevymýšlí se
+        Assert.Equal((synced.Id, "77"), (byName["334002"].ReaderId, byName["334002"].ReaderExternalId));
+        Assert.Equal(withZeroId.Id, byName["341011"].ReaderId);         // id „0“ sdílí dvě čtečky → rozhodlo číslo
+
+        // Úroveň s jedinou čtečkou je úroveň té čtečky, i když čtečka nemá id WIN-PAKu.
+        Assert.Equal(1, result.ReadersMapped);
+        Assert.Equal("5", (await _db.Readers.SingleAsync(r => r.Id == documented.Id)).AccessLevelExternalId);
+        Assert.Contains("spárováno s ACS: 4", result.ToString());
+    }
+
+    [Fact]
+    public async Task Sync_dopáruje_ctecky_ktere_pribyly_az_po_nacteni_stromu()
+    {
+        _connector.Levels.Add(new { id = "3", name = "23 MOC", description = (string?)null });
+        _connector.Trees["23 MOC"] = MotolTree;
+        var first = await new AccessLevelSyncService(_db, _client, _audit).SyncAsync("test");
+        Assert.Equal((0, 3), (first.EntriesPaired, first.EntriesUnknown));
+        Assert.Contains("ACS nezná: 3", first.ToString());
+
+        // Import z EKV přidal čtečku; strom se znovu nečte (úroveň se nezměnila), přesto se spáruje.
+        var reader = new Reader { DeviceNumber = "334002", Name = "334002 — CHODBA", Source = RecordSource.Imported };
+        _db.Readers.Add(reader);
+        await _db.SaveChangesAsync();
+        _connector.TreeError = "strom se číst nemá";
+
+        var second = await new AccessLevelSyncService(_db, _client, _audit).SyncAsync("test");
+
+        Assert.Equal((1, 2), (second.EntriesPaired, second.EntriesUnknown));
+        Assert.Equal(0, second.TreesFailed);
+        Assert.Equal(reader.Id, (await _db.AccessLevelEntries.SingleAsync(e => e.ReaderName == "334002")).ReaderId);
+    }
+
+    [Fact]
+    public void Parovani_ctecek_je_jen_jednoznacne()
+    {
+        var a = new Reader { Id = 1, DeviceNumber = "334001", Name = "334001 — A", Source = RecordSource.Imported };
+        var b = new Reader { Id = 2, DeviceNumber = "334001", Name = "334001 — B", Source = RecordSource.Imported };
+        var c = new Reader { Id = 3, ExternalId = "9", Name = "Hlavní vchod", Source = RecordSource.Imported };
+        var matcher = new ReaderMatcher([a, b, c]);
+
+        Assert.Null(matcher.Match(null, "334001"));            // dvě čtečky se stejným číslem — nerozhodovat za správce
+        Assert.Same(c, matcher.Match("9", "cokoliv"));         // id má přednost
+        Assert.Same(c, matcher.Match(null, "Hlavní vchod"));   // název čtečky ze synchronizace
+        Assert.Null(matcher.Match(null, "Vchod"));             // podřetězec nestačí
+        Assert.Null(matcher.Match("nope", null));
+    }
 }
