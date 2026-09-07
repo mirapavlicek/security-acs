@@ -61,6 +61,8 @@ public static class SettingKeys
     public const string CardsSource = "Cards:Source";
     public const string CardsApiUrl = "Cards:ApiUrl";
     public const string CardsApiSubType = "Cards:ApiSubType";
+    /// <summary>None | ApiKey | Basic | Windows (NTLM/Negotiate účtem z LDAP, nebo zadaným)</summary>
+    public const string CardsApiAuth = "Cards:ApiAuth";
     public const string CardsApiKeyHeader = "Cards:ApiKeyHeader";
     public const string CardsApiKey = "Cards:ApiKey";           // secret
     public const string CardsApiUser = "Cards:ApiUser";

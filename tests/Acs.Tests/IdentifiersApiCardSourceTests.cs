@@ -103,7 +103,7 @@ public sealed class IdentifiersApiCardSourceTests : IDisposable
             ? Json("""[{"identifier":"100234","validTo":"2027-01-01","active":true},{"identifier":"100235","active":false}]""")
             : new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("") });
         var source = new IdentifiersApiCardSource(new HttpClient(stub),
-            new IdentifiersApiCardSource.Options("https://ws-integrations.nnh.local/api/v0/Identifiers", 3, null, "tajny", null, null));
+            new IdentifiersApiCardSource.Options("https://ws-integrations.nnh.local/api/v0/Identifiers", 3, null, "tajny", null, null, CardApiAuth.ApiKey));
         var sync = new CardSyncService(_db, new FixedSourceFactory(source), new AuditService(_db));
 
         var result = await sync.SyncAsync("test");
@@ -141,11 +141,37 @@ public sealed class IdentifiersApiCardSourceTests : IDisposable
         Assert.False((await _db.EmployeeIdentifiers.SingleAsync(i => i.Value == "OLD")).IsActive);
     }
 
+    [Theory]
+    [InlineData("NNH\\svc-acs", null, "svc-acs", "NNH")]
+    [InlineData("svc-acs@nnh.local", "nnh.local", "svc-acs@nnh.local", "")]
+    [InlineData("svc-acs", "nnh.local", "svc-acs", "nnh.local")]
+    [InlineData(" svc-acs ", null, "svc-acs", "")]
+    public void Windows_ucet_se_rozlozi_na_uzivatele_a_domenu(string account, string? defaultDomain, string user, string domain)
+    {
+        var credential = IdentifiersApiCardSource.WindowsCredential(account, "pwd", defaultDomain);
+
+        Assert.Equal((user, domain, "pwd"), (credential.UserName, credential.Domain, credential.Password));
+    }
+
+    [Fact]
+    public async Task Basic_a_API_klic_se_posilaji_jen_ve_zvolenem_rezimu()
+    {
+        var stub = new Stub((_, _) => Json("[]"));
+        var basic = new IdentifiersApiCardSource(new HttpClient(stub),
+            new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, null, "klic", "svc", "heslo", CardApiAuth.Basic));
+
+        await basic.ProbeAsync("1");
+
+        var headers = stub.Requests.Single().Headers;
+        Assert.Equal("Basic", headers.Authorization!.Scheme);
+        Assert.False(headers.Contains("X-Api-Key"));
+    }
+
     [Fact]
     public async Task Zkouska_vrati_surovou_odpoved_i_rozbor()
     {
         var source = new IdentifiersApiCardSource(new HttpClient(new Stub((_, _) => Json("""{"items":[{"cardNo":"42"}]}"""))),
-            new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, "Authorization-Key", "k", null, null));
+            new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, "Authorization-Key", "k", null, null, CardApiAuth.ApiKey));
 
         var (raw, parsed) = await source.ProbeAsync("13483");
 

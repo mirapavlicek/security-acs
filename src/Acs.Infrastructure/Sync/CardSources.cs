@@ -105,6 +105,16 @@ public sealed class MssqlCardSource(string connectionString, string query) : ICa
         => DateTime.TryParse(raw, out var value) ? value : null;
 }
 
+/// <summary>Způsob přihlášení k integračnímu API karet.</summary>
+public static class CardApiAuth
+{
+    public const string None = "None";
+    public const string ApiKey = "ApiKey";
+    public const string Basic = "Basic";
+    /// <summary>NTLM/Negotiate účtem domény — výchozí je servisní účet, kterým ACS čte AD.</summary>
+    public const string Windows = "Windows";
+}
+
 /// <summary>Identifikátor tak, jak ho vrátilo integrační API, po rozboru odpovědi.</summary>
 public record ApiIdentifier(string Value, DateTime? ValidFrom, DateTime? ValidTo, bool? Active, string? Note);
 
@@ -119,7 +129,7 @@ public record ApiIdentifier(string Value, DateTime? ValidFrom, DateTime? ValidTo
 /// </summary>
 public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCardSource.Options options) : ICardSource
 {
-    public sealed record Options(string Url, int SubType, string? ApiKeyHeader, string? ApiKey, string? User, string? Password);
+    public sealed record Options(string Url, int SubType, string? ApiKeyHeader, string? ApiKey, string? User, string? Password, string Auth = CardApiAuth.None);
 
     private const int Parallelism = 4;
 
@@ -130,18 +140,56 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         var url = await settings.GetAsync(SettingKeys.CardsApiUrl, ct)
             ?? throw new InvalidOperationException("Není nastavena adresa integračního API pro karty (Nastavení → Karty).");
         var subType = int.TryParse(await settings.GetAsync(SettingKeys.CardsApiSubType, ct), out var parsed) ? parsed : 3;
+        var auth = await settings.GetAsync(SettingKeys.CardsApiAuth, ct) ?? CardApiAuth.None;
+        var user = await settings.GetAsync(SettingKeys.CardsApiUser, ct);
+        var password = await settings.GetAsync(SettingKeys.CardsApiPassword, ct);
+        if (auth == CardApiAuth.Windows && string.IsNullOrWhiteSpace(user))
+        {
+            // Stejný servisní účet, kterým ACS čte AD — jedny přihlašovací údaje pro obě služby domény.
+            user = await settings.GetAsync(SettingKeys.LdapBindUser, ct);
+            password = await settings.GetAsync(SettingKeys.LdapBindPassword, ct);
+        }
+
         var options = new Options(url, subType,
             await settings.GetAsync(SettingKeys.CardsApiKeyHeader, ct),
             await settings.GetAsync(SettingKeys.CardsApiKey, ct),
-            await settings.GetAsync(SettingKeys.CardsApiUser, ct),
-            await settings.GetAsync(SettingKeys.CardsApiPassword, ct));
+            user, password, auth);
 
         // Interní služba často běží s certifikátem vlastní CA, kterou nody neznají.
         var ignoreTls = await settings.GetAsync(SettingKeys.CardsApiIgnoreTls, ct) == "true";
-        var client = ignoreTls
-            ? new HttpClient(new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true }) { Timeout = TimeSpan.FromMinutes(2) }
-            : httpClientFactory.CreateClient(CardSourceFactory.HttpClientName);
-        return new IdentifiersApiCardSource(client, options);
+        if (auth == CardApiAuth.Windows || ignoreTls)
+        {
+            // Windows (NTLM/Negotiate) vyžaduje vlastní handler s přihlašovacími údaji — na Linuxu
+            // ho .NET vyřídí spravovaným NTLM, případně přes GSSAPI (balík gssntlmssp).
+            var handler = new HttpClientHandler { PreAuthenticate = true };
+            if (ignoreTls)
+                handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
+            if (auth == CardApiAuth.Windows)
+            {
+                if (string.IsNullOrWhiteSpace(user))
+                    throw new InvalidOperationException("Přihlášení Windows účtem: není zadaný účet ani servisní účet pro AD (Nastavení → Active Directory).");
+                handler.Credentials = WindowsCredential(user, password ?? "", await settings.GetAsync(SettingKeys.LdapDomain, ct));
+            }
+
+            return new IdentifiersApiCardSource(new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(2) }, options);
+        }
+
+        return new IdentifiersApiCardSource(httpClientFactory.CreateClient(CardSourceFactory.HttpClientName), options);
+    }
+
+    /// <summary>
+    /// Účet pro NTLM/Negotiate z toho, jak je zapsaný v nastavení: <c>DOMÉNA\uživatel</c>,
+    /// UPN <c>uživatel@doména</c> (předá se celý), nebo prosté jméno + doména z nastavení AD.
+    /// </summary>
+    public static System.Net.NetworkCredential WindowsCredential(string account, string password, string? defaultDomain)
+    {
+        account = account.Trim();
+        var backslash = account.IndexOf('\\');
+        if (backslash > 0)
+            return new System.Net.NetworkCredential(account[(backslash + 1)..], password, account[..backslash]);
+        if (account.Contains('@') || string.IsNullOrWhiteSpace(defaultDomain))
+            return new System.Net.NetworkCredential(account, password);
+        return new System.Net.NetworkCredential(account, password, defaultDomain.Trim());
     }
 
     public async IAsyncEnumerable<CardRecord> ReadAsync(IReadOnlyList<Employee> employees, [EnumeratorCancellation] CancellationToken ct)
@@ -194,11 +242,12 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         {
             Content = JsonContent.Create(new { employeeNo, idIdentifierSubType = options.SubType }),
         };
-        if (!string.IsNullOrWhiteSpace(options.ApiKey))
+        if (options.Auth == CardApiAuth.ApiKey && !string.IsNullOrWhiteSpace(options.ApiKey))
             request.Headers.TryAddWithoutValidation(string.IsNullOrWhiteSpace(options.ApiKeyHeader) ? "X-Api-Key" : options.ApiKeyHeader, options.ApiKey);
-        if (!string.IsNullOrWhiteSpace(options.User))
+        if (options.Auth == CardApiAuth.Basic && !string.IsNullOrWhiteSpace(options.User))
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic",
                 Convert.ToBase64String(Encoding.UTF8.GetBytes($"{options.User}:{options.Password}")));
+        // Windows (NTLM/Negotiate) vyřizuje handler klienta podle Credentials.
 
         using var response = await http.SendAsync(request, ct);
         var body = await response.Content.ReadAsStringAsync(ct);

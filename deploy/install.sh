@@ -59,6 +59,8 @@ if ! dotnet --list-sdks 2>/dev/null | grep -q '^10\.'; then
           && $SUDO ln -sf /usr/lib/dotnet/dotnet /usr/bin/dotnet)
 fi
 $SUDO dnf install -y git curl policycoreutils-python-utils || true
+# NTLM/Negotiate pro interní služby přihlašované účtem domény (integrační API karet).
+$SUDO dnf install -y krb5-libs gssntlmssp || true
 # Písmo s českou diakritikou pro generování PDF (kartičky parkovacích povolení, reporty).
 $SUDO dnf install -y dejavu-sans-fonts || true
 

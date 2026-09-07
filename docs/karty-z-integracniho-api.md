@@ -14,10 +14,18 @@ POST https://ws-integrations.nnh.local/api/v0/Identifiers
 ```
 
 Podtyp `3` = identifikační karta (nastavitelné). Volání jdou po čtyřech
-souběžně; zaměstnanec bez karty smí dostat `404` — to není chyba. Volitelně
-API klíč v hlavičce (výchozí `X-Api-Key`) nebo Basic autentizace; u interní CA,
-kterou nody neznají, jde dočasně vypnout ověření certifikátu (lepší je CA na
-nody nainstalovat).
+souběžně; zaměstnanec bez karty smí dostat `404` — to není chyba.
+
+## Přihlášení
+
+- **Windows účet domény (NTLM/Negotiate)** — výchozí volba pro interní službu:
+  bez vyplněného uživatele se použije **servisní účet, kterým ACS čte AD**
+  (Nastavení → Active Directory), jiný účet jde zadat jako `DOMÉNA\uživatel`
+  nebo `uživatel@doména`. Na Linuxu vyřídí NTLM .NET sám; pro Kerberos je na
+  nodech `krb5-libs` a `gssntlmssp` (instalační skript je přidává).
+- API klíč v hlavičce (výchozí `X-Api-Key`), nebo Basic autentizace.
+- U interní CA, kterou nody neznají, jde dočasně vypnout ověření certifikátu
+  (lepší je CA na nody nainstalovat).
 
 ## Odpověď
 

@@ -31,7 +31,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         SettingKeys.AutoReminderAfterDays, SettingKeys.AutoEscalationAfterDays, SettingKeys.AutoPushEnabled,
         SettingKeys.SmtpHost, SettingKeys.SmtpPort, SettingKeys.SmtpUser, SettingKeys.SmtpFrom,
         SettingKeys.SmtpUseTls,
-        SettingKeys.CardsSource, SettingKeys.CardsApiUrl, SettingKeys.CardsApiSubType, SettingKeys.CardsApiKeyHeader,
+        SettingKeys.CardsSource, SettingKeys.CardsApiUrl, SettingKeys.CardsApiSubType, SettingKeys.CardsApiAuth, SettingKeys.CardsApiKeyHeader,
         SettingKeys.CardsApiUser, SettingKeys.CardsApiIgnoreTls,
     ];
 
@@ -157,7 +157,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
 
     public async Task<IActionResult> OnPostCardsAsync(
         string? cardsSource, string? cardsMssqlConnectionString, string? cardsMssqlQuery,
-        string? cardsApiUrl, string? cardsApiSubType, string? cardsApiKeyHeader, string? cardsApiKey,
+        string? cardsApiUrl, string? cardsApiSubType, string? cardsApiAuth, string? cardsApiKeyHeader, string? cardsApiKey,
         string? cardsApiUser, string? cardsApiPassword, string? cardsApiIgnoreTls,
         string? cardsSyncEnabled, string? cardsSyncIntervalMinutes)
     {
@@ -166,6 +166,8 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         await settings.SetAsync(SettingKeys.CardsMssqlQuery, cardsMssqlQuery, UserName);
         await settings.SetAsync(SettingKeys.CardsApiUrl, cardsApiUrl?.Trim(), UserName);
         await settings.SetAsync(SettingKeys.CardsApiSubType, string.IsNullOrWhiteSpace(cardsApiSubType) ? "3" : cardsApiSubType.Trim(), UserName);
+        await settings.SetAsync(SettingKeys.CardsApiAuth,
+            cardsApiAuth is CardApiAuth.ApiKey or CardApiAuth.Basic or CardApiAuth.Windows ? cardsApiAuth : CardApiAuth.None, UserName);
         await settings.SetAsync(SettingKeys.CardsApiKeyHeader, cardsApiKeyHeader?.Trim(), UserName);
         await settings.SetIfProvidedAsync(SettingKeys.CardsApiKey, cardsApiKey, UserName);
         await settings.SetAsync(SettingKeys.CardsApiUser, cardsApiUser?.Trim(), UserName);
