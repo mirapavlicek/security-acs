@@ -190,16 +190,44 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         try
         {
             var source = await IdentifiersApiCardSource.CreateAsync(settings, httpClientFactory, HttpContext.RequestAborted);
-            var (raw, parsed) = await source.ProbeAsync(employeeNo.Trim(), HttpContext.RequestAborted);
-            var summary = parsed.Count == 0
-                ? "Konektor z odpovědi nepřečetl žádný identifikátor — pošlete surovou odpověď vývoji, rozbor se doplní."
-                : "Přečteno: " + string.Join("; ", parsed.Select(p =>
-                    $"{p.Value}{(p.ValidFrom is { } f ? $" od {f:d}" : "")}{(p.ValidTo is { } t ? $" do {t:d}" : "")}{(p.Active is { } a ? (a ? " (aktivní)" : " (neaktivní)") : "")}"));
-            CardsApiProbe = $"{summary}\n\nSurová odpověď pro {employeeNo.Trim()}:\n{(raw.Length > 4000 ? raw[..4000] + "…" : raw)}";
+            var probe = await source.ProbeAsync(employeeNo.Trim(), HttpContext.RequestAborted);
+            var lines = new List<string>();
+
+            if (!probe.Success)
+            {
+                lines.Add($"Zkouška selhala: služba odpověděla {probe.StatusCode} {probe.ReasonPhrase}.");
+                lines.Add(probe.StatusCode switch
+                {
+                    404 when probe.ContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true || probe.Body.Trim().StartsWith('{')
+                        => "404 s JSON tělem = služba adresu zná, ale tohoto zaměstnance/identifikátor nenašla — porovnejte formát osobního čísla s tím, co služba očekává (úvodní nuly, jiné číslo než AD employeenumber).",
+                    404 => "404 bez JSON těla = nejspíš špatná cesta (adresa) nebo metoda; zkontrolujte adresu ve Swaggeru služby (…/swagger) — musí odpovídat přesně včetně /api/v0/Identifiers.",
+                    401 or 403 => "Služba přihlášení odmítla — zkuste jiný způsob přihlášení (Windows účet domény / API klíč) nebo jiný účet.",
+                    405 => "Služba metodu POST na této adrese nepřijímá — ověřte ve Swaggeru, zda není správně GET s parametrem.",
+                    415 or 400 => "Služba nepřijala tělo požadavku — porovnejte s příkladem ve Swaggeru (názvy a typy polí).",
+                    _ => "Podívejte se na tělo odpovědi níže.",
+                });
+            }
+            else if (probe.Parsed.Count == 0)
+            {
+                lines.Add("Služba odpověděla, ale konektor z odpovědi nepřečetl žádný identifikátor — pošlete tělo odpovědi níže vývoji, rozbor se doplní o skutečné názvy polí.");
+            }
+            else
+            {
+                lines.Add("Přečteno: " + string.Join("; ", probe.Parsed.Select(p =>
+                    $"{p.Value}{(p.ValidFrom is { } f ? $" od {f:d}" : "")}{(p.ValidTo is { } t ? $" do {t:d}" : "")}{(p.Active is { } a ? (a ? " (aktivní)" : " (neaktivní)") : "")}")));
+            }
+
+            lines.Add("");
+            lines.Add($"Požadavek: POST {probe.Url}");
+            lines.Add(probe.RequestBody);
+            lines.Add("");
+            lines.Add($"Odpověď: {probe.StatusCode} {probe.ReasonPhrase} · Content-Type: {probe.ContentType ?? "(žádný)"}");
+            lines.Add(string.IsNullOrWhiteSpace(probe.Body) ? "(prázdné tělo)" : probe.Body.Length > 4000 ? probe.Body[..4000] + "…" : probe.Body);
+            CardsApiProbe = string.Join("\n", lines);
         }
         catch (Exception ex)
         {
-            CardsApiProbe = $"Zkouška selhala: {ex.Message}";
+            CardsApiProbe = $"Zkouška selhala: {ex.GetBaseException().Message}\n\nTypicky: adresa není dostupná z nodů ACS (DNS, firewall), nebo certifikát interní CA (zaškrtněte „Neověřovat certifikát TLS“ a uložte).";
         }
 
         return RedirectToPage();
