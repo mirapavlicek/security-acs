@@ -147,6 +147,8 @@ public static class PermitCardPdf
         if (card.PermitNumber is not null)
             meta.Add($"č. {card.PermitNumber}");
         meta.Add(card.ValidTo is { } to ? $"platí do {to:d. M. yyyy}" : "platnost bez omezení");
+        if (card.SpotCode is not null)
+            meta.Add($"místo {card.SpotCode}");
         gfx.DrawString(string.Join("      ", meta), metaFont, grayBrush,
             new XRect(bodyX, y, bodyW, metaFont.GetHeight()), XStringFormats.TopCenter);
     }

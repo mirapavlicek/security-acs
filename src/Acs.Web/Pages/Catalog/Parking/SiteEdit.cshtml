@@ -40,17 +40,27 @@
         <a class="btn btn-ghost" asp-page="Sites">Zpět</a>
     </form>
 
-    @if (Model.PermitCount == 0)
+    <p class="muted" style="margin-top:1rem">
+        <a asp-page="Spots" asp-route-SiteId="@Model.Site.Id">Parkovací místa areálu (@Model.SpotCount)</a>
+    </p>
+
+    @if (Model.PermitCount == 0 && Model.SpotCount == 0)
     {
         <form method="post" asp-page-handler="Delete" style="margin-top:1rem"
               onsubmit="return confirm('Smazat areál @Model.Site.Name?');">
             <button class="btn btn-sm btn-danger" type="submit">Smazat areál</button>
         </form>
     }
-    else
+    else if (Model.PermitCount > 0)
     {
         <p class="muted" style="margin-top:1rem">
             Na areál se odkazuje @Model.PermitCount povolení — nelze smazat, jen deaktivovat.
+        </p>
+    }
+    else
+    {
+        <p class="muted" style="margin-top:1rem">
+            Areál má @Model.SpotCount parkovacích míst — nelze smazat, dokud existují.
         </p>
     }
 </div>

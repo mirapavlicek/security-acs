@@ -16,6 +16,15 @@ public class PermitModel(AcsDbContext db, ParkingAdminService parkingAdmin, Requ
     public List<AccessRequestItem> RevokeItems { get; private set; } = [];
     public bool CanPrint { get; private set; }
 
+    /// <summary>Správce parkování může měnit vyhrazené místo u vydaného povolení.</summary>
+    public bool CanAssignSpot { get; private set; }
+
+    /// <summary>Aktivní místa v areálech povolení (pro výběr).</summary>
+    public List<ParkingSpot> AvailableSpots { get; private set; } = [];
+
+    [TempData] public string? Message { get; set; }
+    [TempData] public string? ErrorMessage { get; set; }
+
     private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
     public async Task<IActionResult> OnGetAsync(int id)
@@ -43,6 +52,36 @@ public class PermitModel(AcsDbContext db, ParkingAdminService parkingAdmin, Requ
             .OrderByDescending(i => i.Request!.CreatedAt)
             .ToListAsync();
         CanPrint = item.Status == RequestStatus.Issued && (Permit.PermitType?.PrintsWindshieldCard ?? false);
+        CanAssignSpot = isAdmin && item.Status == RequestStatus.Issued;
+        if (CanAssignSpot)
+        {
+            var siteIds = Permit.Sites.Select(s => s.SiteId).ToList();
+            AvailableSpots = await db.ParkingSpots.Include(s => s.Site)
+                .Where(s => s.IsActive && (Permit.AllSites || siteIds.Contains(s.SiteId)))
+                .OrderBy(s => s.Site!.SortOrder).ThenBy(s => s.Site!.Name).ThenBy(s => s.SortOrder).ThenBy(s => s.Code)
+                .ToListAsync();
+        }
+
         return Page();
+    }
+
+    public async Task<IActionResult> OnPostAssignSpotAsync(int id, int? parkingSpotId)
+    {
+        if (!(User.IsInRole("Admin") || User.IsInRole("ParkingAdmin")))
+            return Forbid();
+
+        try
+        {
+            await parkingAdmin.AssignSpotAsync(id, parkingSpotId, User.Identity?.Name);
+            Message = parkingSpotId is null
+                ? "Vyhrazené místo odebráno — ceduli na původním místě vytiskněte znovu."
+                : "Vyhrazené místo přiřazeno — vytiskněte aktuální ceduli na místo.";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or KeyNotFoundException)
+        {
+            ErrorMessage = ex.Message;
+        }
+
+        return RedirectToPage(new { id });
     }
 }

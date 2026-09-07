@@ -287,6 +287,18 @@ zástupy, řetěz fází, notifikace, připomínky); položka žádosti
     vydaná povolení a deaktivují SPZ; report „Parkovací povolení“ s exportem
     do **PDF** i CSV (PDF export mají i reporty přístupů); přehled „Parkování“
     pro zaměstnance. ✅ Implementováno.
+25. **Parkovací místa a cedule A4** — číselník **parkovacích míst**
+    (`ParkingSpot`: areál, označení „A-12“, umístění) pro vyhrazená stání.
+    Správce parkování přiřadí vydané povolení na místo (při vydání ve frontě,
+    nebo dodatečně v detailu povolení; místo musí ležet v areálu povolení) a
+    vytiskne **ceduli A4 „VYHRAZENÉ PARKOVÁNÍ“** na sloupek: logo FNMH, značka
+    „P“, řádek s označením místa a registrační značky všech **vydaných a
+    platných** povolení na místě vykreslené jako skutečné SPZ (EU pruh s
+    hvězdami a „CZ“; u přenosného povolení název funkce). Do pěti SPZ jeden
+    sloupec, do dvanácti dva, víc pokračuje na další stránce; hromadně lze
+    vytisknout cedule všech míst areálu. Odebraná a expirovaná povolení
+    z cedule mizí — stačí ji vytisknout znovu. ✅ Implementováno
+    (`/Catalog/Parking/Spots`, `/Parking/SpotSign`, `ParkingSpotSignPdf`).
 
 ---
 

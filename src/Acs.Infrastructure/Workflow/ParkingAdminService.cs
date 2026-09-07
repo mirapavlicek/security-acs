@@ -2,6 +2,7 @@ using Acs.Domain.Entities;
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Data;
 using Acs.Infrastructure.Notifications;
+using Acs.Infrastructure.Pdf;
 using Microsoft.EntityFrameworkCore;
 
 namespace Acs.Infrastructure.Workflow;
@@ -61,6 +62,14 @@ public class ParkingAdminService(AcsDbContext db, AuditService audit, INotificat
     /// </summary>
     public async Task IssueAsync(int itemId, int userId, string? permitNumber, string? userName,
         CancellationToken ct = default)
+        => await IssueAsync(itemId, userId, permitNumber, userName, parkingSpotId: null, ct);
+
+    /// <summary>
+    /// Vydá schválené povolení a volitelně ho rovnou přiřadí na vyhrazené parkovací místo
+    /// (<paramref name="parkingSpotId"/>); místo musí ležet v některém z areálů povolení.
+    /// </summary>
+    public async Task IssueAsync(int itemId, int userId, string? permitNumber, string? userName,
+        int? parkingSpotId, CancellationToken ct = default)
     {
         var item = await ParkingItems().FirstOrDefaultAsync(i => i.Id == itemId, ct)
             ?? throw new KeyNotFoundException("Položka nenalezena.");
@@ -75,6 +84,10 @@ public class ParkingAdminService(AcsDbContext db, AuditService audit, INotificat
             : permitNumber.Trim();
         if (await db.ParkingPermits.AnyAsync(p => p.Id != permit.Id && p.PermitNumber == number && p.RevokedAt == null, ct))
             throw new InvalidOperationException($"Číslo povolení „{number}“ už je použité.");
+
+        if (parkingSpotId is { } spotId)
+            permit.ParkingSpot = await ResolveSpotAsync(permit, spotId, ct);
+        permit.ParkingSpotId = parkingSpotId;
 
         permit.PermitNumber = number;
         permit.IssuedAt = now;
@@ -108,9 +121,88 @@ public class ParkingAdminService(AcsDbContext db, AuditService audit, INotificat
         item.PushResult = $"vydáno povolení č. {number}";
         await db.SaveChangesAsync(ct);
         await audit.LogAsync(userName, "parking-permit-issued", "ParkingPermit", permit.Id.ToString(),
-            $"č. {number}, {permit.SubjectText()}", ct);
+            $"č. {number}, {permit.SubjectText()}"
+            + (permit.ParkingSpot is null ? "" : $", místo {permit.ParkingSpot.DisplayName()}"), ct);
         if (notifier is not null)
             await notifier.NotifyDecidedAsync(item.Id, ct);
+    }
+
+    /// <summary>
+    /// Přiřadí vydanému povolení vyhrazené místo, nebo ho odebere (<paramref name="parkingSpotId"/> = null).
+    /// Cedule na místě se generuje z aktuálních povolení, takže po změně stačí ceduli znovu vytisknout.
+    /// </summary>
+    public async Task AssignSpotAsync(int permitId, int? parkingSpotId, string? userName, CancellationToken ct = default)
+    {
+        var permit = await db.ParkingPermits
+            .Include(p => p.Sites).ThenInclude(s => s.Site)
+            .Include(p => p.ParkingSpot)
+            .FirstOrDefaultAsync(p => p.Id == permitId, ct)
+            ?? throw new KeyNotFoundException("Parkovací povolení nenalezeno.");
+        if (permit.IssuedAt is null || permit.RevokedAt is not null)
+            throw new InvalidOperationException("Místo lze přiřadit jen vydanému (neodebranému) povolení.");
+
+        var previous = permit.ParkingSpot?.DisplayName();
+        permit.ParkingSpot = parkingSpotId is { } spotId ? await ResolveSpotAsync(permit, spotId, ct) : null;
+        permit.ParkingSpotId = parkingSpotId;
+        await db.SaveChangesAsync(ct);
+        await audit.LogAsync(userName, "parking-spot-assigned", "ParkingPermit", permitId.ToString(),
+            $"{previous ?? "bez místa"} → {permit.ParkingSpot?.DisplayName() ?? "bez místa"}", ct);
+    }
+
+    /// <summary>Načte místo a ověří, že je aktivní a leží v areálu, pro který povolení platí.</summary>
+    private async Task<ParkingSpot> ResolveSpotAsync(ParkingPermit permit, int spotId, CancellationToken ct)
+    {
+        var spot = await db.ParkingSpots.Include(s => s.Site).FirstOrDefaultAsync(s => s.Id == spotId, ct)
+            ?? throw new KeyNotFoundException("Parkovací místo nenalezeno.");
+        if (!spot.IsActive)
+            throw new InvalidOperationException($"Parkovací místo {spot.DisplayName()} je neaktivní.");
+        if (!permit.AllSites && permit.Sites.All(s => s.SiteId != spot.SiteId))
+            throw new InvalidOperationException(
+                $"Parkovací místo {spot.DisplayName()} leží mimo areály povolení ({permit.SitesText()}).");
+        return spot;
+    }
+
+    /// <summary>
+    /// Data pro ceduli A4 na konkrétní místo: SPZ (nebo funkce) všech povolení na místě, která jsou
+    /// vydaná, neodebraná a platná k dnešnímu dni. Čekající, zamítnutá, odebraná a expirovaná se neuvádějí.
+    /// </summary>
+    public async Task<ParkingSpotSignView?> GetSpotSignAsync(int spotId, CancellationToken ct = default)
+    {
+        var spot = await db.ParkingSpots.Include(s => s.Site).FirstOrDefaultAsync(s => s.Id == spotId, ct);
+        return spot is null ? null : await BuildSignAsync(spot, ct);
+    }
+
+    /// <summary>Cedule všech aktivních míst areálu (hromadný tisk, jedno místo = jedna stránka).</summary>
+    public async Task<List<ParkingSpotSignView>> GetSiteSignsAsync(int siteId, CancellationToken ct = default)
+    {
+        var spots = await db.ParkingSpots.Include(s => s.Site)
+            .Where(s => s.SiteId == siteId && s.IsActive)
+            .OrderBy(s => s.SortOrder).ThenBy(s => s.Code)
+            .ToListAsync(ct);
+        var signs = new List<ParkingSpotSignView>(spots.Count);
+        foreach (var spot in spots)
+            signs.Add(await BuildSignAsync(spot, ct));
+        return signs;
+    }
+
+    /// <summary>Povolení, která se na ceduli místa objeví (vydaná, neodebraná, platná).</summary>
+    public Task<List<ParkingPermit>> GetSpotPermitsAsync(int spotId, CancellationToken ct = default)
+    {
+        var today = DateTime.UtcNow.Date;
+        return db.ParkingPermits
+            .Include(p => p.Employee)
+            .Include(p => p.PermitType)
+            .Include(p => p.Plates)
+            .Where(p => p.ParkingSpotId == spotId && p.IssuedAt != null && p.RevokedAt == null
+                        && (p.ValidTo == null || p.ValidTo >= today))
+            .OrderBy(p => p.PermitNumber)
+            .ToListAsync(ct);
+    }
+
+    private async Task<ParkingSpotSignView> BuildSignAsync(ParkingSpot spot, CancellationToken ct)
+    {
+        var permits = await GetSpotPermitsAsync(spot.Id, ct);
+        return ParkingSpotSignView.For(spot, permits);
     }
 
     /// <summary>Správce parkování provede odebrání, o které bylo požádáno (položka Revoke ve frontě).</summary>
@@ -239,6 +331,7 @@ public class ParkingAdminService(AcsDbContext db, AuditService audit, INotificat
             .Include(i => i.ParkingPermit!).ThenInclude(p => p.Plates).ThenInclude(pl => pl.EmployeeIdentifier)
             .Include(i => i.ParkingPermit!).ThenInclude(p => p.Sites).ThenInclude(s => s.Site)
             .Include(i => i.ParkingPermit!).ThenInclude(p => p.IssuedByUser)
+            .Include(i => i.ParkingPermit!).ThenInclude(p => p.ParkingSpot!).ThenInclude(s => s.Site)
             .Include(i => i.Stages)
             .Include(i => i.Decisions).ThenInclude(d => d.ApproverUser)
             .Where(i => i.ParkingPermitId != null);

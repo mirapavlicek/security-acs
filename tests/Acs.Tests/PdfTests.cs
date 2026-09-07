@@ -115,6 +115,76 @@ public class PdfTests
     }
 
     [Fact]
+    public void SpotSign_TwoPlates_RendersSinglePage()
+    {
+        var pdf = ParkingSpotSignPdf.Render(ParkingSpotSignView.Sample());
+
+        Assert.True(IsPdf(pdf));
+        Assert.Equal(1, PageCount(pdf));
+    }
+
+    [Fact]
+    public void SpotSign_ManyPlates_PaginatesAfterTwelve()
+    {
+        var rows = Enumerable.Range(1, 14).Select(i => ParkingSignRow.Plate($"{i}AB{i:0000}")).ToList();
+        var sign = new ParkingSpotSignView("C-3", "Homolka", "u hlavního vjezdu", rows);
+
+        var pdf = ParkingSpotSignPdf.Render(sign);
+
+        Assert.True(IsPdf(pdf));
+        Assert.Equal(2, PageCount(pdf));
+    }
+
+    [Fact]
+    public void SpotSign_EmptySpot_AndFunctionRow_Render()
+    {
+        var empty = new ParkingSpotSignView("D-1", "Motol", null, []);
+        var function = new ParkingSpotSignView("D-2", "Motol", null, [ParkingSignRow.Function("Náměstek pro léčebnou péči")]);
+
+        var pdf = ParkingSpotSignPdf.Render([empty, function]);
+
+        Assert.True(IsPdf(pdf));
+        Assert.Equal(2, PageCount(pdf));
+    }
+
+    [Fact]
+    public void SpotSign_Batch_OnePagePerSpot()
+    {
+        var signs = new[] { "A-1", "A-2", "A-3" }
+            .Select(code => new ParkingSpotSignView(code, "Motol", null, [ParkingSignRow.Plate("1AB2345")]))
+            .ToList();
+
+        Assert.Equal(3, PageCount(ParkingSpotSignPdf.Render(signs)));
+        Assert.Throws<ArgumentException>(() => ParkingSpotSignPdf.Render([]));
+    }
+
+    [Theory]
+    [InlineData("8AN5201", "8AN 5201")]
+    [InlineData("1ab-2345", "1AB 2345")]
+    [InlineData("AB12345C", "AB1 2345C")]
+    [InlineData("ABC", "ABC")]
+    public void SignRow_FormatPlate_SplitsAfterThirdCharacter(string input, string expected)
+        => Assert.Equal(expected, ParkingSignRow.FormatPlate(input));
+
+    [Fact]
+    public void SpotSignView_For_DeduplicatesPlates_AndAddsFunctionRows()
+    {
+        var spot = new ParkingSpot { Code = "A-12", Site = new Site { Name = "Motol" }, Location = "před pavilonem 5" };
+        var permits = new[]
+        {
+            new ParkingPermit { Plates = [new ParkingPermitPlate { Value = "8AN5201" }, new ParkingPermitPlate { Value = "6AT1765" }] },
+            new ParkingPermit { Plates = [new ParkingPermitPlate { Value = "8AN5201" }] },
+            new ParkingPermit { FunctionTitle = "Ředitel" },
+        };
+
+        var view = ParkingSpotSignView.For(spot, permits);
+
+        Assert.Equal(["8AN 5201", "6AT 1765", "Ředitel"], view.Rows.Select(r => r.Text).ToArray());
+        Assert.Equal([true, true, false], view.Rows.Select(r => r.IsPlate).ToArray());
+        Assert.Equal("Místo A-12 · areál Motol · před pavilonem 5", view.SpotText());
+    }
+
+    [Fact]
     public void TableReport_PaginatesLongTables_AndRepeatsHeader()
     {
         var rows = Enumerable.Range(1, 120)

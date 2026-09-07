@@ -7,6 +7,15 @@
 }
 <h1>@ViewData["Title"] <span class="@StatusText.PillClass(Model.Item.Status)">@StatusText.Label(Model.Item)</span></h1>
 
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
 <div class="settings-grid">
 <div class="card">
     <h2 style="margin-top:0">Povolení</h2>
@@ -15,6 +24,37 @@
         <tr><td>Druh</td><td>@Model.Permit.PermitType?.Name</td></tr>
         <tr><td>@(Model.Permit.PermitType?.Binding == PermitBinding.Function ? "Funkce" : "SPZ")</td><td>@Model.Permit.SubjectText()</td></tr>
         <tr><td>Areály</td><td>@Model.Permit.SitesText()</td></tr>
+        <tr>
+            <td>Vyhrazené místo</td>
+            <td>
+                @if (Model.Permit.ParkingSpot is { } spot)
+                {
+                    <strong>@spot.Code</strong> <span class="muted">· @spot.Site?.Name @(spot.Location is null ? "" : $"· {spot.Location}")</span>
+                }
+                else
+                {
+                    <span class="muted">— (bez konkrétního místa)</span>
+                }
+                @if (Model.CanAssignSpot)
+                {
+                    <form method="post" asp-page-handler="AssignSpot" class="filterbar" style="margin-top:0.4rem">
+                        <select name="parkingSpotId">
+                            <option value="">bez vyhrazeného místa</option>
+                            @foreach (var group in Model.AvailableSpots.GroupBy(s => s.Site?.Name ?? "?"))
+                            {
+                                <optgroup label="@group.Key">
+                                    @foreach (var option in group)
+                                    {
+                                        <option value="@option.Id" selected="@(option.Id == Model.Permit.ParkingSpotId)">@option.Code@(option.Location is null ? "" : $" — {option.Location}")</option>
+                                    }
+                                </optgroup>
+                            }
+                        </select>
+                        <button class="btn btn-sm" type="submit">Změnit místo</button>
+                    </form>
+                }
+            </td>
+        </tr>
         <tr><td>Platnost</td><td>@Model.Permit.ValidFrom.ToString("d. M. yyyy") – @(Model.Permit.ValidTo?.ToString("d. M. yyyy") ?? "bez omezení")</td></tr>
         <tr><td>Žádost</td><td><a asp-page="/Requests/Detail" asp-route-id="@Model.Item.RequestId">#@Model.Item.RequestId</a> — podal @(Model.Item.Request?.RequesterUser?.DisplayName ?? Model.Item.Request?.RequesterUser?.UserName), @Model.Item.Request?.CreatedAt.ToString("d. M. yyyy")</td></tr>
         @if (Model.Permit.IssuedAt is not null)
@@ -30,6 +70,11 @@
         @if (Model.CanPrint)
         {
             <a class="btn" asp-page="Print" asp-route-id="@Model.Permit.Id" target="_blank">Kartička (PDF)</a>
+        }
+        @if (Model.CanAssignSpot && Model.Permit.ParkingSpot is { } signSpot)
+        {
+            <a class="btn btn-ghost" asp-page="SpotSign" asp-route-id="@signSpot.Id" target="_blank"
+               title="Cedule „Vyhrazené parkování“ se SPZ všech platných povolení na místě">Cedule A4 na místo (PDF)</a>
         }
         <a class="btn btn-ghost" asp-page="Index">Zpět</a>
     </div>
