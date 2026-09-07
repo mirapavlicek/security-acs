@@ -22,6 +22,13 @@
         <input type="text" name="code" value="@Model.Site.Code" maxlength="32" />
         <label>Popis</label>
         <input type="text" name="description" value="@Model.Site.Description" />
+        <label>Vjezdy v parkovacím systému (id vjezdů / parkoviště v GreenCenter, oddělené čárkou)</label>
+        <input type="text" name="gateExternalIds" value="@Model.Site.GateExternalIds" maxlength="512"
+               placeholder="např. GATE-N, GATE-S nebo číslo parkoviště" />
+        <p class="muted" style="margin-top:0.25rem">
+            Parkovací systém posílá id vjezdu v online autorizaci; ACS podle něj pozná areál. Bez vyplnění
+            funguje i kód areálu (<code>@Model.Site.IntegrationId()</code>).
+        </p>
         <label>Pořadí</label>
         <input type="number" name="sortOrder" value="@Model.Site.SortOrder" />
         <label>Schvalovací matice areálu</label>

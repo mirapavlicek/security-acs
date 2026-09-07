@@ -65,6 +65,32 @@
         {
             <tr><td>Odebráno</td><td>@Model.Permit.RevokedAt?.ToString("d. M. yyyy HH:mm") UTC — @Model.Permit.RevokeReason</td></tr>
         }
+        @if (Model.ShowParkingSystemSync)
+        {
+            <tr>
+                <td>Parkovací systém</td>
+                <td>
+                    @if (Model.Permit.ParkingSystemSyncError is { Length: > 0 } syncError)
+                    {
+                        <span class="badge badge-danger">nepředáno</span> <span class="muted">@syncError</span>
+                    }
+                    else if (Model.Permit.ParkingSystemSyncedAt is { } syncedAt)
+                    {
+                        <span class="badge badge-primary">předáno</span> <span class="muted">@syncedAt.ToString("d. M. yyyy HH:mm") UTC</span>
+                    }
+                    else
+                    {
+                        <span class="muted">zatím nepředáno</span>
+                    }
+                    @if (Model.CanAssignSpot || Model.Permit.ParkingSystemSyncError is not null)
+                    {
+                        <form method="post" asp-page-handler="PushToParkingSystem" class="inline-form" style="margin-left:0.5rem">
+                            <button class="btn btn-sm btn-ghost" type="submit">Předat znovu</button>
+                        </form>
+                    }
+                </td>
+            </tr>
+        }
     </table>
     <div class="actions" style="margin:0.8rem 0 0">
         @if (Model.CanPrint)

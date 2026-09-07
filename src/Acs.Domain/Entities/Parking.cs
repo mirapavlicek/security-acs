@@ -14,6 +14,23 @@ public class Site
     public string? Code { get; set; }
     public string? Description { get; set; }
 
+    /// <summary>
+    /// Identifikátory vjezdů / parkoviště areálu v parkovacím systému (GreenCenter apod.),
+    /// oddělené čárkou. Parkovací systém je posílá jako <c>accessPointId</c> v online
+    /// autorizaci a ACS podle nich pozná, o který areál jde.
+    /// </summary>
+    public string? GateExternalIds { get; set; }
+
+    /// <summary>Rozparsované <see cref="GateExternalIds"/> (bez prázdných, oříznuté).</summary>
+    public IReadOnlyList<string> GateExternalIdList()
+        => string.IsNullOrWhiteSpace(GateExternalIds)
+            ? []
+            : GateExternalIds.Split([',', ';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>Identifikátor areálu v integračním API (<c>site:MOT</c>, bez kódu <c>site:#12</c>).</summary>
+    public string IntegrationId()
+        => string.IsNullOrWhiteSpace(Code) ? $"site:#{Id}" : $"site:{Code}";
+
     /// <summary>Volitelná matice areálu (null = areál do schvalování nevstupuje).</summary>
     public int? ApprovalMatrixId { get; set; }
     public ApprovalMatrix? ApprovalMatrix { get; set; }
@@ -139,6 +156,22 @@ public class ParkingPermit
     public string? RevokeReason { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Kdy se stav povolení naposledy úspěšně předal do parkovacího systému (vzor A).</summary>
+    public DateTime? ParkingSystemSyncedAt { get; set; }
+
+    /// <summary>Chyba posledního předání do parkovacího systému (null = bez chyby).</summary>
+    public string? ParkingSystemSyncError { get; set; }
+
+    /// <summary>Platí povolení v daném okamžiku (podle dat, nezávisle na stavu položky)?</summary>
+    public bool IsValidAt(DateTime moment)
+        => RevokedAt is null
+           && ValidFrom <= moment
+           && (ValidTo is null || ValidTo >= moment);
+
+    /// <summary>Platí povolení pro daný areál?</summary>
+    public bool CoversSite(int siteId)
+        => AllSites || Sites.Any(s => s.SiteId == siteId);
 
     /// <summary>Text rozsahu areálů pro zobrazení a tisk (vyžaduje načtené navigace).</summary>
     public string SitesText()

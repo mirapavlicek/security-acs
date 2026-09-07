@@ -100,10 +100,27 @@ public static class SettingKeys
     public const string SmtpFrom = "Smtp:From";
     public const string SmtpUseTls = "Smtp:UseTls";
 
+    // Parkovací systém (GreenCenter) — integrační API ACS (vzor B/C) a konektor (vzor A)
+    /// <summary>Zapíná integrační API <c>/api/integration/v1</c> pro parkovací systém.</summary>
+    public const string ParkingSystemEnabled = "ParkingSystem:Enabled";
+    /// <summary>Klíč, kterým se parkovací systém prokazuje ACS (hlavička <c>X-Api-Key</c>).</summary>
+    public const string ParkingSystemApiKey = "ParkingSystem:ApiKey";                 // secret
+    /// <summary>Povolené IP adresy volajícího (oddělené čárkou; prázdné = bez omezení).</summary>
+    public const string ParkingSystemAllowedIps = "ParkingSystem:AllowedIps";
+    /// <summary>Jak dlouho smí parkovací systém rozhodnutí kešovat při výpadku ACS (s).</summary>
+    public const string ParkingSystemCacheTtlSeconds = "ParkingSystem:CacheTtlSeconds";
+    /// <summary>Výjezd se povolí vždy (vozidlo nesmí zůstat zavřené v areálu).</summary>
+    public const string ParkingSystemExitAlwaysAllowed = "ParkingSystem:ExitAlwaysAllowed";
+    /// <summary>Adresa konektoru parkovacího systému (connector-api.yaml); prázdné = bez zápisu.</summary>
+    public const string ParkingSystemConnectorBaseUrl = "ParkingSystem:ConnectorBaseUrl";
+    public const string ParkingSystemConnectorApiKey = "ParkingSystem:ConnectorApiKey"; // secret
+    /// <summary>Předávat vydaná / odebraná povolení do konektoru automaticky.</summary>
+    public const string ParkingSystemPushEnabled = "ParkingSystem:PushEnabled";
+
     public static readonly HashSet<string> SecretKeys =
     [
         LdapBindPassword, WinPakApiKey, EmployeeMssqlConnectionString, EmployeeApiKey, SmtpPassword,
-        CardsMssqlConnectionString, CardsApiKey, CardsApiPassword, CardsApiBearerToken,
+        CardsMssqlConnectionString, CardsApiKey, CardsApiPassword, CardsApiBearerToken, ParkingSystemApiKey, ParkingSystemConnectorApiKey,
     ];
 }
 

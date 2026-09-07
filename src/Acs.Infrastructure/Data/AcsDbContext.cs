@@ -37,6 +37,7 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
     public DbSet<ParkingPermitSite> ParkingPermitSites => Set<ParkingPermitSite>();
     public DbSet<ParkingPermitPlate> ParkingPermitPlates => Set<ParkingPermitPlate>();
     public DbSet<ParkingSpot> ParkingSpots => Set<ParkingSpot>();
+    public DbSet<IntegrationEvent> IntegrationEvents => Set<IntegrationEvent>();
     public DbSet<Setting> Settings => Set<Setting>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
@@ -59,6 +60,7 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
             e.HasIndex(x => x.AdAccount);
             e.Property(x => x.FirstName).HasMaxLength(128);
             e.Property(x => x.LastName).HasMaxLength(128);
+            e.Property(x => x.ParkingSystemId).HasMaxLength(64);
         });
 
         modelBuilder.Entity<EmployeeIdentifier>(e =>
@@ -193,7 +195,27 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
         {
             e.Property(x => x.Name).HasMaxLength(128);
             e.Property(x => x.Code).HasMaxLength(32);
+            e.Property(x => x.GateExternalIds).HasMaxLength(512);
             e.HasOne(x => x.ApprovalMatrix).WithMany().OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<IntegrationEvent>(e =>
+        {
+            e.Property(x => x.Source).HasMaxLength(32);
+            e.Property(x => x.ExternalId).HasMaxLength(128);
+            e.Property(x => x.Type).HasMaxLength(32);
+            e.Property(x => x.AccessPointId).HasMaxLength(128);
+            e.Property(x => x.CredentialValue).HasMaxLength(64);
+            e.Property(x => x.Direction).HasMaxLength(8);
+            e.Property(x => x.Decision).HasMaxLength(8);
+            e.Property(x => x.DecisionReason).HasMaxLength(32);
+            e.Property(x => x.TraceId).HasMaxLength(64);
+            e.HasIndex(x => new { x.Source, x.ExternalId }).IsUnique();
+            e.HasIndex(x => x.OccurredAt);
+            e.HasIndex(x => x.EmployeeId);
+            e.HasIndex(x => x.CredentialValue);
+            e.HasOne(x => x.Site).WithMany().HasForeignKey(x => x.SiteId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<ParkingPermitType>(e =>
@@ -209,6 +231,7 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
         {
             e.Property(x => x.FunctionTitle).HasMaxLength(128);
             e.Property(x => x.PermitNumber).HasMaxLength(64);
+            e.Property(x => x.ParkingSystemSyncError).HasMaxLength(512);
             e.HasIndex(x => x.PermitNumber);
             e.HasIndex(x => x.EmployeeId);
             e.HasOne(x => x.Employee).WithMany()

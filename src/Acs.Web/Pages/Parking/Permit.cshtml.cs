@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Data;
+using Acs.Infrastructure.Integration;
 using Acs.Infrastructure.Workflow;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -9,7 +10,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Acs.Web.Pages.Parking;
 
 /// <summary>Detail parkovacího povolení: parametry, průběh schvalování, tisk.</summary>
-public class PermitModel(AcsDbContext db, ParkingAdminService parkingAdmin, RequestWorkflowService workflow) : PageModel
+public class PermitModel(AcsDbContext db, ParkingAdminService parkingAdmin, RequestWorkflowService workflow,
+    ParkingProvisioningService provisioning) : PageModel
 {
     public AccessRequestItem Item { get; private set; } = null!;
     public ParkingPermit Permit => Item.ParkingPermit!;
@@ -21,6 +23,9 @@ public class PermitModel(AcsDbContext db, ParkingAdminService parkingAdmin, Requ
 
     /// <summary>Aktivní místa v areálech povolení (pro výběr).</summary>
     public List<ParkingSpot> AvailableSpots { get; private set; } = [];
+
+    /// <summary>Řádek „Parkovací systém“ se ukazuje správci, když je předávání zapnuté nebo už proběhlo.</summary>
+    public bool ShowParkingSystemSync { get; private set; }
 
     [TempData] public string? Message { get; set; }
     [TempData] public string? ErrorMessage { get; set; }
@@ -53,6 +58,9 @@ public class PermitModel(AcsDbContext db, ParkingAdminService parkingAdmin, Requ
             .ToListAsync();
         CanPrint = item.Status == RequestStatus.Issued && (Permit.PermitType?.PrintsWindshieldCard ?? false);
         CanAssignSpot = isAdmin && item.Status == RequestStatus.Issued;
+        ShowParkingSystemSync = isAdmin && (Permit.ParkingSystemSyncedAt is not null
+                                            || Permit.ParkingSystemSyncError is not null
+                                            || await provisioning.IsEnabledAsync());
         if (CanAssignSpot)
         {
             var siteIds = Permit.Sites.Select(s => s.SiteId).ToList();
@@ -63,6 +71,23 @@ public class PermitModel(AcsDbContext db, ParkingAdminService parkingAdmin, Requ
         }
 
         return Page();
+    }
+
+    public async Task<IActionResult> OnPostPushToParkingSystemAsync(int id)
+    {
+        if (!(User.IsInRole("Admin") || User.IsInRole("ParkingAdmin")))
+            return Forbid();
+
+        var employeeId = await db.ParkingPermits.Where(p => p.Id == id).Select(p => (int?)p.EmployeeId).FirstOrDefaultAsync();
+        if (employeeId is null)
+            return NotFound();
+
+        var result = await provisioning.SyncEmployeeAsync(employeeId.Value, User.Identity?.Name);
+        if (result.Success)
+            Message = $"Předáno do parkovacího systému: {result.Message}.";
+        else
+            ErrorMessage = $"Předání do parkovacího systému se nepovedlo: {result.Message}.";
+        return RedirectToPage(new { id });
     }
 
     public async Task<IActionResult> OnPostAssignSpotAsync(int id, int? parkingSpotId)

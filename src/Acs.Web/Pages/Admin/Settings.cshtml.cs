@@ -1,18 +1,28 @@
 using Acs.Infrastructure.Audit;
+using Acs.Infrastructure.Integration;
 using Acs.Infrastructure.Settings;
 using Acs.Infrastructure.Sync;
 using Acs.Infrastructure.WinPak;
+using Acs.Web.Api;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Acs.Web.Pages.Admin;
 
-public class SettingsModel(SettingsService settings, AuditService audit, WinPakClient winPak, IHttpClientFactory httpClientFactory) : PageModel
+public class SettingsModel(SettingsService settings, AuditService audit, WinPakClient winPak,
+    IHttpClientFactory httpClientFactory, ParkingConnectorClient parkingConnector) : PageModel
 {
     public Dictionary<string, string?> Values { get; } = new();
 
     [TempData] public string? SavedSection { get; set; }
     [TempData] public string? WinPakTestResult { get; set; }
+    [TempData] public string? ParkingSystemTestResult { get; set; }
+
+    /// <summary>Je nastavený klíč integračního API (hodnota se nezobrazuje)?</summary>
+    public bool ParkingApiKeySet { get; private set; }
+
+    /// <summary>Absolutní adresa integračního API pro předání dodavateli parkovacího systému.</summary>
+    public string IntegrationApiUrl => $"{Request.Scheme}://{Request.Host}{IntegrationApi.Prefix}";
 
     private static readonly string[] DisplayedKeys =
     [
@@ -34,6 +44,9 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         SettingKeys.CardsSource, SettingKeys.CardsApiUrl, SettingKeys.CardsApiSubType, SettingKeys.CardsApiAuth, SettingKeys.CardsApiKeyHeader,
         SettingKeys.CardsApiTokenUrl, SettingKeys.CardsApiTokenBody, SettingKeys.CardsApiTokenField,
         SettingKeys.CardsApiUser, SettingKeys.CardsApiIgnoreTls,
+        SettingKeys.ParkingSystemEnabled, SettingKeys.ParkingSystemAllowedIps, SettingKeys.ParkingSystemCacheTtlSeconds,
+        SettingKeys.ParkingSystemExitAlwaysAllowed, SettingKeys.ParkingSystemConnectorBaseUrl,
+        SettingKeys.ParkingSystemPushEnabled,
     ];
 
     /// <summary>Výsledek zkoušky integračního API karet (surová odpověď a co z ní konektor přečte).</summary>
@@ -48,6 +61,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
     {
         foreach (var key in DisplayedKeys)
             Values[key] = await settings.GetAsync(key);
+        ParkingApiKeySet = !string.IsNullOrEmpty(await settings.GetAsync(SettingKeys.ParkingSystemApiKey));
 
         WinPakAdminUrl = Values[SettingKeys.WinPakBaseUrl] is { Length: > 0 } baseUrl
                          && Uri.TryCreate(baseUrl.TrimEnd('/') + "/ui", UriKind.Absolute, out var uri)
@@ -257,6 +271,57 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         await settings.SetAsync(SettingKeys.SmtpFrom, smtpFrom, UserName);
         await settings.SetAsync(SettingKeys.SmtpUseTls, smtpUseTls == "true" ? "true" : "false", UserName);
         return await SavedAsync("SMTP");
+    }
+
+    public async Task<IActionResult> OnPostParkingSystemAsync(
+        string? parkingSystemEnabled, string? parkingSystemApiKey, string? parkingSystemAllowedIps,
+        string? parkingSystemCacheTtlSeconds, string? parkingSystemExitAlwaysAllowed,
+        string? parkingSystemConnectorBaseUrl, string? parkingSystemConnectorApiKey, string? parkingSystemPushEnabled)
+    {
+        await settings.SetAsync(SettingKeys.ParkingSystemEnabled, Flag(parkingSystemEnabled), UserName);
+        await settings.SetIfProvidedAsync(SettingKeys.ParkingSystemApiKey, parkingSystemApiKey, UserName);
+        await settings.SetAsync(SettingKeys.ParkingSystemAllowedIps, parkingSystemAllowedIps, UserName);
+        await settings.SetAsync(SettingKeys.ParkingSystemCacheTtlSeconds, parkingSystemCacheTtlSeconds, UserName);
+        await settings.SetAsync(SettingKeys.ParkingSystemExitAlwaysAllowed, Flag(parkingSystemExitAlwaysAllowed), UserName);
+        await settings.SetAsync(SettingKeys.ParkingSystemConnectorBaseUrl, parkingSystemConnectorBaseUrl, UserName);
+        await settings.SetIfProvidedAsync(SettingKeys.ParkingSystemConnectorApiKey, parkingSystemConnectorApiKey, UserName);
+        await settings.SetAsync(SettingKeys.ParkingSystemPushEnabled, Flag(parkingSystemPushEnabled), UserName);
+        return await SavedAsync("Parkovací systém");
+    }
+
+    public async Task<IActionResult> OnPostParkingSystemTestAsync(
+        string? parkingSystemEnabled, string? parkingSystemApiKey, string? parkingSystemAllowedIps,
+        string? parkingSystemCacheTtlSeconds, string? parkingSystemExitAlwaysAllowed,
+        string? parkingSystemConnectorBaseUrl, string? parkingSystemConnectorApiKey, string? parkingSystemPushEnabled)
+    {
+        await OnPostParkingSystemAsync(parkingSystemEnabled, parkingSystemApiKey, parkingSystemAllowedIps,
+            parkingSystemCacheTtlSeconds, parkingSystemExitAlwaysAllowed, parkingSystemConnectorBaseUrl,
+            parkingSystemConnectorApiKey, parkingSystemPushEnabled);
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            if (!await parkingConnector.IsConfiguredAsync(cts.Token))
+            {
+                ParkingSystemTestResult = "adresa konektoru není vyplněná — ACS do parkovacího systému nezapisuje "
+                                          + "(online autorizace a hlášení událostí přes integrační API fungují i bez konektoru)";
+            }
+            else
+            {
+                var caps = await parkingConnector.GetCapabilitiesAsync(cts.Token);
+                ParkingSystemTestResult = caps is null
+                    ? "konektor neodpověděl"
+                    : $"OK — {caps.Connector.Name} {caps.Connector.Version}"
+                      + (caps.Connector.TargetSystem is { Length: > 0 } t ? $" ({t})" : "")
+                      + $", kontrakt {caps.ContractVersion}, operace: {string.Join(", ", caps.Operations)}"
+                      + (caps.SupportsValidity == false ? " — POZOR: systém neumí platnost, expirace řeší ACS" : "");
+            }
+        }
+        catch (Exception ex)
+        {
+            ParkingSystemTestResult = $"Chyba: {ex.Message}";
+        }
+
+        return RedirectToPage();
     }
 
     private async Task<IActionResult> SavedAsync(string section)
