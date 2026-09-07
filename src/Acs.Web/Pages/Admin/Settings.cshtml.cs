@@ -129,6 +129,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
             WinPakTestResult = $"Chyba: {ex.Message}";
         }
 
+        ActiveSection = "winpak";
         return RedirectToPage();
     }
 
@@ -205,6 +206,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         if (string.IsNullOrWhiteSpace(employeeNo))
         {
             CardsApiProbe = "Zadejte osobní číslo zaměstnance, na kterém se má API vyzkoušet.";
+            ActiveSection = "cards";
             return RedirectToPage();
         }
 
@@ -257,6 +259,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
             CardsApiProbe = $"Zkouška selhala: {ex.GetBaseException().Message}\n\nKdyž jde o spojení: adresa není dostupná z nodů ACS (DNS, firewall), nebo certifikát interní CA (zaškrtněte „Neověřovat certifikát TLS“ a uložte). Když jde o přihlášení tokenem: zkontrolujte adresu přihlašovacího endpointu a tvar těla podle Swaggeru služby.";
         }
 
+        ActiveSection = "cards";
         return RedirectToPage();
     }
 
@@ -321,6 +324,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
             ParkingSystemTestResult = $"Chyba: {ex.Message}";
         }
 
+        ActiveSection = "parking";
         return RedirectToPage();
     }
 
@@ -328,6 +332,16 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
     {
         await audit.LogAsync(UserName, "settings-updated", "Settings", section);
         SavedSection = section;
+        ActiveSection = SectionIds.GetValueOrDefault(section);
         return RedirectToPage();
     }
+
+    /// <summary>Po uložení nebo zkoušce se stránka otevře na téže sekci.</summary>
+    [TempData] public string? ActiveSection { get; set; }
+
+    private static readonly Dictionary<string, string> SectionIds = new()
+    {
+        ["Obecné"] = "general", ["Active Directory"] = "ldap", ["WIN-PAK"] = "winpak", ["Zdroj zaměstnanců"] = "employees",
+        ["Automatizace"] = "automation", ["Karty"] = "cards", ["Parkovací systém"] = "parking", ["SMTP"] = "smtp",
+    };
 }

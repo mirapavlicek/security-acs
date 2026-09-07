@@ -11,8 +11,19 @@
     <div class="alert alert-success">Sekce „@Model.SavedSection“ uložena.</div>
 }
 
-<div class="settings-grid">
-<div class="card">
+<div class="settings-layout" data-section="@Model.ActiveSection">
+<nav class="settings-nav" aria-label="Sekce nastavení">
+    <a href="#s-general" data-panel="s-general">Obecné</a>
+    <a href="#s-ldap" data-panel="s-ldap">Active Directory (LDAP)</a>
+    <a href="#s-winpak" data-panel="s-winpak">WIN-PAK konektor</a>
+    <a href="#s-employees" data-panel="s-employees">Zdroj zaměstnanců</a>
+    <a href="#s-automation" data-panel="s-automation">Automatizace</a>
+    <a href="#s-cards" data-panel="s-cards">Karty (identifikátory zaměstnanců)</a>
+    <a href="#s-parking" data-panel="s-parking">Parkovací systém (GreenCenter)</a>
+    <a href="#s-smtp" data-panel="s-smtp">Notifikace (SMTP)</a>
+</nav>
+<div class="settings-panels">
+<div class="card settings-panel" id="s-general" data-title="Obecné">
     <h2 style="margin-top:0">Obecné</h2>
     <form method="post" asp-page-handler="General">
         <label>Název aplikace</label>
@@ -28,7 +39,7 @@
     </form>
 </div>
 
-<div class="card">
+<div class="card settings-panel" id="s-ldap" data-title="Active Directory (LDAP)">
     <h2 style="margin-top:0">Active Directory (LDAP)</h2>
     <form method="post" asp-page-handler="Ldap">
         <div class="checkbox-row">
@@ -68,7 +79,7 @@
     </form>
 </div>
 
-<div class="card">
+<div class="card settings-panel" id="s-winpak" data-title="WIN-PAK konektor">
     <h2 style="margin-top:0">WIN-PAK konektor</h2>
     <form method="post" asp-page-handler="WinPak">
         <label>Adresa konektoru</label>
@@ -107,7 +118,7 @@
     }
 </div>
 
-<div class="card">
+<div class="card settings-panel" id="s-employees" data-title="Zdroj zaměstnanců">
     <h2 style="margin-top:0">Zdroj zaměstnanců</h2>
     <form method="post" asp-page-handler="Employees">
         <label>Režim (Ad = načítání z Active Directory; používá LDAP nastavení a servisní účet)</label>
@@ -145,7 +156,7 @@
     </form>
 </div>
 
-<div class="card">
+<div class="card settings-panel" id="s-automation" data-title="Automatizace">
     <h2 style="margin-top:0">Automatizace</h2>
     <p class="muted">Co má systém dělat sám, bez zásahu obsluhy. Přehled stavu je na stránce <a asp-page="Automation">Automatizace</a>.</p>
     <form method="post" asp-page-handler="Automation">
@@ -191,7 +202,7 @@
     </form>
 </div>
 
-<div class="card">
+<div class="card settings-panel" id="s-cards" data-title="Karty (identifikátory zaměstnanců)">
     <h2 style="margin-top:0">Karty (identifikátory zaměstnanců)</h2>
     <p class="muted">Zaměstnanci se načítají z AD; čísla karet buď z MSSQL dotazu, nebo z integrační služby, která se ptá po osobním čísle.</p>
     @if (Model.CardsApiProbe is not null)
@@ -271,7 +282,7 @@
     </form>
 </div>
 
-<div class="card">
+<div class="card settings-panel" id="s-parking" data-title="Parkovací systém (GreenCenter)">
     <h2 style="margin-top:0">Parkovací systém (GreenCenter)</h2>
     <p class="muted">
         Vjezdy na SPZ. Parkovací systém se dotazuje ACS přes integrační API
@@ -319,7 +330,7 @@
     }
 </div>
 
-<div class="card">
+<div class="card settings-panel" id="s-smtp" data-title="Notifikace (SMTP)">
     <h2 style="margin-top:0">Notifikace (SMTP)</h2>
     <form method="post" asp-page-handler="Smtp">
         <label>SMTP server</label>
@@ -341,3 +352,33 @@
     </form>
 </div>
 </div>
+</div>
+
+@section Scripts {
+<script>
+// Nastavení jako menu vlevo a jedno okno vpravo: zobrazí se jen zvolená sekce.
+// Sekce je v adrese (#s-karty), po uložení se vrátí ta uložená; bez JS zůstávají všechny.
+(() => {
+    const layout = document.querySelector('.settings-layout');
+    const links = [...document.querySelectorAll('.settings-nav a')];
+    const panels = [...document.querySelectorAll('.settings-panel')];
+    if (!layout || panels.length === 0) return;
+    layout.classList.add('settings-js');
+
+    const show = (id, push) => {
+        const target = panels.some(p => p.id === id) ? id : panels[0].id;
+        for (const panel of panels) panel.classList.toggle('active', panel.id === target);
+        for (const link of links) link.classList.toggle('active', link.dataset.panel === target);
+        if (push && location.hash !== '#' + target) history.replaceState(null, '', '#' + target);
+    };
+
+    for (const link of links) {
+        link.addEventListener('click', e => { e.preventDefault(); show(link.dataset.panel, true); });
+    }
+    window.addEventListener('hashchange', () => show(location.hash.slice(1), false));
+
+    const initial = location.hash ? location.hash.slice(1) : (layout.dataset.section ? 's-' + layout.dataset.section : panels[0].id);
+    show(initial, true);
+})();
+</script>
+}
