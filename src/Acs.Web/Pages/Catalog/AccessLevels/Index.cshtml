@@ -76,7 +76,13 @@
                 <td>
                     @if (level.Entries.Count > 0)
                     {
-                        @level.Entries.Select(e => e.ReaderExternalId ?? e.ReaderName).Distinct().Count()
+                        var total = level.Entries.Select(e => e.ReaderExternalId ?? e.ReaderName).Distinct().Count();
+                        var unknown = level.Entries.Where(e => e.ReaderId == null).Select(e => e.ReaderExternalId ?? e.ReaderName).Distinct().Count();
+                        @total
+                        @if (unknown > 0)
+                        {
+                            <span class="muted" title="Čtečky ve stromu WIN-PAKu, ke kterým ACS nemá záznam — viz detail."> (@unknown ACS nezná)</span>
+                        }
                     }
                     else if (level.AccessTree is { Length: > 0 } && Acs.Infrastructure.Sync.AccessTreeParser.Parse(level.AccessTree) is null)
                     {
