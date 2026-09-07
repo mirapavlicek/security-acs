@@ -11,7 +11,8 @@ public record PermitCardView(
     string? FunctionTitle,
     string? PermitNumber,
     DateTime? ValidTo,
-    string? HolderName)
+    string? HolderName,
+    string? SpotCode = null)
 {
     public const string DefaultTitle = "POVOLENÍ K PARKOVÁNÍ";
 
@@ -44,6 +45,7 @@ public record PermitCardView(
             FunctionTitle: type.Binding == PermitBinding.Function ? permit.FunctionTitle : null,
             PermitNumber: permit.PermitNumber,
             ValidTo: permit.ValidTo,
-            HolderName: type.Binding == PermitBinding.Function ? holder?.FullName : null);
+            HolderName: type.Binding == PermitBinding.Function ? holder?.FullName : null,
+            SpotCode: permit.ParkingSpot?.Code);
     }
 }

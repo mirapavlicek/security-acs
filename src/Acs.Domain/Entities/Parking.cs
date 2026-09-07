@@ -22,6 +22,33 @@ public class Site
     public int SortOrder { get; set; }
 }
 
+/// <summary>
+/// Konkrétní parkovací místo v areálu (stání, na které se vyhrazuje povolení). Na místo lze
+/// přiřadit více vydaných povolení; cedule A4 „Vyhrazené parkování“ pak nese SPZ všech
+/// platných povolení na místě.
+/// </summary>
+public class ParkingSpot
+{
+    public int Id { get; set; }
+
+    public int SiteId { get; set; }
+    public Site? Site { get; set; }
+
+    /// <summary>Označení místa (např. „A-12“) — unikátní v rámci areálu.</summary>
+    public required string Code { get; set; }
+
+    /// <summary>Kde místo je (např. „před pavilonem 5, u vjezdu“).</summary>
+    public string? Location { get; set; }
+    public string? Note { get; set; }
+
+    public bool IsActive { get; set; } = true;
+    public int SortOrder { get; set; }
+
+    /// <summary>„A-12 · Motol“ (vyžaduje načtený areál).</summary>
+    public string DisplayName()
+        => Site is null ? Code : $"{Code} · {Site.Name}";
+}
+
 /// <summary>Na co je parkovací povolení vázáno.</summary>
 public enum PermitBinding
 {
@@ -94,6 +121,10 @@ public class ParkingPermit
 
     /// <summary>Registrační značky (u vazby na SPZ).</summary>
     public List<ParkingPermitPlate> Plates { get; set; } = [];
+
+    /// <summary>Vyhrazené parkovací místo (null = povolení bez konkrétního místa).</summary>
+    public int? ParkingSpotId { get; set; }
+    public ParkingSpot? ParkingSpot { get; set; }
 
     public DateTime ValidFrom { get; set; }
     public DateTime? ValidTo { get; set; }

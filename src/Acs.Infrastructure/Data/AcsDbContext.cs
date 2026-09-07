@@ -36,6 +36,7 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
     public DbSet<ParkingPermit> ParkingPermits => Set<ParkingPermit>();
     public DbSet<ParkingPermitSite> ParkingPermitSites => Set<ParkingPermitSite>();
     public DbSet<ParkingPermitPlate> ParkingPermitPlates => Set<ParkingPermitPlate>();
+    public DbSet<ParkingSpot> ParkingSpots => Set<ParkingSpot>();
     public DbSet<Setting> Settings => Set<Setting>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
@@ -214,6 +215,19 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
                 .HasForeignKey(x => x.PermitTypeId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.IssuedByUser).WithMany()
                 .HasForeignKey(x => x.IssuedByUserId).OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(x => x.ParkingSpotId);
+            e.HasOne(x => x.ParkingSpot).WithMany()
+                .HasForeignKey(x => x.ParkingSpotId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ParkingSpot>(e =>
+        {
+            e.Property(x => x.Code).HasMaxLength(32);
+            e.Property(x => x.Location).HasMaxLength(256);
+            e.Property(x => x.Note).HasMaxLength(512);
+            e.HasIndex(x => new { x.SiteId, x.Code }).IsUnique();
+            e.HasOne(x => x.Site).WithMany()
+                .HasForeignKey(x => x.SiteId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ParkingPermitSite>(e =>
