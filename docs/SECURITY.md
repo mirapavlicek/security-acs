@@ -36,6 +36,12 @@ Shrnutí bezpečnostního review a zavedených opatření.
 - **Tajemství** — šifrovaná (ASP.NET Data Protection, klíče v DB) — LDAP bind
   heslo, API klíč konektoru, MSSQL connection string, SMTP heslo.
 - **LDAP** — hodnoty ve filtru se escapují (prevence LDAP injection).
+- **Přihlášení účtem Windows (Negotiate)** — identitu ověřuje Kestrel proti doméně
+  (Kerberos keytab `KRB5_KTNAME`, `600`, vlastník `acs`, mimo Git); aplikace heslo ani
+  ticket neukládá, vydává stejnou cookie jako formulář. Token se zpracovává jen na
+  `/Account/WindowsLogin`, jinde se `Authorization: Negotiate` ignoruje; selhání končí
+  na formuláři, ne chybou 500. Doménový účet se jménem lokálního účtu (`admin`) se
+  odmítne, volitelně omezení na povolené domény. Viz `docs/prihlaseni-windows.md`.
 - **Konektor** — ochrana API klíčem (fail-closed, konstantní čas porovnání).
 - **Audit** — přihlášení, změny číselníků, rozhodnutí, synchronizace.
 

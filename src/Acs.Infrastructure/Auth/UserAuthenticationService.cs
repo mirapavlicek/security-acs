@@ -7,7 +7,8 @@ using Microsoft.Extensions.Logging;
 namespace Acs.Infrastructure.Auth;
 
 /// <summary>
-/// Přihlášení: nejdřív lokální účty (admin), poté Active Directory.
+/// Přihlášení: nejdřív lokální účty (admin), poté Active Directory — heslem (LDAP bind)
+/// nebo účtem Windows (Negotiate: Kerberos / NTLM, viz <see cref="SignInWindowsIdentityAsync"/>).
 /// AD uživatelé se při prvním přihlášení automaticky založí v DB
 /// a spárují se zaměstnancem podle AD účtu.
 /// </summary>
@@ -41,15 +42,61 @@ public class UserAuthenticationService(
         if (ldapUser is null)
             return null;
 
+        return await UpsertAdUserAsync(ldapUser.UserName, ldapUser, ct);
+    }
+
+    /// <summary>
+    /// Přihlášení účtem Windows (Negotiate — Kerberos / NTLM): identitu už ověřil Kestrel
+    /// proti doméně, tady se jen namapuje na uživatele ACS. Heslo aplikace nemá, proto se
+    /// atributy a skupiny (role) načtou servisním účtem; když to nejde, zůstávají hodnoty z DB.
+    /// Vrací <c>null</c>, je-li účet z nepovolené domény nebo uživatel neaktivní.
+    /// </summary>
+    public async Task<AppUser?> SignInWindowsIdentityAsync(string identityName, CancellationToken ct = default)
+    {
+        var account = WindowsAccountName.Parse(identityName);
+        if (account.Account.Length == 0)
+            return null;
+
+        if (!account.IsDomainAllowed(await settings.GetAsync(SettingKeys.SsoAllowedDomains, ct)))
+        {
+            logger.LogWarning("Přihlášení Windows odmítnuto: účet {Identity} není z povolené domény.", identityName);
+            return null;
+        }
+
+        // Účet stroje (KONTO$) nikdy nepatří uživateli.
+        if (account.Account.EndsWith('$'))
+            return null;
+
+        var ldapUser = await ldap.LookupAsync(account.Account, ct);
+        return await UpsertAdUserAsync(ldapUser?.UserName ?? account.Account, ldapUser, ct);
+    }
+
+    /// <summary>
+    /// Založí / aktualizuje doménového uživatele ACS. Při prvním přihlášení se spáruje se
+    /// zaměstnancem podle AD účtu. <paramref name="ldapUser"/> je <c>null</c>, když se
+    /// atributy z AD nepodařilo načíst — pak se jméno, e-mail ani role nemění.
+    /// </summary>
+    private async Task<AppUser?> UpsertAdUserAsync(string userName, LdapUserInfo? ldapUser, CancellationToken ct)
+    {
+        // Kerberos vrací účet tak, jak ho zadal uživatel / jak je v ticketu — porovnává se bez ohledu na velikost písmen.
+        var lowerName = userName.ToLowerInvariant();
         var user = await db.Users.FirstOrDefaultAsync(
-            u => u.UserName == ldapUser.UserName && !u.IsLocal, ct);
+            u => u.UserName.ToLower() == lowerName, ct);
+        if (user is { IsLocal: true })
+        {
+            // Jméno je obsazené lokálním účtem (např. „admin“) — ten se přihlašuje jen heslem,
+            // doménový uživatel stejného jména by převzal jeho práva.
+            logger.LogWarning("Doménové přihlášení {User} odmítnuto: jméno patří lokálnímu účtu.", userName);
+            return null;
+        }
+
         if (user is null)
         {
             var employee = await db.Employees.FirstOrDefaultAsync(
-                e => e.AdAccount == ldapUser.UserName, ct);
+                e => e.AdAccount != null && e.AdAccount.ToLower() == lowerName, ct);
             user = new AppUser
             {
-                UserName = ldapUser.UserName,
+                UserName = userName,
                 IsLocal = false,
                 Roles = AppRole.Employee,
                 EmployeeId = employee?.Id,
@@ -60,15 +107,19 @@ public class UserAuthenticationService(
         if (!user.IsActive)
             return null;
 
-        user.DisplayName = ldapUser.DisplayName ?? user.DisplayName;
-        user.Email = ldapUser.Email ?? user.Email;
         user.LastLoginAt = DateTime.UtcNow;
 
-        // Mapování AD skupin na role: je-li nakonfigurováno, role AD uživatele
-        // se při každém přihlášení přepočítají podle členství ve skupinách.
-        var mapText = await settings.GetAsync(SettingKeys.LdapGroupRoleMap, ct);
-        if (!string.IsNullOrWhiteSpace(mapText))
-            user.Roles = ResolveRolesFromGroups(ldapUser.Groups, mapText);
+        if (ldapUser is not null)
+        {
+            user.DisplayName = ldapUser.DisplayName ?? user.DisplayName;
+            user.Email = ldapUser.Email ?? user.Email;
+
+            // Mapování AD skupin na role: je-li nakonfigurováno, role AD uživatele
+            // se při každém přihlášení přepočítají podle členství ve skupinách.
+            var mapText = await settings.GetAsync(SettingKeys.LdapGroupRoleMap, ct);
+            if (!string.IsNullOrWhiteSpace(mapText))
+                user.Roles = ResolveRolesFromGroups(ldapUser.Groups, mapText);
+        }
 
         await db.SaveChangesAsync(ct);
         return user;

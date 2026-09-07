@@ -1,7 +1,11 @@
 using System.Net;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Connections.Features;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.AspNetCore.Mvc.Testing.Handlers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,6 +26,35 @@ public sealed class AcsWebFactory : WebApplicationFactory<Program>, IDisposable
         builder.UseSetting("Database:Provider", "Sqlite");
         builder.UseSetting("Security:LoginRateLimit", "1000");
         builder.UseSetting("ConnectionStrings:Default", $"Data Source={_dbPath}");
+        // Negotiate handler (přihlášení Windows) vyžaduje connection features Kestrelu, které TestServer nemá.
+        builder.ConfigureTestServices(services =>
+            services.AddSingleton<IStartupFilter, ConnectionFeaturesStartupFilter>());
+    }
+
+    /// <summary>Doplní každému požadavku připojení „na jedno použití“ (Items + OnCompleted), jak to dělá Kestrel.</summary>
+    private sealed class ConnectionFeaturesStartupFilter : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use(async (context, nextMiddleware) =>
+            {
+                if (context.Features.Get<IConnectionItemsFeature>() is null)
+                {
+                    var connection = new FakeConnectionFeatures();
+                    context.Features.Set<IConnectionItemsFeature>(connection);
+                    context.Features.Set<IConnectionCompleteFeature>(connection);
+                }
+                await nextMiddleware(context);
+            });
+            next(app);
+        };
+    }
+
+    private sealed class FakeConnectionFeatures : IConnectionItemsFeature, IConnectionCompleteFeature
+    {
+        // ConnectionItems (jako v Kestrelu) vrací pro neznámý klíč null místo výjimky.
+        public IDictionary<object, object?> Items { get; set; } = new Microsoft.AspNetCore.Connections.ConnectionItems();
+        public void OnCompleted(Func<object, Task> callback, object state) { }
     }
 
     public new void Dispose()

@@ -46,6 +46,10 @@ for NODE in "${NODES[@]}"; do
         "$SCRIPT_DIR/systemd/acs-updater.timer" \
         "$SSH_USER@$NODE:/tmp/"
     scp "$SCRIPT_DIR/bin/acs-updater.sh" "$SSH_USER@$NODE:/tmp/acs-updater.sh"
+    # Volitelný Kerberos keytab pro přihlášení účtem Windows (docs/prihlaseni-windows.md).
+    if [[ -f "$SCRIPT_DIR/acs.keytab" ]]; then
+        scp "$SCRIPT_DIR/acs.keytab" "$SSH_USER@$NODE:/tmp/acs.keytab"
+    fi
 
     # 2. Instalace na nodu
     ssh "$SSH_USER@$NODE" REPO_URL="$REPO_URL" 'bash -s' <<'REMOTE'
@@ -59,8 +63,10 @@ if ! dotnet --list-sdks 2>/dev/null | grep -q '^10\.'; then
           && $SUDO ln -sf /usr/lib/dotnet/dotnet /usr/bin/dotnet)
 fi
 $SUDO dnf install -y git curl policycoreutils-python-utils || true
-# NTLM/Negotiate pro interní služby přihlašované účtem domény (integrační API karet).
-$SUDO dnf install -y krb5-libs gssntlmssp || true
+# Kerberos/NTLM (GSSAPI): přihlášení uživatelů účtem Windows (Negotiate, keytab v KRB5_KTNAME)
+# a interní služby přihlašované účtem domény (integrační API karet). krb5-workstation dává
+# klist/kinit pro kontrolu keytabu.
+$SUDO dnf install -y krb5-libs krb5-workstation gssntlmssp || true
 # Písmo s českou diakritikou pro generování PDF (kartičky parkovacích povolení, reporty).
 $SUDO dnf install -y dejavu-sans-fonts || true
 
@@ -69,6 +75,10 @@ id acs >/dev/null 2>&1 || $SUDO useradd --system --home /opt/acs --shell /sbin/n
 $SUDO mkdir -p /opt/acs/{releases,bin} /etc/acs
 $SUDO mv /tmp/acs.env /etc/acs/acs.env
 $SUDO chmod 600 /etc/acs/acs.env && $SUDO chown acs:acs /etc/acs/acs.env
+if [[ -f /tmp/acs.keytab ]]; then
+    $SUDO mv /tmp/acs.keytab /etc/acs/acs.keytab
+    $SUDO chmod 600 /etc/acs/acs.keytab && $SUDO chown acs:acs /etc/acs/acs.keytab
+fi
 $SUDO mv /tmp/acs-updater.sh /opt/acs/bin/acs-updater.sh
 $SUDO chmod +x /opt/acs/bin/acs-updater.sh
 

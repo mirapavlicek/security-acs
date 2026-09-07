@@ -11,10 +11,11 @@
     <div class="alert alert-success">Sekce „@Model.SavedSection“ uložena.</div>
 }
 
-<div class="settings-layout" data-section="@Model.ActiveSection">
+<div class="settings-layout" data-section="@(Model.ActiveSection ?? Model.SectionFromQuery)">
 <nav class="settings-nav" aria-label="Sekce nastavení">
     <a href="#s-general" data-panel="s-general">Obecné</a>
     <a href="#s-ldap" data-panel="s-ldap">Active Directory (LDAP)</a>
+    <a href="#s-sso" data-panel="s-sso">Přihlášení Windows (NTLM / Kerberos)</a>
     <a href="#s-winpak" data-panel="s-winpak">WIN-PAK konektor</a>
     <a href="#s-employees" data-panel="s-employees">Zdroj zaměstnanců</a>
     <a href="#s-automation" data-panel="s-automation">Automatizace</a>
@@ -77,6 +78,76 @@
         <textarea name="LdapGroupRoleMap" rows="4" placeholder="ACS-Spravci=Admin&#10;ACS-SpravciKaret=CardAdmin&#10;ACS-Schvalovatele=Approver">@Model.Values[SettingKeys.LdapGroupRoleMap]</textarea>
         <button class="btn" type="submit">Uložit</button>
     </form>
+</div>
+
+<div class="card settings-panel" id="s-sso" data-title="Přihlášení Windows (NTLM / Kerberos)">
+    <h2 style="margin-top:0">Přihlášení Windows (NTLM / Kerberos)</h2>
+    <p class="muted">
+        Jednotné přihlášení z doménových PC: prohlížeč se prokáže účtem přihlášeného uživatele
+        (<code>WWW-Authenticate: Negotiate</code> — Kerberos, případně NTLM), aplikace identitu namapuje na
+        uživatele ACS a vydá běžnou přihlašovací cookie. Role se načtou z AD skupin servisním účtem
+        (sekce Active Directory). Formulář se jménem a heslem zůstává dostupný — lokální
+        <code>admin</code> i záloha při výpadku Kerberosu (<code>/Account/Login?manual=1</code>).
+    </p>
+    <form method="post" asp-page-handler="Sso">
+        <div class="checkbox-row">
+            <input type="checkbox" id="SsoEnabled" name="SsoEnabled" value="true"
+                   checked="@(Model.Values[SettingKeys.SsoEnabled] == "true")" />
+            <label for="SsoEnabled">Povolit přihlášení účtem Windows (tlačítko na přihlašovací stránce, adresa <code>/Account/WindowsLogin</code>)</label>
+        </div>
+        <div class="checkbox-row">
+            <input type="checkbox" id="SsoAutoLogin" name="SsoAutoLogin" value="true"
+                   checked="@(Model.Values[SettingKeys.SsoAutoLogin] == "true")" />
+            <label for="SsoAutoLogin">Přihlašovat automaticky — přihlašovací stránka rovnou vyzve prohlížeč, formulář se zobrazí až po selhání nebo odhlášení</label>
+        </div>
+        <label>Povolené domény účtu (NetBIOS nebo DNS, oddělené čárkou; prázdné = libovolná doména, které Kerberos důvěřuje)</label>
+        <input type="text" name="SsoAllowedDomains" value="@Model.Values[SettingKeys.SsoAllowedDomains]" placeholder="FNMH, fnmh.local" />
+        <button class="btn" type="submit">Uložit</button>
+        @if (Model.Values[SettingKeys.SsoEnabled] == "true")
+        {
+            <a class="btn btn-ghost" asp-page="/Account/WindowsLogin" asp-route-test="1">Otestovat přihlášení Windows</a>
+        }
+    </form>
+    @if ((Model.SsoTestResult ?? Model.SsoTestFromQuery) is { } ssoTest)
+    {
+        <p class="muted">Test přihlášení Windows: @ssoTest</p>
+    }
+
+    <h3>Stav na tomto nodu</h3>
+    <table class="data">
+        <tbody>
+            <tr><th style="width:14rem">Server</th><td>@Model.SsoHostInfo</td></tr>
+            <tr>
+                <th>Keytab (<code>KRB5_KTNAME</code>)</th>
+                <td>
+                    @if (Model.SsoKeytabPath is null)
+                    {
+                        <span class="badge">nenastaveno</span>
+                        <span class="muted">— na Linuxu je pro Kerberos nutný keytab se SPN <code>HTTP/@Model.SsoHostName</code>; proměnná se nastavuje v <code>/etc/acs/acs.env</code>.</span>
+                    }
+                    else if (Model.SsoKeytabExists)
+                    {
+                        <code>@Model.SsoKeytabPath</code> <span class="badge badge-primary">soubor nalezen</span>
+                    }
+                    else
+                    {
+                        <code>@Model.SsoKeytabPath</code> <span class="badge badge-danger">soubor chybí nebo není čitelný</span>
+                    }
+                </td>
+            </tr>
+            <tr>
+                <th>Očekávané SPN</th>
+                <td><code>HTTP/@Model.SsoHostName</code> <span class="muted">(podle adresy, na které aplikace běží — musí být zaregistrované na servisním účtu, viz <code>docs/prihlaseni-windows.md</code>)</span></td>
+            </tr>
+        </tbody>
+    </table>
+    <p class="muted">
+        Postup: <code>setspn -S HTTP/@Model.SsoHostName DOMENA\svc-acs-web</code> → <code>ktpass … -out acs.keytab</code>
+        → nahrát na oba nody jako <code>/etc/acs/acs.keytab</code> (vlastník <code>acs</code>, práva 600) →
+        <code>KRB5_KTNAME=/etc/acs/acs.keytab</code> v <code>acs.env</code> → restart <code>acs-web</code>.
+        NTLM jako záloha funguje jen při hostování na Windows; na Linuxu prohlížeč bez Kerberos ticketu
+        skončí na formuláři se jménem a heslem.
+    </p>
 </div>
 
 <div class="card settings-panel" id="s-winpak" data-title="WIN-PAK konektor">

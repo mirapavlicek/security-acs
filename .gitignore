@@ -481,8 +481,9 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
-# Lokální konfigurace nasazení (obsahuje hesla)
+# Lokální konfigurace nasazení (obsahuje hesla) a Kerberos keytab (přihlašovací klíč služby)
 deploy/acs.env
+*.keytab
 *.db
 
 # Výjimka: deploy/bin je součást repozitáře (šablonový vzor [Bb]in/ ho ignoroval)

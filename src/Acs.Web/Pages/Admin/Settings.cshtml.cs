@@ -17,6 +17,14 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
     [TempData] public string? SavedSection { get; set; }
     [TempData] public string? WinPakTestResult { get; set; }
     [TempData] public string? ParkingSystemTestResult { get; set; }
+    /// <summary>Výsledek zkoušky přihlášení Windows (nastavuje stránka /Account/WindowsLogin?test=1).</summary>
+    [TempData] public string? SsoTestResult { get; set; }
+
+    /// <summary>Diagnostika přihlášení Windows na tomto nodu (keytab, očekávané SPN).</summary>
+    public string? SsoKeytabPath { get; private set; }
+    public bool SsoKeytabExists { get; private set; }
+    public string SsoHostName => Request.Host.Host;
+    public string SsoHostInfo => $"{Environment.MachineName} ({System.Runtime.InteropServices.RuntimeInformation.OSDescription})";
 
     /// <summary>Je nastavený klíč integračního API (hodnota se nezobrazuje)?</summary>
     public bool ParkingApiKeySet { get; private set; }
@@ -30,6 +38,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         SettingKeys.LdapEnabled, SettingKeys.LdapServer, SettingKeys.LdapPort, SettingKeys.LdapUseSsl,
         SettingKeys.LdapBaseDn, SettingKeys.LdapDomain, SettingKeys.LdapUserFilter, SettingKeys.LdapGroupRoleMap,
         SettingKeys.LdapBindUser, SettingKeys.LdapUseDcLocator,
+        SettingKeys.SsoEnabled, SettingKeys.SsoAutoLogin, SettingKeys.SsoAllowedDomains,
         SettingKeys.WinPakBaseUrl, SettingKeys.WinPakSyncEnabled, SettingKeys.WinPakSyncIntervalMinutes,
         SettingKeys.WinPakAccessSyncEnabled, SettingKeys.WinPakAccessSyncIntervalMinutes,
         SettingKeys.EmployeeSourceMode, SettingKeys.EmployeeMssqlQuery, SettingKeys.EmployeeApiUrl,
@@ -55,13 +64,32 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
     /// <summary>Odkaz do administrace konektoru — vlastní nastavení má konektor u sebe na serveru.</summary>
     public string? WinPakAdminUrl { get; private set; }
 
-    public async Task OnGetAsync() => await LoadAsync();
+    /// <param name="ssoTest">Kód selhání zkoušky přihlášení Windows, když selhal už samotný Negotiate handler.</param>
+    public async Task OnGetAsync(string? ssoTest = null)
+    {
+        await LoadAsync();
+        if (ssoTest is not null)
+        {
+            // Přímo z query (ne TempData), aby se zpráva neukázala ještě jednou při dalším otevření stránky.
+            SsoTestFromQuery = "Selhalo — server token prohlížeče neověřil (chybí keytab, jiné SPN nebo NTLM bez podpory); "
+                             + "podrobnosti v logu acs-web (journalctl -u acs-web).";
+            SectionFromQuery = "sso";
+        }
+    }
+
+    public string? SsoTestFromQuery { get; private set; }
+    public string? SectionFromQuery { get; private set; }
 
     private async Task LoadAsync()
     {
         foreach (var key in DisplayedKeys)
             Values[key] = await settings.GetAsync(key);
         ParkingApiKeySet = !string.IsNullOrEmpty(await settings.GetAsync(SettingKeys.ParkingSystemApiKey));
+
+        SsoKeytabPath = Environment.GetEnvironmentVariable("KRB5_KTNAME") is { Length: > 0 } keytab
+            ? keytab.StartsWith("FILE:", StringComparison.OrdinalIgnoreCase) ? keytab[5..] : keytab
+            : null;
+        SsoKeytabExists = SsoKeytabPath is not null && System.IO.File.Exists(SsoKeytabPath);
 
         WinPakAdminUrl = Values[SettingKeys.WinPakBaseUrl] is { Length: > 0 } baseUrl
                          && Uri.TryCreate(baseUrl.TrimEnd('/') + "/ui", UriKind.Absolute, out var uri)
@@ -95,6 +123,14 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         await settings.SetAsync(SettingKeys.LdapUserFilter, ldapUserFilter, UserName);
         await settings.SetIfProvidedAsync(SettingKeys.LdapBindPassword, ldapBindPassword, UserName);
         return await SavedAsync("Active Directory");
+    }
+
+    public async Task<IActionResult> OnPostSsoAsync(string? ssoEnabled, string? ssoAutoLogin, string? ssoAllowedDomains)
+    {
+        await settings.SetAsync(SettingKeys.SsoEnabled, ssoEnabled == "true" ? "true" : "false", UserName);
+        await settings.SetAsync(SettingKeys.SsoAutoLogin, ssoAutoLogin == "true" ? "true" : "false", UserName);
+        await settings.SetAsync(SettingKeys.SsoAllowedDomains, ssoAllowedDomains?.Trim(), UserName);
+        return await SavedAsync("Přihlášení Windows");
     }
 
     public async Task<IActionResult> OnPostWinPakAsync(
@@ -341,7 +377,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
 
     private static readonly Dictionary<string, string> SectionIds = new()
     {
-        ["Obecné"] = "general", ["Active Directory"] = "ldap", ["WIN-PAK"] = "winpak", ["Zdroj zaměstnanců"] = "employees",
+        ["Obecné"] = "general", ["Active Directory"] = "ldap", ["Přihlášení Windows"] = "sso", ["WIN-PAK"] = "winpak", ["Zdroj zaměstnanců"] = "employees",
         ["Automatizace"] = "automation", ["Karty"] = "cards", ["Parkovací systém"] = "parking", ["SMTP"] = "smtp",
     };
 }

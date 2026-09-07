@@ -377,6 +377,10 @@ a:hover { text-decoration: underline; }
 
 .login-box { max-width: 380px; margin: 8vh auto 0; }
 .login-box .brand-mark { font-size: 2rem; }
+.login-box .login-windows { display: block; width: 100%; text-align: center; box-sizing: border-box; }
+.login-box .login-windows-hint { margin: .5rem 0 0; font-size: .85rem; }
+.login-divider { display: flex; align-items: center; gap: .75rem; margin: 1rem 0; color: var(--muted); font-size: .85rem; }
+.login-divider::before, .login-divider::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
 
 .muted { color: var(--muted); }
 
