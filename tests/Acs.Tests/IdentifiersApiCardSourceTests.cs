@@ -167,6 +167,54 @@ public sealed class IdentifiersApiCardSourceTests : IDisposable
         Assert.False(headers.Contains("X-Api-Key"));
     }
 
+    [Theory]
+    [InlineData("{\"token\":\"abc\"}", null, "abc")]
+    [InlineData("{\"conclusion\":true,\"data\":{\"accessToken\":\"xyz\",\"expires\":3600}}", null, "xyz")]
+    [InlineData("{\"jwt\":\"j\"}", null, "j")]
+    [InlineData("{\"result\":{\"customName\":\"c\"}}", "customName", "c")]
+    [InlineData("\"plain-token\"", null, "plain-token")]
+    [InlineData("eyJhbGciOi...", null, "eyJhbGciOi...")]
+    [InlineData("{\"conclusion\":false}", null, null)]
+    public void Token_se_najde_v_ruznych_tvarech_odpovedi(string body, string? field, string? expected)
+        => Assert.Equal(expected, IdentifiersApiCardSource.ExtractToken(body, field));
+
+    [Fact]
+    public async Task Prihlaseni_tokenem_posle_uzivatele_a_heslo_a_pak_Bearer()
+    {
+        var stub = new Stub((request, body) => request.RequestUri!.AbsolutePath.EndsWith("/Auth/Login")
+            ? Json("{\"conclusion\":true,\"data\":{\"token\":\"TOKEN123\"}}")
+            : request.Headers.Authorization?.Parameter == "TOKEN123"
+                ? Json("[{\"identifier\":\"100234\"}]")
+                : new HttpResponseMessage(HttpStatusCode.Unauthorized) { Content = new StringContent("{\"conclusion\":false,\"errorDescription\":{\"errorMessage\":\"No valid token available.\"}}") });
+        var source = new IdentifiersApiCardSource(new HttpClient(stub),
+            new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, null, null, "sysAcsApp@nnh.local", "tajne", CardApiAuth.Token,
+                TokenUrl: "https://x/api/v0/Auth/Login"));
+
+        var probe = await source.ProbeAsync("205094");
+        await source.ProbeAsync("205095");
+
+        Assert.True(probe.Success);
+        Assert.Equal("100234", Assert.Single(probe.Parsed).Value);
+        var login = stub.Requests.Single(r => r.Url.EndsWith("/Auth/Login"));
+        Assert.Equal("sysAcsApp@nnh.local", login.Body.GetProperty("username").GetString());
+        Assert.Equal("tajne", login.Body.GetProperty("password").GetString());
+        // Token se drží — druhý dotaz se nepřihlašuje znovu.
+        Assert.Equal(1, stub.Requests.Count(r => r.Url.EndsWith("/Auth/Login")));
+        Assert.Contains("token získán", source.TokenStepDescription);
+    }
+
+    [Fact]
+    public async Task Pevny_token_jde_jako_Bearer()
+    {
+        var stub = new Stub((_, _) => Json("[]"));
+        var source = new IdentifiersApiCardSource(new HttpClient(stub),
+            new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, null, null, null, null, CardApiAuth.Bearer, BearerToken: " pevny "));
+
+        await source.ProbeAsync("1");
+
+        Assert.Equal(("Bearer", "pevny"), (stub.Requests.Single().Headers.Authorization!.Scheme, stub.Requests.Single().Headers.Authorization!.Parameter));
+    }
+
     [Fact]
     public async Task Zkouska_vrati_surovou_odpoved_i_rozbor()
     {

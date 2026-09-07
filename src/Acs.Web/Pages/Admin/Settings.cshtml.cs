@@ -32,6 +32,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         SettingKeys.SmtpHost, SettingKeys.SmtpPort, SettingKeys.SmtpUser, SettingKeys.SmtpFrom,
         SettingKeys.SmtpUseTls,
         SettingKeys.CardsSource, SettingKeys.CardsApiUrl, SettingKeys.CardsApiSubType, SettingKeys.CardsApiAuth, SettingKeys.CardsApiKeyHeader,
+        SettingKeys.CardsApiTokenUrl, SettingKeys.CardsApiTokenBody, SettingKeys.CardsApiTokenField,
         SettingKeys.CardsApiUser, SettingKeys.CardsApiIgnoreTls,
     ];
 
@@ -159,6 +160,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         string? cardsSource, string? cardsMssqlConnectionString, string? cardsMssqlQuery,
         string? cardsApiUrl, string? cardsApiSubType, string? cardsApiAuth, string? cardsApiKeyHeader, string? cardsApiKey,
         string? cardsApiUser, string? cardsApiPassword, string? cardsApiIgnoreTls,
+        string? cardsApiBearerToken, string? cardsApiTokenUrl, string? cardsApiTokenBody, string? cardsApiTokenField,
         string? cardsSyncEnabled, string? cardsSyncIntervalMinutes)
     {
         await settings.SetAsync(SettingKeys.CardsSource, cardsSource == CardSources.Api ? CardSources.Api : CardSources.Mssql, UserName);
@@ -167,7 +169,12 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         await settings.SetAsync(SettingKeys.CardsApiUrl, cardsApiUrl?.Trim(), UserName);
         await settings.SetAsync(SettingKeys.CardsApiSubType, string.IsNullOrWhiteSpace(cardsApiSubType) ? "3" : cardsApiSubType.Trim(), UserName);
         await settings.SetAsync(SettingKeys.CardsApiAuth,
-            cardsApiAuth is CardApiAuth.ApiKey or CardApiAuth.Basic or CardApiAuth.Windows ? cardsApiAuth : CardApiAuth.None, UserName);
+            cardsApiAuth is CardApiAuth.ApiKey or CardApiAuth.Basic or CardApiAuth.Windows or CardApiAuth.Bearer or CardApiAuth.Token
+                ? cardsApiAuth : CardApiAuth.None, UserName);
+        await settings.SetIfProvidedAsync(SettingKeys.CardsApiBearerToken, cardsApiBearerToken, UserName);
+        await settings.SetAsync(SettingKeys.CardsApiTokenUrl, cardsApiTokenUrl?.Trim(), UserName);
+        await settings.SetAsync(SettingKeys.CardsApiTokenBody, string.IsNullOrWhiteSpace(cardsApiTokenBody) ? null : cardsApiTokenBody.Trim(), UserName);
+        await settings.SetAsync(SettingKeys.CardsApiTokenField, cardsApiTokenField?.Trim(), UserName);
         await settings.SetAsync(SettingKeys.CardsApiKeyHeader, cardsApiKeyHeader?.Trim(), UserName);
         await settings.SetIfProvidedAsync(SettingKeys.CardsApiKey, cardsApiKey, UserName);
         await settings.SetAsync(SettingKeys.CardsApiUser, cardsApiUser?.Trim(), UserName);
@@ -217,6 +224,12 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
                     $"{p.Value}{(p.ValidFrom is { } f ? $" od {f:d}" : "")}{(p.ValidTo is { } t ? $" do {t:d}" : "")}{(p.Active is { } a ? (a ? " (aktivní)" : " (neaktivní)") : "")}")));
             }
 
+            if (source.TokenStepDescription is { } tokenStep)
+            {
+                lines.Add("");
+                lines.Add(tokenStep);
+            }
+
             lines.Add("");
             lines.Add($"Požadavek: POST {probe.Url}");
             lines.Add(probe.RequestBody);
@@ -227,7 +240,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         }
         catch (Exception ex)
         {
-            CardsApiProbe = $"Zkouška selhala: {ex.GetBaseException().Message}\n\nTypicky: adresa není dostupná z nodů ACS (DNS, firewall), nebo certifikát interní CA (zaškrtněte „Neověřovat certifikát TLS“ a uložte).";
+            CardsApiProbe = $"Zkouška selhala: {ex.GetBaseException().Message}\n\nKdyž jde o spojení: adresa není dostupná z nodů ACS (DNS, firewall), nebo certifikát interní CA (zaškrtněte „Neověřovat certifikát TLS“ a uložte). Když jde o přihlášení tokenem: zkontrolujte adresu přihlašovacího endpointu a tvar těla podle Swaggeru služby.";
         }
 
         return RedirectToPage();
