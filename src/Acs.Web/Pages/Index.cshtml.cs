@@ -29,6 +29,7 @@ public class IndexModel(
     public int BuildingCount { get; private set; }
     public int SiteCount { get; private set; }
     public int PermitTypeCount { get; private set; }
+    public int SpotCount { get; private set; }
     public int IssuedPermitCount { get; private set; }
 
     // Systém (Admin)
@@ -69,6 +70,7 @@ public class IndexModel(
             BuildingCount = await db.Buildings.CountAsync();
             SiteCount = await db.Sites.CountAsync(s => s.IsActive);
             PermitTypeCount = await db.ParkingPermitTypes.CountAsync(t => t.IsActive);
+            SpotCount = await db.ParkingSpots.CountAsync(s => s.IsActive);
             IssuedPermitCount = await db.AccessRequestItems.CountAsync(i =>
                 i.ParkingPermitId != null && i.Status == RequestStatus.Issued);
         }

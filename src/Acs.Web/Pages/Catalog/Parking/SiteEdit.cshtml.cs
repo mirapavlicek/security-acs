@@ -12,6 +12,7 @@ public class SiteEditModel(AcsDbContext db, AuditService audit) : PageModel
     public Site Site { get; private set; } = null!;
     public List<ApprovalMatrix> Matrices { get; private set; } = [];
     public int PermitCount { get; private set; }
+    public int SpotCount { get; private set; }
 
     [TempData] public string? Message { get; set; }
     [TempData] public string? ErrorMessage { get; set; }
@@ -25,6 +26,7 @@ public class SiteEditModel(AcsDbContext db, AuditService audit) : PageModel
         Site = site;
         Matrices = await db.ApprovalMatrices.Where(m => m.IsActive).OrderBy(m => m.Name).ToListAsync();
         PermitCount = await db.ParkingPermitSites.CountAsync(s => s.SiteId == id);
+        SpotCount = await db.ParkingSpots.CountAsync(s => s.SiteId == id);
         return Page();
     }
 
@@ -62,6 +64,12 @@ public class SiteEditModel(AcsDbContext db, AuditService audit) : PageModel
         if (await db.ParkingPermitSites.AnyAsync(s => s.SiteId == id))
         {
             ErrorMessage = "Areál se používá v povoleních — nelze smazat.";
+            return RedirectToPage(new { id });
+        }
+
+        if (await db.ParkingSpots.AnyAsync(s => s.SiteId == id))
+        {
+            ErrorMessage = "Areál má parkovací místa — nejdřív je smažte nebo přesuňte.";
             return RedirectToPage(new { id });
         }
 

@@ -37,6 +37,7 @@ public class IndexModel(AcsDbContext db, RequestWorkflowService workflow) : Page
             .Include(i => i.ParkingPermit!).ThenInclude(p => p.PermitType)
             .Include(i => i.ParkingPermit!).ThenInclude(p => p.Plates)
             .Include(i => i.ParkingPermit!).ThenInclude(p => p.Sites).ThenInclude(s => s.Site)
+            .Include(i => i.ParkingPermit!).ThenInclude(p => p.ParkingSpot!).ThenInclude(s => s.Site)
             .Where(i => i.ParkingPermitId != null
                         && i.Request!.TargetEmployeeId == Employee.Id
                         && i.Request.Kind == RequestKind.Grant)

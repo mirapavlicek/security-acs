@@ -143,6 +143,9 @@ builder.Services.AddAuthorization(options =>
         p => p.RequireRole(nameof(AppRole.Admin), nameof(AppRole.CardAdmin)));
     options.AddPolicy("ParkingAdmin",
         p => p.RequireRole(nameof(AppRole.Admin), nameof(AppRole.ParkingAdmin)));
+    // Ceduli A4 na parkovací místo tiskne správce parkování i správce číselníků (spravuje místa).
+    options.AddPolicy("ParkingSignPrinter",
+        p => p.RequireRole(nameof(AppRole.Admin), nameof(AppRole.ParkingAdmin), nameof(AppRole.CatalogManager)));
 });
 
 // Antiforgery i přes hlavičku — pro JSON POSTy z interaktivního editoru plánů.

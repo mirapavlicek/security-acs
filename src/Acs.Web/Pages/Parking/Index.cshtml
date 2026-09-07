@@ -47,7 +47,7 @@ else
     <div class="card">
         <h2 style="margin-top:0">Platná povolení (@Model.ActiveItems.Count)</h2>
         <table class="data">
-            <thead><tr><th>Číslo</th><th>Druh</th><th>SPZ / funkce</th><th>Areály</th><th>Platnost</th><th></th></tr></thead>
+            <thead><tr><th>Číslo</th><th>Druh</th><th>SPZ / funkce</th><th>Areály</th><th>Místo</th><th>Platnost</th><th></th></tr></thead>
             <tbody>
             @foreach (var item in Model.ActiveItems)
             {
@@ -57,6 +57,7 @@ else
                     <td>@permit.PermitType?.Name</td>
                     <td>@permit.SubjectText()</td>
                     <td>@permit.SitesText()</td>
+                    <td>@(permit.ParkingSpot is { } spot ? $"{spot.Code} · {spot.Site?.Name}" : "—")</td>
                     <td class="muted">@permit.ValidFrom.ToString("d. M. yyyy") – @(permit.ValidTo?.ToString("d. M. yyyy") ?? "bez omezení")</td>
                     <td style="white-space:nowrap">
                         @if (permit.PermitType?.PrintsWindshieldCard == true)

@@ -57,9 +57,26 @@
                     }
                     else
                     {
+                        var spots = Model.SpotsFor(permit).ToList();
                         <form method="post" asp-page-handler="Issue" asp-route-search="@Model.Search" class="inline-form">
                             <input type="hidden" name="itemId" value="@item.Id" />
                             <input type="text" name="permitNumber" placeholder="číslo (auto)" style="width:9rem;display:inline-block;margin:0" />
+                            @if (spots.Count > 0)
+                            {
+                                <select name="parkingSpotId" style="width:auto;display:inline-block;margin:0"
+                                        title="Vyhrazené parkovací místo (cedule A4)">
+                                    <option value="">bez vyhrazeného místa</option>
+                                    @foreach (var group in spots.GroupBy(s => s.Site?.Name ?? "?"))
+                                    {
+                                        <optgroup label="@group.Key">
+                                            @foreach (var spot in group)
+                                            {
+                                                <option value="@spot.Id">@spot.Code@(spot.Location is null ? "" : $" — {spot.Location}")</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                </select>
+                            }
                             <button class="btn btn-sm" type="submit">Vydat povolení</button>
                         </form>
                     }
@@ -91,7 +108,7 @@
     </form>
     <table class="data">
         <thead>
-        <tr><th>Číslo</th><th>Zaměstnanec</th><th>Druh</th><th>SPZ / funkce</th><th>Areály</th><th>Platnost do</th><th>Vydáno</th><th></th></tr>
+        <tr><th>Číslo</th><th>Zaměstnanec</th><th>Druh</th><th>SPZ / funkce</th><th>Areály</th><th>Místo</th><th>Platnost do</th><th>Vydáno</th><th></th></tr>
         </thead>
         <tbody>
         @foreach (var item in Model.Issued)
@@ -103,6 +120,16 @@
                 <td>@permit.PermitType?.Name</td>
                 <td>@permit.SubjectText()</td>
                 <td>@permit.SitesText()</td>
+                <td>
+                    @if (permit.ParkingSpot is { } spot)
+                    {
+                        <a asp-page="SpotSign" asp-route-id="@spot.Id" target="_blank" title="Cedule A4 na místo (PDF)">@spot.Code</a>
+                    }
+                    else
+                    {
+                        <span class="muted">—</span>
+                    }
+                </td>
                 <td class="muted">@(permit.ValidTo?.ToString("d. M. yyyy") ?? "bez omezení")</td>
                 <td class="muted">@permit.IssuedAt?.ToString("d. M. yyyy") @(permit.IssuedByUser?.DisplayName ?? permit.IssuedByUser?.UserName)</td>
                 <td style="white-space:nowrap">

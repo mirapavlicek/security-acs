@@ -1,18 +1,27 @@
 using System.Security.Claims;
 using Acs.Domain.Entities;
+using Acs.Infrastructure.Data;
 using Acs.Infrastructure.Pdf;
 using Acs.Infrastructure.Workflow;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 
 namespace Acs.Web.Pages.Parking;
 
 [Authorize(Policy = "ParkingAdmin")]
-public class QueueModel(ParkingAdminService parkingAdmin) : PageModel
+public class QueueModel(ParkingAdminService parkingAdmin, AcsDbContext db) : PageModel
 {
     public List<AccessRequestItem> Queue { get; private set; } = [];
     public List<AccessRequestItem> Issued { get; private set; } = [];
+
+    /// <summary>Aktivní parkovací místa (s areálem) pro výběr při vydání.</summary>
+    public List<ParkingSpot> Spots { get; private set; } = [];
+
+    /// <summary>Místa, na která lze dané povolení přiřadit (podle areálů povolení).</summary>
+    public IEnumerable<ParkingSpot> SpotsFor(ParkingPermit permit)
+        => permit.AllSites ? Spots : Spots.Where(s => permit.Sites.Any(ps => ps.SiteId == s.SiteId));
 
     [BindProperty(SupportsGet = true)] public string? Search { get; set; }
 
@@ -25,6 +34,13 @@ public class QueueModel(ParkingAdminService parkingAdmin) : PageModel
     {
         Queue = await parkingAdmin.GetQueueAsync();
         Issued = await parkingAdmin.GetIssuedAsync(Search);
+        if (Queue.Any(i => i.Request?.Kind == RequestKind.Grant))
+        {
+            Spots = await db.ParkingSpots.Include(s => s.Site)
+                .Where(s => s.IsActive)
+                .OrderBy(s => s.Site!.SortOrder).ThenBy(s => s.Site!.Name).ThenBy(s => s.SortOrder).ThenBy(s => s.Code)
+                .ToListAsync();
+        }
     }
 
     /// <summary>Kartičky všech vydaných povolení (dle filtru) v jednom PDF — jedna kartička na stránku.</summary>
@@ -46,12 +62,14 @@ public class QueueModel(ParkingAdminService parkingAdmin) : PageModel
         return File(pdf, "application/pdf");
     }
 
-    public async Task<IActionResult> OnPostIssueAsync(int itemId, string? permitNumber)
+    public async Task<IActionResult> OnPostIssueAsync(int itemId, string? permitNumber, int? parkingSpotId)
     {
         try
         {
-            await parkingAdmin.IssueAsync(itemId, CurrentUserId, permitNumber, User.Identity?.Name);
-            Message = "Povolení vydáno — můžete vytisknout kartičku.";
+            await parkingAdmin.IssueAsync(itemId, CurrentUserId, permitNumber, User.Identity?.Name, parkingSpotId);
+            Message = parkingSpotId is null
+                ? "Povolení vydáno — můžete vytisknout kartičku."
+                : "Povolení vydáno a přiřazeno na místo — můžete vytisknout kartičku i ceduli na místo.";
         }
         catch (Exception ex) when (ex is InvalidOperationException or KeyNotFoundException)
         {

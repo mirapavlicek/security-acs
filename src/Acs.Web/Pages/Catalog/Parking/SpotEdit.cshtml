@@ -1,0 +1,98 @@
+@page "{id:int}"
+@model Acs.Web.Pages.Catalog.Parking.SpotEditModel
+@{
+    ViewData["Title"] = $"Parkovací místo {Model.Spot.Code} · {Model.Spot.Site?.Name}";
+}
+<h1>@ViewData["Title"]</h1>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="settings-grid">
+<div class="card">
+    <h2 style="margin-top:0">Místo</h2>
+    <form method="post" asp-page-handler="Save">
+        <label>Areál</label>
+        <select name="siteId" required>
+            @foreach (var site in Model.Sites)
+            {
+                <option value="@site.Id" selected="@(site.Id == Model.Spot.SiteId)">@site.Name</option>
+            }
+        </select>
+        <label>Označení místa</label>
+        <input type="text" name="code" value="@Model.Spot.Code" maxlength="32" required />
+        <label>Umístění (tiskne se na ceduli)</label>
+        <input type="text" name="location" value="@Model.Spot.Location" maxlength="256" />
+        <label>Poznámka (interní)</label>
+        <input type="text" name="note" value="@Model.Spot.Note" maxlength="512" />
+        <label>Pořadí</label>
+        <input type="number" name="sortOrder" value="@Model.Spot.SortOrder" />
+        <div class="checkbox-row">
+            <input type="checkbox" id="isActive" name="isActive" value="true" checked="@Model.Spot.IsActive" />
+            <label for="isActive">Aktivní (lze přiřazovat povolení)</label>
+        </div>
+        <button class="btn" type="submit">Uložit</button>
+        <a class="btn btn-ghost" asp-page="Spots" asp-route-SiteId="@Model.Spot.SiteId">Zpět</a>
+    </form>
+
+    @if (Model.PermitCount == 0)
+    {
+        <form method="post" asp-page-handler="Delete" style="margin-top:1rem"
+              onsubmit="return confirm('Smazat místo @Model.Spot.Code?');">
+            <button class="btn btn-sm btn-danger" type="submit">Smazat místo</button>
+        </form>
+    }
+    else
+    {
+        <p class="muted" style="margin-top:1rem">
+            Na místo se odkazuje @Model.PermitCount povolení — nelze smazat, jen deaktivovat.
+        </p>
+    }
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">Cedule „Vyhrazené parkování“</h2>
+    <p class="muted">
+        Na ceduli se tisknou SPZ (u přenosných povolení název funkce) všech vydaných a platných povolení
+        přiřazených k tomuto místu. Povolení se k místu přiřazuje při vydání ve frontě nebo v detailu povolení.
+    </p>
+    <div class="actions" style="margin:0 0 0.8rem">
+        <a class="btn" asp-page="/Parking/SpotSign" asp-route-id="@Model.Spot.Id" target="_blank">Cedule A4 (PDF)</a>
+        <a class="btn btn-ghost" asp-page="/Parking/Queue">Fronta správce parkování</a>
+    </div>
+    @if (Model.ActivePermits.Count == 0)
+    {
+        <p class="muted">Zatím žádné platné povolení — cedule se vytiskne bez SPZ.</p>
+    }
+    else
+    {
+        <table class="data">
+            <thead><tr><th>Číslo</th><th>Držitel</th><th>SPZ / funkce</th><th>Platí do</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var permit in Model.ActivePermits)
+            {
+                <tr>
+                    <td><a asp-page="/Parking/Permit" asp-route-id="@permit.Id">@permit.PermitNumber</a></td>
+                    <td>@permit.Employee?.FullName <span class="muted">@permit.PermitType?.Name</span></td>
+                    <td>@permit.SubjectText()</td>
+                    <td class="muted">@(permit.ValidTo?.ToString("d. M. yyyy") ?? "bez omezení")</td>
+                    <td>
+                        <form method="post" asp-page-handler="Unassign" class="inline-form"
+                              onsubmit="return confirm('Odebrat povolení @permit.PermitNumber z místa @Model.Spot.Code?');">
+                            <input type="hidden" name="permitId" value="@permit.Id" />
+                            <button class="btn btn-sm btn-ghost" type="submit">Odebrat z místa</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+</div>

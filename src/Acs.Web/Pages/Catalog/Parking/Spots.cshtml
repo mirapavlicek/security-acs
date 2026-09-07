@@ -1,0 +1,92 @@
+@page
+@model Acs.Web.Pages.Catalog.Parking.SpotsModel
+@{
+    ViewData["Title"] = "Parkovací místa";
+}
+<h1>Parkovací místa</h1>
+<p class="muted">
+    Konkrétní stání s vyhrazeným parkováním. Správce parkování přiřadí vydané povolení na místo
+    (při vydání nebo v detailu povolení) a pro místo vytiskne ceduli A4 „Vyhrazené parkování“ se SPZ
+    všech platných povolení. Po změně povolení stačí ceduli vytisknout znovu.
+</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="card">
+    <form method="get" class="filterbar" style="margin-bottom:0.6rem">
+        <select name="SiteId" onchange="this.form.submit()">
+            <option value="">— všechny areály —</option>
+            @foreach (var site in Model.Sites)
+            {
+                <option value="@site.Id" selected="@(site.Id == Model.SiteId)">@site.Name</option>
+            }
+        </select>
+        <noscript><button class="btn btn-sm" type="submit">Filtrovat</button></noscript>
+        @if (Model.SiteId is { } filteredSite && Model.Spots.Any(s => s.IsActive))
+        {
+            <a class="btn btn-sm btn-ghost" asp-page="/Parking/SpotSign" asp-route-siteId="@filteredSite" target="_blank">
+                Všechny cedule areálu (PDF)
+            </a>
+        }
+    </form>
+    <table class="data">
+        <thead>
+        <tr><th>Areál</th><th>Označení</th><th>Umístění</th><th>Platná povolení</th><th>Aktivní</th><th></th></tr>
+        </thead>
+        <tbody>
+        @foreach (var spot in Model.Spots)
+        {
+            var count = Model.PermitCounts.GetValueOrDefault(spot.Id);
+            <tr>
+                <td>@spot.Site?.Name</td>
+                <td><strong>@spot.Code</strong></td>
+                <td class="muted">@spot.Location</td>
+                <td>@(count == 0 ? "—" : count.ToString())</td>
+                <td>@(spot.IsActive ? "ano" : "ne")</td>
+                <td>
+                    <div class="actions" style="margin:0">
+                        <a class="btn btn-sm btn-ghost" asp-page="/Parking/SpotSign" asp-route-id="@spot.Id" target="_blank">Cedule (PDF)</a>
+                        <a class="btn btn-sm btn-ghost" asp-page="SpotEdit" asp-route-id="@spot.Id">Upravit</a>
+                    </div>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Spots.Count == 0)
+    {
+        <p class="muted">Zatím žádná parkovací místa.</p>
+    }
+</div>
+
+<div class="card" style="max-width:480px">
+    <h2 style="margin-top:0">Nové místo</h2>
+    @if (Model.Sites.Count == 0)
+    {
+        <p class="muted">Nejdřív založte <a asp-page="Sites">areál</a>.</p>
+    }
+    else
+    {
+        <form method="post" asp-page-handler="Create" asp-route-SiteId="@Model.SiteId">
+            <label>Areál</label>
+            <select name="siteId" required>
+                @foreach (var site in Model.Sites.Where(s => s.IsActive))
+                {
+                    <option value="@site.Id" selected="@(site.Id == Model.SiteId)">@site.Name</option>
+                }
+            </select>
+            <label>Označení místa</label>
+            <input type="text" name="code" placeholder="např. A-12" maxlength="32" required />
+            <label>Umístění (volitelné)</label>
+            <input type="text" name="location" placeholder="např. před pavilonem 5, u vjezdu" maxlength="256" />
+            <button class="btn" type="submit">Vytvořit</button>
+        </form>
+    }
+</div>
