@@ -1,8 +1,6 @@
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Data;
-using Acs.Infrastructure.Settings;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -15,72 +13,48 @@ public record CardSyncResult(int Added, int Updated, int Deactivated, int Unmatc
 }
 
 /// <summary>
-/// Synchronizace identifikátorů zaměstnanců z MSSQL — jeden člověk jich může mít
-/// libovolný počet (např. tři karty a dvě SPZ), takže dotaz vrací <b>řádek na
-/// identifikátor</b>, ne na osobu.
-///
-/// Očekávané sloupce:
-/// <list type="bullet">
-///   <item><c>AdAccount</c> nebo <c>PersonalNumber</c> — párování na zaměstnance,</item>
-///   <item><c>Value</c> (nebo <c>CardNumber</c>) — hodnota identifikátoru,</item>
-///   <item><c>Type</c> — Card / LicensePlate / Pin / Tag / Biometric / Other
-///     (nepovinné, výchozí Card; akceptuje i české „karta“, „spz“),</item>
-///   <item><c>WinPakCardHolderId</c>, <c>Note</c>, <c>ValidFrom</c>, <c>ValidTo</c> — nepovinné.</item>
-/// </list>
+/// Synchronizace identifikátorů zaměstnanců (karty, SPZ…) ze zvoleného zdroje
+/// (<see cref="ICardSource"/>: MSSQL dotaz, nebo integrační API po zaměstnancích).
+/// Jeden člověk jich může mít libovolný počet, zdroj vrací <b>záznam na identifikátor</b>.
 /// Identifikátory, které ze zdroje zmizely, se deaktivují (nemažou — kvůli historii).
 /// </summary>
 public class CardSyncService(
-    AcsDbContext db, SettingsService settings, AuditService audit,
+    AcsDbContext db, CardSourceFactory sources, AuditService audit,
     ILogger<CardSyncService>? logger = null)
 {
     public async Task<CardSyncResult> SyncAsync(string? userName, CancellationToken ct = default)
     {
-        var connectionString = await settings.GetAsync(SettingKeys.CardsMssqlConnectionString, ct)
-            ?? throw new InvalidOperationException("Není nastaven MSSQL connection string pro karty (Nastavení → Karty).");
-        var query = await settings.GetAsync(SettingKeys.CardsMssqlQuery, ct)
-            ?? throw new InvalidOperationException("Není nastaven SQL dotaz pro karty (Nastavení → Karty).");
-
-        var byAd = await db.Employees.Where(e => e.AdAccount != null)
-            .ToDictionaryAsync(e => e.AdAccount!, StringComparer.OrdinalIgnoreCase, ct);
-        var byPersonal = await db.Employees.Where(e => e.PersonalNumber != null)
-            .GroupBy(e => e.PersonalNumber!)
-            .ToDictionaryAsync(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase, ct);
+        var source = await sources.CreateAsync(ct);
+        var employees = await db.Employees.Where(e => e.IsActive).ToListAsync(ct);
+        var byAd = employees.Where(e => e.AdAccount != null)
+            .GroupBy(e => e.AdAccount!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        var byPersonal = employees.Where(e => e.PersonalNumber != null)
+            .GroupBy(e => e.PersonalNumber!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
         var existing = (await db.EmployeeIdentifiers.ToListAsync(ct))
             .ToDictionary(i => (i.EmployeeId, i.Type, i.Value));
 
         int added = 0, updated = 0, unmatched = 0;
         var seen = new HashSet<(int, IdentifierType, string)>();
 
-        await using var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync(ct);
-        await using var command = new SqlCommand(query, connection) { CommandTimeout = 300 };
-        await using var reader = await command.ExecuteReaderAsync(ct);
-
-        var columns = Enumerable.Range(0, reader.FieldCount)
-            .ToDictionary(i => reader.GetName(i), i => i, StringComparer.OrdinalIgnoreCase);
-        string? Get(string name)
-            => columns.TryGetValue(name, out var i) && !reader.IsDBNull(i)
-                ? reader.GetValue(i).ToString()?.Trim()
-                : null;
-
-        while (await reader.ReadAsync(ct))
+        await foreach (var record in source.ReadAsync(employees, ct))
         {
-            var employee = Match(Get("AdAccount"), Get("PersonalNumber"), byAd, byPersonal);
+            var employee = Match(record.AdAccount, record.PersonalNumber, byAd, byPersonal);
             if (employee is null)
             {
                 unmatched++;
                 continue;
             }
 
-            if (Get("WinPakCardHolderId") is { Length: > 0 } holder && employee.WinPakCardHolderId != holder)
+            if (record.WinPakCardHolderId is { Length: > 0 } holder && employee.WinPakCardHolderId != holder)
                 employee.WinPakCardHolderId = holder;
 
-            var rawValue = Get("Value") ?? Get("CardNumber") ?? Get("LicensePlate");
-            if (string.IsNullOrWhiteSpace(rawValue))
+            if (string.IsNullOrWhiteSpace(record.Value))
                 continue;
 
-            var type = ParseType(Get("Type"), columns.ContainsKey("LicensePlate") && Get("CardNumber") is null);
-            var value = EmployeeIdentifier.Normalize(rawValue);
+            var type = record.Type;
+            var value = EmployeeIdentifier.Normalize(record.Value);
             var key = (employee.Id, type, value);
             seen.Add(key);
 
@@ -88,14 +62,14 @@ public class CardSyncService(
             {
                 var changed = !identifier.IsActive;
                 identifier.IsActive = true;
-                identifier.Note = Get("Note") ?? identifier.Note;
-                if (ParseDate(Get("ValidFrom")) is { } from && identifier.ValidFrom != from)
+                identifier.Note = record.Note ?? identifier.Note;
+                if (record.ValidFrom is { } from && identifier.ValidFrom != from)
                 {
                     identifier.ValidFrom = from;
                     changed = true;
                 }
 
-                if (ParseDate(Get("ValidTo")) is { } to && identifier.ValidTo != to)
+                if (record.ValidTo is { } to && identifier.ValidTo != to)
                 {
                     identifier.ValidTo = to;
                     changed = true;
@@ -111,16 +85,15 @@ public class CardSyncService(
                     EmployeeId = employee.Id,
                     Type = type,
                     Value = value,
-                    Note = Get("Note"),
-                    ValidFrom = ParseDate(Get("ValidFrom")),
-                    ValidTo = ParseDate(Get("ValidTo")),
+                    Note = record.Note,
+                    ValidFrom = record.ValidFrom,
+                    ValidTo = record.ValidTo,
                     Source = RecordSource.Imported,
                 });
                 added++;
             }
         }
 
-        await reader.CloseAsync();
 
         // Co ze zdroje zmizelo, jen deaktivujeme (ruční záznamy se nedotýkáme).
         var deactivated = 0;
@@ -137,7 +110,7 @@ public class CardSyncService(
         await SyncPrimaryCardsAsync(ct);
 
         var result = new CardSyncResult(added, updated, deactivated, unmatched);
-        logger?.LogInformation("Synchronizace karet: {Result}", result);
+        logger?.LogInformation("Synchronizace karet ({Source}): {Result}", source.Description, result);
         await audit.LogAsync(userName, "cards-synced", "EmployeeIdentifier", null, result.ToString(), ct);
         return result;
     }
@@ -192,7 +165,4 @@ public class CardSyncService(
                 : IdentifierType.Other,
         };
     }
-
-    private static DateTime? ParseDate(string? raw)
-        => DateTime.TryParse(raw, out var value) ? value : null;
 }
