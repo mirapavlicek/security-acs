@@ -417,6 +417,8 @@ app.MapGet("/health", async (AcsDbContext db) =>
 app.MapPost("/set-theme", async (HttpContext context, AcsDbContext db) =>
 {
     var theme = context.Request.Form["theme"].FirstOrDefault() ?? "light";
+    if (!Acs.Web.Pages.Shared.Themes.IsKnown(theme))
+        theme = "light";
     context.Response.Cookies.Append("acs-theme", theme, new CookieOptions
     {
         Expires = DateTimeOffset.UtcNow.AddYears(1),
