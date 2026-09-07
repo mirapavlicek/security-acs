@@ -1,12 +1,13 @@
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Settings;
+using Acs.Infrastructure.Sync;
 using Acs.Infrastructure.WinPak;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Acs.Web.Pages.Admin;
 
-public class SettingsModel(SettingsService settings, AuditService audit, WinPakClient winPak) : PageModel
+public class SettingsModel(SettingsService settings, AuditService audit, WinPakClient winPak, IHttpClientFactory httpClientFactory) : PageModel
 {
     public Dictionary<string, string?> Values { get; } = new();
 
@@ -30,7 +31,12 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         SettingKeys.AutoReminderAfterDays, SettingKeys.AutoEscalationAfterDays, SettingKeys.AutoPushEnabled,
         SettingKeys.SmtpHost, SettingKeys.SmtpPort, SettingKeys.SmtpUser, SettingKeys.SmtpFrom,
         SettingKeys.SmtpUseTls,
+        SettingKeys.CardsSource, SettingKeys.CardsApiUrl, SettingKeys.CardsApiSubType, SettingKeys.CardsApiKeyHeader,
+        SettingKeys.CardsApiUser, SettingKeys.CardsApiIgnoreTls,
     ];
+
+    /// <summary>Výsledek zkoušky integračního API karet (surová odpověď a co z ní konektor přečte).</summary>
+    [TempData] public string? CardsApiProbe { get; set; }
 
     /// <summary>Odkaz do administrace konektoru — vlastní nastavení má konektor u sebe na serveru.</summary>
     public string? WinPakAdminUrl { get; private set; }
@@ -150,14 +156,51 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
     private static string Flag(string? value) => value == "true" ? "true" : "false";
 
     public async Task<IActionResult> OnPostCardsAsync(
-        string? cardsMssqlConnectionString, string? cardsMssqlQuery,
+        string? cardsSource, string? cardsMssqlConnectionString, string? cardsMssqlQuery,
+        string? cardsApiUrl, string? cardsApiSubType, string? cardsApiKeyHeader, string? cardsApiKey,
+        string? cardsApiUser, string? cardsApiPassword, string? cardsApiIgnoreTls,
         string? cardsSyncEnabled, string? cardsSyncIntervalMinutes)
     {
+        await settings.SetAsync(SettingKeys.CardsSource, cardsSource == CardSources.Api ? CardSources.Api : CardSources.Mssql, UserName);
         await settings.SetIfProvidedAsync(SettingKeys.CardsMssqlConnectionString, cardsMssqlConnectionString, UserName);
         await settings.SetAsync(SettingKeys.CardsMssqlQuery, cardsMssqlQuery, UserName);
+        await settings.SetAsync(SettingKeys.CardsApiUrl, cardsApiUrl?.Trim(), UserName);
+        await settings.SetAsync(SettingKeys.CardsApiSubType, string.IsNullOrWhiteSpace(cardsApiSubType) ? "3" : cardsApiSubType.Trim(), UserName);
+        await settings.SetAsync(SettingKeys.CardsApiKeyHeader, cardsApiKeyHeader?.Trim(), UserName);
+        await settings.SetIfProvidedAsync(SettingKeys.CardsApiKey, cardsApiKey, UserName);
+        await settings.SetAsync(SettingKeys.CardsApiUser, cardsApiUser?.Trim(), UserName);
+        await settings.SetIfProvidedAsync(SettingKeys.CardsApiPassword, cardsApiPassword, UserName);
+        await settings.SetAsync(SettingKeys.CardsApiIgnoreTls, cardsApiIgnoreTls == "true" ? "true" : "false", UserName);
         await settings.SetAsync(SettingKeys.CardsSyncEnabled, cardsSyncEnabled == "true" ? "true" : "false", UserName);
         await settings.SetAsync(SettingKeys.CardsSyncIntervalMinutes, cardsSyncIntervalMinutes, UserName);
         return await SavedAsync("Karty");
+    }
+
+    /// <summary>Zkouška integračního API na jednom osobním čísle — ukáže surovou odpověď i rozbor, protože schéma odpovědi dokumentace neuvádí.</summary>
+    public async Task<IActionResult> OnPostCardsApiTestAsync(string? employeeNo)
+    {
+        if (string.IsNullOrWhiteSpace(employeeNo))
+        {
+            CardsApiProbe = "Zadejte osobní číslo zaměstnance, na kterém se má API vyzkoušet.";
+            return RedirectToPage();
+        }
+
+        try
+        {
+            var source = await IdentifiersApiCardSource.CreateAsync(settings, httpClientFactory, HttpContext.RequestAborted);
+            var (raw, parsed) = await source.ProbeAsync(employeeNo.Trim(), HttpContext.RequestAborted);
+            var summary = parsed.Count == 0
+                ? "Konektor z odpovědi nepřečetl žádný identifikátor — pošlete surovou odpověď vývoji, rozbor se doplní."
+                : "Přečteno: " + string.Join("; ", parsed.Select(p =>
+                    $"{p.Value}{(p.ValidFrom is { } f ? $" od {f:d}" : "")}{(p.ValidTo is { } t ? $" do {t:d}" : "")}{(p.Active is { } a ? (a ? " (aktivní)" : " (neaktivní)") : "")}"));
+            CardsApiProbe = $"{summary}\n\nSurová odpověď pro {employeeNo.Trim()}:\n{(raw.Length > 4000 ? raw[..4000] + "…" : raw)}";
+        }
+        catch (Exception ex)
+        {
+            CardsApiProbe = $"Zkouška selhala: {ex.Message}";
+        }
+
+        return RedirectToPage();
     }
 
     public async Task<IActionResult> OnPostSmtpAsync(

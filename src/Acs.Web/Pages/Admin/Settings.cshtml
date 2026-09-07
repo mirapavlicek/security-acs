@@ -192,13 +192,50 @@
 </div>
 
 <div class="card">
-    <h2 style="margin-top:0">Karty (MSSQL)</h2>
-    <p class="muted">Zaměstnanci se načítají z AD, čísla karet a WIN-PAK card holder id z SQL. Dotaz musí vracet sloupce: AdAccount nebo PersonalNumber (párování), CardNumber, volitelně WinPakCardHolderId.</p>
+    <h2 style="margin-top:0">Karty (identifikátory zaměstnanců)</h2>
+    <p class="muted">Zaměstnanci se načítají z AD; čísla karet buď z MSSQL dotazu, nebo z integrační služby, která se ptá po osobním čísle.</p>
+    @if (Model.CardsApiProbe is not null)
+    {
+        <div class="alert @(Model.CardsApiProbe.StartsWith("Zkouška selhala") || Model.CardsApiProbe.StartsWith("Konektor z odpovědi nepřečetl") ? "alert-error" : "alert-success")" style="white-space:pre-wrap;font-family:var(--mono, monospace);font-size:0.85rem">@Model.CardsApiProbe</div>
+    }
     <form method="post" asp-page-handler="Cards">
-        <label>MSSQL connection string (prázdné = ponechat)</label>
-        <input type="password" name="CardsMssqlConnectionString" autocomplete="new-password" />
-        <label>SQL dotaz</label>
-        <textarea name="CardsMssqlQuery" rows="3">@Model.Values[SettingKeys.CardsMssqlQuery]</textarea>
+        <label>Zdroj karet</label>
+        @{ var cardsSource = Model.Values[SettingKeys.CardsSource] ?? "Mssql"; }
+        <select name="CardsSource" id="cards-source">
+            <option value="Mssql" selected="@(cardsSource != "Api")">MSSQL dotaz</option>
+            <option value="Api" selected="@(cardsSource == "Api")">Integrační API (POST …/Identifiers po osobním čísle)</option>
+        </select>
+
+        <fieldset style="border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.9rem;margin:0.6rem 0">
+            <legend class="muted">Integrační API</legend>
+            <p class="hint">Na adresu se pro každého zaměstnance pošle <span class="mono">POST { "employeeNo": "&lt;osobní číslo&gt;", "idIdentifierSubType": 3 }</span>; 3 = identifikační karta. Zaměstnanec bez karty smí vrátit 404.</p>
+            <label>Adresa</label>
+            <input type="text" name="CardsApiUrl" value="@Model.Values[SettingKeys.CardsApiUrl]" placeholder="https://ws-integrations.nnh.local/api/v0/Identifiers" />
+            <label>Podtyp identifikátoru (idIdentifierSubType)</label>
+            <input type="number" name="CardsApiSubType" value="@(Model.Values[SettingKeys.CardsApiSubType] ?? "3")" style="width:8rem" />
+            <label>Hlavička s API klíčem (nepovinné; prázdné = X-Api-Key)</label>
+            <input type="text" name="CardsApiKeyHeader" value="@Model.Values[SettingKeys.CardsApiKeyHeader]" placeholder="X-Api-Key" />
+            <label>API klíč (prázdné = ponechat)</label>
+            <input type="password" name="CardsApiKey" autocomplete="new-password" />
+            <label>Uživatel pro Basic autentizaci (nepovinné)</label>
+            <input type="text" name="CardsApiUser" value="@Model.Values[SettingKeys.CardsApiUser]" autocomplete="off" />
+            <label>Heslo (prázdné = ponechat)</label>
+            <input type="password" name="CardsApiPassword" autocomplete="new-password" />
+            <div class="checkbox-row">
+                <input type="checkbox" id="CardsApiIgnoreTls" name="CardsApiIgnoreTls" value="true"
+                       checked="@(Model.Values[SettingKeys.CardsApiIgnoreTls] == "true")" />
+                <label for="CardsApiIgnoreTls">Neověřovat certifikát TLS (interní CA, kterou nody neznají — raději CA nainstalujte)</label>
+            </div>
+        </fieldset>
+
+        <fieldset style="border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.9rem;margin:0.6rem 0">
+            <legend class="muted">MSSQL dotaz</legend>
+            <p class="hint">Dotaz vrací řádek na identifikátor: AdAccount nebo PersonalNumber (párování), CardNumber/Value, volitelně Type, WinPakCardHolderId, ValidFrom, ValidTo.</p>
+            <label>MSSQL connection string (prázdné = ponechat)</label>
+            <input type="password" name="CardsMssqlConnectionString" autocomplete="new-password" />
+            <label>SQL dotaz</label>
+            <textarea name="CardsMssqlQuery" rows="3">@Model.Values[SettingKeys.CardsMssqlQuery]</textarea>
+        </fieldset>
         <div class="checkbox-row">
             <input type="checkbox" id="CardsSyncEnabled" name="CardsSyncEnabled" value="true"
                    checked="@(Model.Values[SettingKeys.CardsSyncEnabled] == "true")" />
@@ -207,6 +244,11 @@
         <label>Interval (minuty)</label>
         <input type="number" name="CardsSyncIntervalMinutes" value="@Model.Values[SettingKeys.CardsSyncIntervalMinutes]" placeholder="60" />
         <button class="btn" type="submit">Uložit</button>
+    </form>
+    <form method="post" asp-page-handler="CardsApiTest" class="inline-form" style="margin-top:0.8rem">
+        <label>Zkouška integračního API — osobní číslo</label>
+        <input type="text" name="employeeNo" placeholder="např. 13483" style="width:12rem" />
+        <button class="btn btn-sm btn-ghost" type="submit">Vyzkoušet (uložené nastavení)</button>
     </form>
 </div>
 

@@ -29,6 +29,7 @@ Webová aplikace pro schvalování přístupů k místnostem (`acs.fnmh.network`
 - [Univerzální integrační API (podklad do zadávačky)](docs/integrace/README.md)
 - [Import čteček z tabulek EKV](docs/import-ctecek-ekv.md)
 - [Přístupové úrovně WIN-PAKu z ACS](docs/pristupove-urovne.md)
+- [Karty zaměstnanců z integrační služby Identifiers](docs/karty-z-integracniho-api.md)
 - [Bezpečnost — review a opatření](docs/SECURITY.md)
 - [Rešerše WIN-PAK API](docs/winpak-api/README.md)
 

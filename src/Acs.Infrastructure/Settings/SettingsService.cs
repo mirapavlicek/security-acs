@@ -56,6 +56,16 @@ public static class SettingKeys
     public const string CardsMssqlQuery = "Cards:MssqlQuery";
     public const string CardsSyncEnabled = "Cards:SyncEnabled";
     public const string CardsSyncIntervalMinutes = "Cards:SyncIntervalMinutes";
+
+    // Zdroj karet: Mssql (výchozí) nebo Api — integrační služba POST …/Identifiers { employeeNo, idIdentifierSubType }
+    public const string CardsSource = "Cards:Source";
+    public const string CardsApiUrl = "Cards:ApiUrl";
+    public const string CardsApiSubType = "Cards:ApiSubType";
+    public const string CardsApiKeyHeader = "Cards:ApiKeyHeader";
+    public const string CardsApiKey = "Cards:ApiKey";           // secret
+    public const string CardsApiUser = "Cards:ApiUser";
+    public const string CardsApiPassword = "Cards:ApiPassword"; // secret
+    public const string CardsApiIgnoreTls = "Cards:ApiIgnoreTls";
     public const string EmployeeMssqlConnectionString = "Employees:MssqlConnectionString"; // secret
     public const string EmployeeMssqlQuery = "Employees:MssqlQuery";
     public const string EmployeeApiUrl = "Employees:ApiUrl";
@@ -85,7 +95,7 @@ public static class SettingKeys
     public static readonly HashSet<string> SecretKeys =
     [
         LdapBindPassword, WinPakApiKey, EmployeeMssqlConnectionString, EmployeeApiKey, SmtpPassword,
-        CardsMssqlConnectionString,
+        CardsMssqlConnectionString, CardsApiKey, CardsApiPassword,
     ];
 }
 

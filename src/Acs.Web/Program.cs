@@ -68,6 +68,8 @@ builder.Services.AddScoped<Acs.Infrastructure.Sync.AccessLevelAdminService>();
 builder.Services.AddScoped<Acs.Infrastructure.Sync.EmployeeSyncService>();
 builder.Services.AddScoped<Acs.Infrastructure.Sync.AccessSyncService>();
 builder.Services.AddScoped<Acs.Infrastructure.Sync.CardSyncService>();
+builder.Services.AddScoped<Acs.Infrastructure.Sync.CardSourceFactory>();
+builder.Services.AddHttpClient(Acs.Infrastructure.Sync.CardSourceFactory.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(2));
 builder.Services.AddScoped<Acs.Infrastructure.Sync.AutoAssignmentService>();
 builder.Services.AddScoped<Acs.Infrastructure.Automation.AutomationService>();
 builder.Services.AddScoped<Acs.Infrastructure.Automation.HealthCheckService>();
