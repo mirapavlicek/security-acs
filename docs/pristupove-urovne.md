@@ -37,9 +37,39 @@ ACS drží kopii úrovní (`AccessLevels`) a jejich složení (`AccessLevelEntri
 
 **Strom přístupů** vrací WIN-PAK jako text, jehož podobu příručka nepopisuje.
 ACS ho ukládá celý a čte z něj čtečky a zóny podle známých názvů prvků
-(`Reader`/`Entrance`, `HWDeviceID`, `TimeZoneName`…). Když mu nerozumí, úroveň
-to ukáže („?“ v seznamu, varování v detailu) a surový strom je vidět v detailu
-— pošlete ho vývoji, parser se doplní.
+(`Reader`/`Entrance`, `HWDeviceID`, `TimeZoneName`…). WIN-PAK 4.9 v Motole
+vrací větve a čtečky bez id, jen s názvem a zónou:
+
+```xml
+<AccessTree>
+  <Branch><Name>FN Motol</Name><Parent>AccessArea</Parent></Branch>
+  <Branch><Name>23 MOC</Name><Parent>FN Motol</Parent></Branch>
+  <Reader><Name>334001</Name><Parent>23 MOC</Parent><Timezone>Always On</Timezone></Reader>
+</AccessTree>
+```
+
+Detail úrovně ho kreslí jako strom: větve (areál → budova) jako rozbalovací
+uzly, čtečky jako karty s číslem z WIN-PAKu, spárovanou čtečkou ACS (odkaz do
+jejího detailu) a časovou zónou. Surové XML zůstává pod rozbalovátkem. Když
+ACS stromu nerozumí, úroveň to ukáže („?“ v seznamu, varování v detailu) —
+pošlete surový strom vývoji, parser se doplní.
+
+## Párování čteček ze stromu
+
+Název čtečky ve stromu je **číslo čtečky** — totéž, co má ACS z dokumentace EKV
+jako `Reader.DeviceNumber` (a v úvodu názvu „341011 — DÍLNA…“), nebo jako název
+čtečky založené ze synchronizace. Synchronizace proto každou položku stromu
+spáruje s čtečkou ACS (`AccessLevelEntry.ReaderId`): nejdřív podle id WIN-PAKu,
+když ho strom nenese nebo nesedí, podle čísla. Spáruje se jen jednoznačná shoda;
+dvě čtečky se stejným číslem nechá na správci. Když čtečka ACS id WIN-PAKu má
+a položka ne, doplní se jí z čtečky. Párování se opakuje při každé synchronizaci
+i u dřív načtených stromů — čtečky z EKV mohou přibýt až po stromu.
+
+Výsledek synchronizace říká, kolik čteček se spárovalo a kolik jich ACS nezná;
+seznam úrovní ukazuje „(N ACS nezná)“ u sloupce Čteček. V detailu úrovně jsou
+spárované čtečky zaškrtnuté, čtečky bez id WIN-PAKu jsou červeně a zápis je
+vypnutý — uložení by je z úrovně vyřadilo (WIN-PAK přepisuje celé složení
+podle id). Pomůže synchronizace čteček, která id doplní.
 
 ## Automatické mapování čteček
 
