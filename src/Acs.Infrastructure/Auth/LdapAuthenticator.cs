@@ -53,12 +53,67 @@ public class LdapAuthenticator(SettingsService settings, DcLocator dcLocator, IL
         }
     }
 
+    /// <summary>
+    /// Dohledá uživatele v AD podle účtu (sAMAccountName) bez jeho hesla — bind servisním
+    /// účtem (<c>Ldap:BindUser</c>). Používá se po přihlášení účtem Windows (Kerberos/NTLM),
+    /// kdy heslo uživatele aplikace nemá, ale potřebuje jméno, e-mail a skupiny pro role.
+    /// Vrací <c>null</c>, když LDAP nebo servisní účet není nakonfigurován nebo dotaz selže
+    /// (volající pak pracuje jen s tím, co má v DB).
+    /// </summary>
+    public virtual async Task<LdapUserInfo?> LookupAsync(string samAccount, CancellationToken ct = default)
+    {
+        if (!await settings.GetBoolAsync(SettingKeys.LdapEnabled, false, ct))
+            return null;
+
+        var bindUser = await settings.GetAsync(SettingKeys.LdapBindUser, ct);
+        var bindPassword = await settings.GetAsync(SettingKeys.LdapBindPassword, ct);
+        if (string.IsNullOrWhiteSpace(bindUser) || string.IsNullOrEmpty(bindPassword))
+        {
+            logger.LogInformation("LDAP: servisní účet není nastaven — atributy uživatele {User} se z AD nenačtou.", samAccount);
+            return null;
+        }
+
+        try
+        {
+            return await LookupOnceAsync(samAccount, bindUser, bindPassword, ct);
+        }
+        catch (LdapException ex) when (IsConnectivityError(ex))
+        {
+            logger.LogWarning(ex, "LDAP řadič neodpovídá — zkouším jiný DC.");
+            DcLocator.Invalidate();
+            try
+            {
+                return await LookupOnceAsync(samAccount, bindUser, bindPassword, ct);
+            }
+            catch (Exception retryEx)
+            {
+                logger.LogError(retryEx, "LDAP dohledání uživatele {User} selhalo i proti náhradnímu řadiči.", samAccount);
+                return null;
+            }
+        }
+        catch (Exception ex) when (ex is LdapException or InvalidOperationException)
+        {
+            logger.LogWarning(ex, "LDAP dohledání uživatele {User} selhalo.", samAccount);
+            return null;
+        }
+    }
+
+    private async Task<LdapUserInfo?> LookupOnceAsync(string samAccount, string bindUser, string bindPassword, CancellationToken ct)
+    {
+        var server = await dcLocator.GetActiveServerAsync(ct);
+        var useSsl = await settings.GetBoolAsync(SettingKeys.LdapUseSsl, true, ct);
+        var port = await settings.GetIntAsync(SettingKeys.LdapPort, useSsl ? 636 : 389, ct);
+
+        using var connection = CreateConnection(server, port, useSsl, bindUser, bindPassword);
+        connection.Bind();
+        return await SearchUserAsync(connection, samAccount, ct);
+    }
+
     private async Task<LdapUserInfo?> AuthenticateOnceAsync(string userName, string password, CancellationToken ct)
     {
         var server = await dcLocator.GetActiveServerAsync(ct);
         var useSsl = await settings.GetBoolAsync(SettingKeys.LdapUseSsl, true, ct);
         var port = await settings.GetIntAsync(SettingKeys.LdapPort, useSsl ? 636 : 389, ct);
-        var baseDn = await settings.GetAsync(SettingKeys.LdapBaseDn, ct) ?? "";
         var domain = await settings.GetAsync(SettingKeys.LdapDomain, ct);
 
         // 1) bind jako přihlašovaný uživatel (ověření hesla)
@@ -79,9 +134,15 @@ public class LdapAuthenticator(SettingsService settings, DcLocator dcLocator, IL
         }
 
         // 2) dohledání atributů uživatele
+        var samAccount = userName.Contains('@') ? userName.Split('@')[0] : userName.Split('\\').Last();
+        return await SearchUserAsync(connection, samAccount, ct);
+    }
+
+    private async Task<LdapUserInfo> SearchUserAsync(LdapConnection connection, string samAccount, CancellationToken ct)
+    {
+        var baseDn = await settings.GetAsync(SettingKeys.LdapBaseDn, ct) ?? "";
         var filterTemplate = await settings.GetAsync(SettingKeys.LdapUserFilter, ct)
             ?? "(&(objectClass=user)(sAMAccountName={0}))";
-        var samAccount = userName.Contains('@') ? userName.Split('@')[0] : userName.Split('\\').Last();
         var filter = string.Format(filterTemplate, EscapeLdapFilter(samAccount));
 
         var request = new SearchRequest(baseDn, filter, SearchScope.Subtree,

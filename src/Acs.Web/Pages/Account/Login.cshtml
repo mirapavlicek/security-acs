@@ -13,10 +13,23 @@
     {
         <div class="alert alert-error">@Model.ErrorMessage</div>
     }
+    @if (Model.InfoMessage is not null)
+    {
+        <div class="alert alert-success">@Model.InfoMessage</div>
+    }
 
-    <form method="post">
+    @if (Model.WindowsLoginEnabled)
+    {
+        <a class="btn login-windows" asp-page="/Account/WindowsLogin" asp-route-returnUrl="@Model.ReturnUrl">
+            Přihlásit účtem Windows
+        </a>
+        <p class="muted login-windows-hint">Použije účet, kterým jste přihlášeni k počítači v doméně (Kerberos / NTLM).</p>
+        <div class="login-divider"><span>nebo jménem a heslem</span></div>
+    }
+
+    <form method="post" asp-route-returnUrl="@Model.ReturnUrl">
         <label asp-for="UserName">Uživatelské jméno (AD účet nebo lokální)</label>
-        <input asp-for="UserName" type="text" autofocus autocomplete="username" />
+        <input asp-for="UserName" type="text" autofocus="@(!Model.WindowsLoginEnabled)" autocomplete="username" />
 
         <label asp-for="Password">Heslo</label>
         <input asp-for="Password" type="password" autocomplete="current-password" />

@@ -53,6 +53,11 @@ Pozn.: pokud je repozitář privátní, nastavte na nodech přístup ke čtení
    heslem — aplikace vynutí okamžitou změnu.
 4. V **Nastavení** (GUI) nakonfigurujte Active Directory (LDAPS, mapování
    skupin na role), WIN-PAK konektor (adresa + API klíč) a zdroj zaměstnanců.
+5. **Přihlášení účtem Windows (NTLM / Kerberos)**: zaregistrujte SPN
+   `HTTP/acs.fnmh.network` na servisní účet, vytvořte keytab (`ktpass`), nahrajte
+   ho na oba nody jako `/etc/acs/acs.keytab` (`KRB5_KTNAME` v `acs.env`; při
+   instalaci stačí soubor `deploy/acs.keytab`) a zapněte sekci *Přihlášení
+   Windows* v Nastavení. Podrobný postup: [`docs/prihlaseni-windows.md`](../docs/prihlaseni-windows.md).
 
 ## Bezpečnostní poznámky k nasazení
 

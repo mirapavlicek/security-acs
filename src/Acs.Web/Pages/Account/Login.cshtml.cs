@@ -1,7 +1,6 @@
-using System.Security.Claims;
-using Acs.Domain.Entities;
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Auth;
+using Acs.Infrastructure.Settings;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -13,7 +12,7 @@ namespace Acs.Web.Pages.Account;
 
 [AllowAnonymous]
 [EnableRateLimiting("login")]
-public class LoginModel(UserAuthenticationService auth, AuditService audit) : PageModel
+public class LoginModel(UserAuthenticationService auth, AuditService audit, SettingsService settings) : PageModel
 {
     [BindProperty]
     public string UserName { get; set; } = "";
@@ -23,12 +22,45 @@ public class LoginModel(UserAuthenticationService auth, AuditService audit) : Pa
 
     public string? ErrorMessage { get; set; }
 
-    public void OnGet()
+    /// <summary>Zpráva bez chybového rázu (např. po odhlášení).</summary>
+    public string? InfoMessage { get; set; }
+
+    /// <summary>Je zapnuté přihlášení účtem Windows — zobrazí se tlačítko nad formulářem.</summary>
+    public bool WindowsLoginEnabled { get; private set; }
+
+    public string? ReturnUrl { get; private set; }
+
+    /// <param name="manual">Zobrazit formulář i při zapnutém automatickém přihlášení Windows (odhlášení, jiný účet, lokální admin).</param>
+    /// <param name="sso">Kód výsledku přihlášení Windows, ze kterého se sem uživatel vrátil.</param>
+    public async Task<IActionResult> OnGetAsync(string? returnUrl = null, string? manual = null, string? sso = null)
     {
+        ReturnUrl = returnUrl;
+        var showForm = manual is "1" or "true";
+        WindowsLoginEnabled = await settings.GetBoolAsync(SettingKeys.SsoEnabled);
+        var autoLogin = WindowsLoginEnabled && await settings.GetBoolAsync(SettingKeys.SsoAutoLogin);
+
+        if (autoLogin && !showForm && sso is null)
+            return RedirectToPage("/Account/WindowsLogin", new { returnUrl });
+
+        ErrorMessage = sso switch
+        {
+            null => null,
+            "failed" => "Přihlášení účtem Windows se nezdařilo (prohlížeč neposlal platný Kerberos/NTLM token). Přihlaste se jménem a heslem.",
+            "account" => "Účet Windows byl ověřen, ale v ACS ho nelze použít (neaktivní uživatel nebo nepovolená doména). Přihlaste se jménem a heslem, nebo kontaktujte správce.",
+            "disabled" => "Přihlášení účtem Windows není zapnuté. Přihlaste se jménem a heslem.",
+            _ => "Přihlášení účtem Windows se nezdařilo. Přihlaste se jménem a heslem.",
+        };
+        if (sso is null && showForm && Request.Query.ContainsKey("loggedOut"))
+            InfoMessage = "Byli jste odhlášeni.";
+
+        return Page();
     }
 
     public async Task<IActionResult> OnPostAsync(string? returnUrl = null)
     {
+        ReturnUrl = returnUrl;
+        WindowsLoginEnabled = await settings.GetBoolAsync(SettingKeys.SsoEnabled);
+
         if (string.IsNullOrWhiteSpace(UserName) || string.IsNullOrWhiteSpace(Password))
         {
             ErrorMessage = "Zadejte uživatelské jméno a heslo.";
@@ -43,27 +75,9 @@ public class LoginModel(UserAuthenticationService auth, AuditService audit) : Pa
             return Page();
         }
 
-        var claims = new List<Claim>
-        {
-            new(ClaimTypes.Name, user.UserName),
-            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-        };
-        if (user.DisplayName is not null)
-            claims.Add(new Claim("display_name", user.DisplayName));
-        if (user.IsLocal)
-            claims.Add(new Claim("is_local", "1"));   // heslo lze měnit jen u lokálních účtů, AD spravuje doména
-        if (user.MustChangePassword)
-            claims.Add(new Claim("must_change_password", "1"));
-
-        foreach (var role in Enum.GetValues<AppRole>())
-        {
-            if (role != AppRole.None && user.Roles.HasFlag(role))
-                claims.Add(new Claim(ClaimTypes.Role, role.ToString()));
-        }
-
         await HttpContext.SignInAsync(
             CookieAuthenticationDefaults.AuthenticationScheme,
-            new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme)));
+            AppUserPrincipal.Create(user, "password"));
 
         await audit.LogAsync(user.UserName, "login");
 
@@ -79,6 +93,7 @@ public class LoginModel(UserAuthenticationService auth, AuditService audit) : Pa
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         if (userName is not null)
             await audit.LogAsync(userName, "logout");
-        return RedirectToPage("/Account/Login");
+        // manual=1: po odhlášení se nesmí automaticky přihlásit znovu účtem Windows.
+        return RedirectToPage("/Account/Login", new { manual = 1, loggedOut = 1 });
     }
 }

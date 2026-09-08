@@ -137,7 +137,13 @@
                     @(User.FindFirst("display_name")?.Value ?? User.Identity!.Name)
                 </summary>
                 <div class="usermenu-panel">
-                    <span class="usermenu-header">@User.Identity!.Name</span>
+                    <span class="usermenu-header">
+                        @User.Identity!.Name
+                        @if (User.HasClaim("auth_method", "windows"))
+                        {
+                            <span class="muted" title="Přihlášeno účtem Windows (Kerberos / NTLM)">· Windows</span>
+                        }
+                    </span>
                     <a asp-page="/Deputies">Zástupy</a>
                     @if (User.HasClaim("is_local", "1"))
                     {

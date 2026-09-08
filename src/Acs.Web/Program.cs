@@ -6,7 +6,9 @@ using Acs.Infrastructure.Data;
 using Acs.Infrastructure.Settings;
 using Acs.Infrastructure.WinPak;
 using Acs.Web.Api;
+using Acs.Web.Pages.Account;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -120,6 +122,35 @@ builder.Services
         options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
             ? CookieSecurePolicy.SameAsRequest
             : CookieSecurePolicy.Always;
+    })
+    // Přihlášení účtem Windows (Negotiate: Kerberos, případně NTLM) — používá jen stránka
+    // /Account/WindowsLogin; po ověření identity se vydá běžná cookie, zbytek aplikace se nemění.
+    // Na Linuxu ověřuje Kerberos přes GSSAPI (keytab v KRB5_KTNAME), viz docs/prihlaseni-windows.md.
+    .AddNegotiate(options =>
+    {
+        options.PersistKerberosCredentials = false;
+        options.Events = new NegotiateEvents
+        {
+            // Neplatný / neověřitelný token (chybí keytab, špatné SPN, NTLM bez podpory…):
+            // místo chyby 500 se uživatel vrátí na formulář se jménem a heslem.
+            OnAuthenticationFailed = context =>
+            {
+                context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("Acs.WindowsLogin")
+                    .LogWarning(context.Exception, "Přihlášení Windows (Negotiate) selhalo.");
+                if (context.Request.Path.StartsWithSegments("/Account/WindowsLogin"))
+                {
+                    context.HandleResponse();
+                    context.Response.Redirect(WindowsLoginModel.FailureRedirectUrl(context.HttpContext, "failed"));
+                }
+                else
+                {
+                    // Jinde se Negotiate token nepoužívá — požadavek pokračuje jako nepřihlášený (cookie).
+                    context.SkipHandler();
+                }
+                return Task.CompletedTask;
+            },
+        };
     });
 
 // Aplikace běží za HAProxy, který terminuje TLS — čti X-Forwarded-* hlavičky,
@@ -176,6 +207,7 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(optio
 builder.Services.AddRazorPages(options =>
 {
     options.Conventions.AllowAnonymousToPage("/Account/Login");
+    options.Conventions.AllowAnonymousToPage("/Account/WindowsLogin");
     options.Conventions.AllowAnonymousToPage("/Account/Denied");
     options.Conventions.AllowAnonymousToPage("/Error");
     options.Conventions.AuthorizeFolder("/Admin", "Admin");

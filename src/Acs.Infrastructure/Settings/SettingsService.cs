@@ -29,6 +29,14 @@ public static class SettingKeys
     /// <summary>DC lokátor: hledat aktivní řadič přes DNS SRV (_ldap._tcp.dc._msdcs).</summary>
     public const string LdapUseDcLocator = "Ldap:UseDcLocator";
 
+    // Přihlášení účtem Windows (Negotiate: Kerberos / NTLM) — jednotné přihlášení z doménových PC
+    /// <summary>Zapíná endpoint <c>/Account/WindowsLogin</c> (výzva <c>WWW-Authenticate: Negotiate</c>).</summary>
+    public const string SsoEnabled = "Sso:Enabled";
+    /// <summary>Přihlašovací stránka rovnou přesměruje na přihlášení Windows; formulář zůstává pod „manual=1“.</summary>
+    public const string SsoAutoLogin = "Sso:AutoLogin";
+    /// <summary>Povolené domény / realm-y účtu (NetBIOS nebo DNS, oddělené čárkou; prázdné = libovolná).</summary>
+    public const string SsoAllowedDomains = "Sso:AllowedDomains";
+
     // WinPak Connector
     public const string WinPakBaseUrl = "WinPak:BaseUrl";
     public const string WinPakApiKey = "WinPak:ApiKey";              // secret

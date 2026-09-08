@@ -13,5 +13,13 @@ backend acs_back
     option httpchk GET /health
     http-check expect status 200
     # Aplikace je bezestavová — sticky session není potřeba.
+    #
+    # Přihlášení účtem Windows (WWW-Authenticate: Negotiate):
+    #  - Kerberos je bezestavový (ticket v každém požadavku), funguje bez dalšího nastavení.
+    #  - NTLM je vázaný na TCP spojení (handshake ve 2 krocích). HAProxy takové spojení
+    #    při výchozím „http-reuse safe“ označí za privátní a drží ho k jednomu klientovi i
+    #    serveru; nepoužívejte http-reuse aggressive/always. Keep-alive musí zůstat zapnutý.
+    option http-keep-alive
+    http-reuse safe
     server acs1 10.84.7.146:52000 check inter 3s fall 2 rise 2
     server acs2 10.84.7.147:52000 check inter 3s fall 2 rise 2

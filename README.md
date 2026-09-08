@@ -5,6 +5,7 @@ Webová aplikace pro schvalování přístupů k místnostem (`acs.fnmh.network`
 - .NET 10 (C#), Blazor WebAssembly + ASP.NET Core, MariaDB Galera
 - HA nasazení (bezestavové) na dvou RHEL serverech za HAProxy, port 52000
 - Integrace s Honeywell WIN-PAK (řízení přístupu), přihlašování přes AD
+  (jméno + heslo přes LDAPS, nebo účtem Windows — NTLM / Kerberos)
 
 ## Komponenty
 
@@ -26,6 +27,7 @@ Webová aplikace pro schvalování přístupů k místnostem (`acs.fnmh.network`
 - [Návrhový plán a otevřené otázky](docs/PLAN.md)
 - [Generování plánů pater](docs/plany-generovani.md)
 - [Osobní čísla z Active Directory](docs/ad-osobni-cisla.md)
+- [Přihlášení účtem Windows (NTLM / Kerberos)](docs/prihlaseni-windows.md)
 - [Univerzální integrační API (podklad do zadávačky)](docs/integrace/README.md)
 - [Import čteček z tabulek EKV](docs/import-ctecek-ekv.md)
 - [Přístupové úrovně WIN-PAKu z ACS](docs/pristupove-urovne.md)
