@@ -102,20 +102,27 @@ public static class LdapAttributes
         .Replace(@"\", @"\5c").Replace("*", @"\2a").Replace("(", @"\28")
         .Replace(")", @"\29").Replace("\0", @"\00");
 
+    /// <summary>Výchozí AD atribut s nadřízeným — DN objektu nadřízeného.</summary>
+    public const string DefaultManagerAttribute = "manager";
+
     /// <summary>Atributy, které se pro sestavení zaměstnance dotahují z AD.</summary>
-    public static string[] RequestedAttributes(IReadOnlyList<string> personalNumberAttributes) =>
+    public static string[] RequestedAttributes(
+        IReadOnlyList<string> personalNumberAttributes, string managerAttribute = DefaultManagerAttribute) =>
     [
         "sAMAccountName", "givenName", "sn", "displayName", "mail",
-        "department", "physicalDeliveryOfficeName",
+        "department", "physicalDeliveryOfficeName", "distinguishedName", managerAttribute,
         .. personalNumberAttributes,
     ];
 
     /// <summary>
     /// Sestaví zaměstnance z atributů jednoho záznamu. Vrací null u záznamů bez
     /// <c>sAMAccountName</c> — to jsou typicky servisní a systémové objekty.
+    /// Nadřízený se zatím uloží „surově“ (<see cref="EmployeeRecord.ManagerRaw"/> = DN);
+    /// na <c>ExternalId</c> ho převede <see cref="ResolveManagers"/> až nad celou dávkou.
     /// </summary>
     public static EmployeeRecord? MapEmployee(
-        Func<string, string[]> lookup, IReadOnlyList<string> personalNumberAttributes)
+        Func<string, string[]> lookup, IReadOnlyList<string> personalNumberAttributes,
+        string managerAttribute = DefaultManagerAttribute)
     {
         var sam = FirstValue(lookup, "sAMAccountName");
         if (string.IsNullOrWhiteSpace(sam))
@@ -140,12 +147,65 @@ public static class LdapAttributes
             Email: FirstValue(lookup, "mail"),
             Department: FirstValue(lookup, "department", "physicalDeliveryOfficeName"),
             AdAccount: sam,
-            CardNumber: null);   // karty se dotahují samostatně ze SQL
+            CardNumber: null,   // karty se dotahují samostatně ze SQL
+            ManagerExternalId: null,
+            ManagerRaw: FirstValue(lookup, managerAttribute));
+    }
+
+    /// <summary>
+    /// Převede nadřízené z DN (hodnota atributu <c>manager</c>) na <c>ExternalId</c>
+    /// (sAMAccountName) podle DN ostatních záznamů dávky. Nadřízený mimo dávku
+    /// (jiná OU, zablokovaný účet, mimo filtr) zůstane nespárovaný — DN zůstává
+    /// v <see cref="EmployeeRecord.ManagerRaw"/> pro diagnostiku. Hodnota, která není DN
+    /// (např. rovnou sAMAccountName z jiného atributu), se porovná s účty přímo.
+    /// </summary>
+    public static IReadOnlyList<EmployeeRecord> ResolveManagers(
+        IReadOnlyList<(EmployeeRecord Record, string? Dn)> batch)
+    {
+        var byDn = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var byAccount = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (record, dn) in batch)
+        {
+            byAccount.Add(record.ExternalId);
+            if (!string.IsNullOrWhiteSpace(dn))
+                byDn.TryAdd(dn.Trim(), record.ExternalId);
+        }
+
+        var result = new List<EmployeeRecord>(batch.Count);
+        foreach (var (record, _) in batch)
+        {
+            var raw = record.ManagerRaw?.Trim();
+            string? managerId = null;
+            if (!string.IsNullOrEmpty(raw))
+            {
+                if (byDn.TryGetValue(raw, out var viaDn))
+                    managerId = viaDn;
+                else if (!raw.Contains('=') && byAccount.Contains(raw))
+                    managerId = raw;
+            }
+
+            // Sám sobě nadřízeným (chyba v AD) → bez nadřízeného.
+            if (managerId is not null && managerId.Equals(record.ExternalId, StringComparison.OrdinalIgnoreCase))
+                managerId = null;
+
+            result.Add(record with { ManagerExternalId = managerId });
+        }
+
+        return result;
+    }
+
+    /// <summary>Čitelný tvar DN nadřízeného pro diagnostiku („CN=Novák Jan,OU=…“ → „Novák Jan“).</summary>
+    public static string DescribeManager(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return "";
+        var first = raw.Split(',')[0];
+        return first.StartsWith("CN=", StringComparison.OrdinalIgnoreCase) ? first[3..].Replace(@"\", "") : raw;
     }
 
     /// <summary>Popis mapování pro diagnostiku — co se z kterého atributu bere.</summary>
     public static IReadOnlyList<(string Attribute, string MapsTo)> MappingDescription(
-        IReadOnlyList<string> personalNumberAttributes)
+        IReadOnlyList<string> personalNumberAttributes, string managerAttribute = DefaultManagerAttribute)
     {
         var mapping = new List<(string, string)>
         {
@@ -167,6 +227,7 @@ public static class LdapAttributes
             ("mail", "e-mail"),
             ("department", "oddělení"),
             ("physicalDeliveryOfficeName", "oddělení, když department chybí"),
+            (managerAttribute, "nadřízený (DN → zaměstnanec se stejným účtem; schvalování nadřízeným)"),
         ]);
 
         return mapping;

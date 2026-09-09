@@ -195,6 +195,12 @@ public class AutomationService(
             .Where(i => i.Status == RequestStatus.Pending)
             .ToListAsync(ct);
 
+        // Připomínky jdou stejným lidem jako první upozornění — včetně nadřízeného
+        // cílového zaměstnance; úroveň bez schvalovatele se připomíná administrátorům.
+        var resolutions = notifier is null
+            ? []
+            : await new RequestWorkflowService(db, audit).ResolveCurrentLevelsAsync(pending, ct);
+
         int reminders = 0, escalations = 0;
         foreach (var item in pending)
         {
@@ -204,7 +210,13 @@ public class AutomationService(
                 continue;
 
             if (notifier is not null)
-                await notifier.NotifyPendingAsync(item.Id, ct);
+            {
+                if (resolutions.TryGetValue(item.Id, out var resolution) && resolution.RequiresAdminFallback)
+                    await notifier.NotifyNoApproverAsync(item.Id,
+                        resolution.Warnings.Count > 0 ? string.Join("; ", resolution.Warnings) : "úroveň bez schvalovatele", ct);
+                else
+                    await notifier.NotifyPendingAsync(item.Id, ct);
+            }
             item.LastReminderAt = now;
             reminders++;
 

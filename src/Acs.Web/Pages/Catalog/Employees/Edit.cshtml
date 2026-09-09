@@ -26,6 +26,30 @@
         <input asp-for="Employee.Department" />
         <label>AD účet (sAMAccountName) — pro párování s přihlášením</label>
         <input asp-for="Employee.AdAccount" />
+        <label>Nadřízený (pište pro hledání) — pro schvalování „nadřízeným zaměstnance“</label>
+        <input type="text" id="manager-search" placeholder="Hledat jméno, oddělení, osobní číslo…"
+               autocomplete="off" style="margin-bottom:0.3rem" />
+        <select asp-for="ManagerId" id="manager-select" size="1">
+            <option value="">— bez nadřízeného —</option>
+            @foreach (var candidate in Model.ManagerCandidates)
+            {
+                <option value="@candidate.Id" selected="@(candidate.Id == Model.ManagerId)"
+                        data-search="@($"{candidate.FullName} {candidate.Department} {candidate.PersonalNumber} {candidate.AdAccount}")">
+                    @candidate.FullName @(candidate.Department is null ? "" : $"({candidate.Department})")
+                </option>
+            }
+        </select>
+        <p class="hint" id="manager-hint">
+            @if (Model.Employee.ManagerId is null && Model.Employee.ManagerAdAccount is not null)
+            {
+                <text>Zdroj uvádí nadřízeného <code>@Model.Employee.ManagerAdAccount</code>, ale v ACS se nenašel (není v importu, nebo je zablokovaný). </text>
+            }
+            <text>Z AD se načítá při importu (atribut <code>manager</code>); ručně zadaný se importem nepřepisuje.</text>
+        </p>
+        <div class="checkbox-row">
+            <input type="checkbox" asp-for="ManagerManual" />
+            <label asp-for="ManagerManual">Nadřízený zadán ručně (import z AD ho nepřepíše)</label>
+        </div>
         <label>WIN-PAK card holder id</label>
         <input asp-for="Employee.WinPakCardHolderId" />
         <label>Primární číslo karty (přehledové; úplný seznam níže)</label>
@@ -42,6 +66,20 @@
         <a class="btn btn-ghost" asp-page="Index">Zpět</a>
     </form>
 </div>
+
+@if (Model.Employee.Id != 0 && Model.Subordinates.Count > 0)
+{
+    <div class="card" style="max-width:760px">
+        <h2 style="margin-top:0">Podřízení (@Model.Subordinates.Count)</h2>
+        <p class="muted" style="margin-top:0">Zaměstnanci, jejichž žádosti tento zaměstnanec schvaluje jako nadřízený (je-li to v matici).</p>
+        <ul style="margin:0">
+            @foreach (var subordinate in Model.Subordinates)
+            {
+                <li><a asp-page="Edit" asp-route-id="@subordinate.Id">@subordinate.FullName</a> <span class="muted">@subordinate.Department</span></li>
+            }
+        </ul>
+    </div>
+}
 
 @if (Model.Employee.Id != 0)
 {
@@ -106,4 +144,9 @@
             <button class="btn" type="submit">Přidat identifikátor</button>
         </form>
     </div>
+}
+
+@section Scripts {
+<script src="~/js/employee-search.js" asp-append-version="true"></script>
+<script>window.acsEmployeeSearch('manager');</script>
 }

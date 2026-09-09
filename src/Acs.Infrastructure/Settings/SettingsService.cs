@@ -58,6 +58,10 @@ public static class SettingKeys
     public const string EmployeePersonalNumberAttribute = "Employees:LdapPersonalNumberAttribute";
     /// <summary>Timeout LDAP dotazu v minutách (velké domény trvají déle).</summary>
     public const string EmployeeLdapTimeoutMinutes = "Employees:LdapTimeoutMinutes";
+    /// <summary>AD atribut s nadřízeným (DN nadřízeného); výchozí <c>manager</c>.</summary>
+    public const string EmployeeLdapManagerAttribute = "Employees:LdapManagerAttribute";
+    /// <summary>Statistika nadřízených z poslední synchronizace („spárováno X z Y, zdroj uvádí Z“) — jen k zobrazení.</summary>
+    public const string EmployeeLastManagerStats = "Employees:LastManagerStats";
 
     // Karty z MSSQL (zaměstnanci z AD, karty z SQL)
     public const string CardsMssqlConnectionString = "Cards:MssqlConnectionString"; // secret

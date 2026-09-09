@@ -211,13 +211,27 @@
             <a asp-page="LdapDump">Co vrací AD o účtu</a> — vypíše všechny atributy jednoho
             účtu i to, co z nich ACS uloží.
         </p>
+        <label>AD atribut s nadřízeným (DN nadřízeného; výchozí <code>manager</code>)</label>
+        <input type="text" name="EmployeeLdapManagerAttribute"
+               value="@Model.Values[SettingKeys.EmployeeLdapManagerAttribute]"
+               placeholder="manager" />
+        <p class="hint">
+            Nadřízený se při importu spáruje se zaměstnancem se stejným DN a použije se ve
+            schvalovacích maticích s typem schvalovatele „nadřízený zaměstnance“
+            (<a asp-page="/Catalog/Matrices/Index">Schvalovací matice</a>). Zda AD nadřízené vůbec vede,
+            ukáže <a asp-page="LdapDump">Co vrací AD o účtu</a> — řádek „Nadřízený“.
+            @if (!string.IsNullOrWhiteSpace(Model.Values[SettingKeys.EmployeeLastManagerStats]))
+            {
+                <br /><strong>Poslední synchronizace:</strong> <span>@Model.Values[SettingKeys.EmployeeLastManagerStats]</span>
+            }
+        </p>
         <label>Velikost stránky LDAP dotazu (AD zvládá max 1000)</label>
         <input type="number" name="EmployeeLdapPageSize" value="@Model.Values[SettingKeys.EmployeeLdapPageSize]" placeholder="500" />
         <label>Timeout LDAP dotazu (minuty) — velké domény trvají déle</label>
         <input type="number" name="EmployeeLdapTimeoutMinutes" value="@Model.Values[SettingKeys.EmployeeLdapTimeoutMinutes]" placeholder="10" />
         <label>MSSQL connection string (prázdné = ponechat)</label>
         <input type="password" name="EmployeeMssqlConnectionString" autocomplete="new-password" />
-        <label>MSSQL dotaz (sloupce: ExternalId, PersonalNumber, FirstName, LastName, Email, Department, AdAccount, CardNumber)</label>
+        <label>MSSQL dotaz (sloupce: ExternalId, PersonalNumber, FirstName, LastName, Email, Department, AdAccount, CardNumber; volitelně ManagerExternalId)</label>
         <textarea name="EmployeeMssqlQuery" rows="3">@Model.Values[SettingKeys.EmployeeMssqlQuery]</textarea>
         <label>API URL (alternativa k MSSQL)</label>
         <input type="text" name="EmployeeApiUrl" value="@Model.Values[SettingKeys.EmployeeApiUrl]" />

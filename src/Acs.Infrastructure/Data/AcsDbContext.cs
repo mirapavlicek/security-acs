@@ -58,9 +58,14 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
         {
             e.HasIndex(x => x.ExternalId);
             e.HasIndex(x => x.AdAccount);
+            e.HasIndex(x => x.ManagerId);
             e.Property(x => x.FirstName).HasMaxLength(128);
             e.Property(x => x.LastName).HasMaxLength(128);
             e.Property(x => x.ParkingSystemId).HasMaxLength(64);
+            e.Property(x => x.ManagerAdAccount).HasMaxLength(512);
+            // Nadřízený: po smazání nadřízeného zůstává podřízený bez nadřízeného.
+            e.HasOne(x => x.Manager).WithMany()
+                .HasForeignKey(x => x.ManagerId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<EmployeeIdentifier>(e =>

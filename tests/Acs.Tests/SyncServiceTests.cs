@@ -164,6 +164,143 @@ public sealed class SyncServiceTests : IDisposable
         Assert.Null(employee.Email);
     }
 
+    // ---------- Nadřízený (AD atribut manager) ----------
+
+    /// <summary>
+    /// AD vrací nadřízeného jako DN; na účet se převádí podle DN ostatních záznamů dávky.
+    /// Nadřízený mimo dávku (jiná OU, zablokovaný) zůstane nespárovaný, DN se ale zachová.
+    /// </summary>
+    [Fact]
+    public void LdapAttributes_ResolveManagers_prevadi_DN_na_ucet()
+    {
+        var director = new EmployeeRecord("dreditelova", null, "Dana", "Ředitelová", null, null, "dreditelova", null,
+            ManagerRaw: "CN=Externí Šéf,OU=Jinde,DC=fnmh,DC=cz");
+        var manager = new EmployeeRecord("vvedouci", null, "Věra", "Vedoucí", null, null, "vvedouci", null,
+            ManagerRaw: "cn=Ředitelová Dana,ou=Vedení,dc=fnmh,dc=cz"); // jiná velikost písmen
+        var employee = new EmployeeRecord("jnovak", null, "Jan", "Novák", null, null, "jnovak", null,
+            ManagerRaw: "CN=Vedoucí Věra,OU=IT,DC=fnmh,DC=cz");
+        var loner = new EmployeeRecord("self", null, "Sám", "Sobě", null, null, "self", null,
+            ManagerRaw: "CN=Sám Sobě,OU=IT,DC=fnmh,DC=cz");
+        var byAccount = new EmployeeRecord("acc", null, "Podle", "Účtu", null, null, "acc", null,
+            ManagerRaw: "vvedouci"); // atribut s účtem místo DN
+
+        var resolved = LdapAttributes.ResolveManagers(
+        [
+            (director, "CN=Ředitelová Dana,OU=Vedení,DC=fnmh,DC=cz"),
+            (manager, "CN=Vedoucí Věra,OU=IT,DC=fnmh,DC=cz"),
+            (employee, "CN=Novák Jan,OU=IT,DC=fnmh,DC=cz"),
+            (loner, "CN=Sám Sobě,OU=IT,DC=fnmh,DC=cz"),
+            (byAccount, "CN=Podle Účtu,OU=IT,DC=fnmh,DC=cz"),
+        ]);
+
+        var byId = resolved.ToDictionary(r => r.ExternalId);
+        Assert.Equal("vvedouci", byId["jnovak"].ManagerExternalId);
+        Assert.Equal("dreditelova", byId["vvedouci"].ManagerExternalId);
+        Assert.Null(byId["dreditelova"].ManagerExternalId);            // nadřízený mimo dávku
+        Assert.Equal("CN=Externí Šéf,OU=Jinde,DC=fnmh,DC=cz", byId["dreditelova"].ManagerRaw);
+        Assert.Null(byId["self"].ManagerExternalId);                   // sám sobě → nic
+        Assert.Equal("vvedouci", byId["acc"].ManagerExternalId);
+    }
+
+    [Fact]
+    public void LdapAttributes_RequestedAttributes_obsahuji_manager_a_distinguishedName()
+    {
+        var requested = LdapAttributes.RequestedAttributes(["employeeID"], "extensionAttribute5");
+        Assert.Contains("distinguishedName", requested);
+        Assert.Contains("extensionAttribute5", requested);
+        Assert.Contains(LdapAttributes.MappingDescription(["employeeID"], "extensionAttribute5"),
+            m => m.Attribute == "extensionAttribute5" && m.MapsTo.Contains("nadřízený"));
+    }
+
+    [Fact]
+    public void LdapAttributes_MapEmployee_uklada_surove_DN_nadrizeneho()
+    {
+        var values = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["sAMAccountName"] = ["jnovak"],
+            ["givenName"] = ["Jan"],
+            ["sn"] = ["Novák"],
+            ["manager"] = ["CN=Vedoucí Věra,OU=IT,DC=fnmh,DC=cz"],
+        };
+        var record = LdapAttributes.MapEmployee(name => values.GetValueOrDefault(name, []), ["employeeID"]);
+
+        Assert.NotNull(record);
+        Assert.Equal("CN=Vedoucí Věra,OU=IT,DC=fnmh,DC=cz", record!.ManagerRaw);
+        Assert.Null(record.ManagerExternalId);
+        Assert.Equal("Vedoucí Věra", LdapAttributes.DescribeManager(record.ManagerRaw));
+    }
+
+    /// <summary>
+    /// Druhý průchod synchronizace nastaví ManagerId podle ExternalId nadřízeného — i když
+    /// je nadřízený v dávce až za podřízeným. Ručně zadaný nadřízený se nepřepisuje.
+    /// Statistika říká, u kolika zaměstnanců se nadřízený našel.
+    /// </summary>
+    [Fact]
+    public async Task EmployeeSync_paruje_nadrizeneho_a_respektuje_rucni_zadani()
+    {
+        var manualBoss = new Employee { FirstName = "Ruční", LastName = "Šéf", Source = RecordSource.Manual };
+        var manualEmployee = new Employee
+        {
+            ExternalId = "manual", FirstName = "Petr", LastName = "Ruční", Source = RecordSource.Imported,
+            Manager = manualBoss, ManagerManual = true,
+        };
+        _db.Employees.AddRange(manualBoss, manualEmployee);
+        await _db.SaveChangesAsync();
+
+        var source = new StubSource([
+            // podřízený dřív než nadřízený — druhý průchod si musí poradit
+            new EmployeeRecord("jnovak", null, "Jan", "Novák", null, "IT", "jnovak", null,
+                ManagerExternalId: "vvedouci", ManagerRaw: "CN=Vedoucí Věra,OU=IT,DC=fnmh,DC=cz"),
+            new EmployeeRecord("vvedouci", null, "Věra", "Vedoucí", null, "IT", "vvedouci", null,
+                ManagerExternalId: null, ManagerRaw: "CN=Externí,OU=Jinde,DC=fnmh,DC=cz"),
+            new EmployeeRecord("bezsefa", null, "Bez", "Šéfa", null, "IT", "bezsefa", null),
+            new EmployeeRecord("manual", null, "Petr", "Ruční", null, "IT", "manual", null,
+                ManagerExternalId: "vvedouci", ManagerRaw: "CN=Vedoucí Věra,OU=IT,DC=fnmh,DC=cz"),
+        ]);
+
+        var sync = new EmployeeSyncService(_db, new StubSourceFactory(source, _settings), _audit, settings: _settings);
+        var result = await sync.SyncAsync("test");
+
+        var novak = await _db.Employees.Include(e => e.Manager).SingleAsync(e => e.ExternalId == "jnovak");
+        var vedouci = await _db.Employees.SingleAsync(e => e.ExternalId == "vvedouci");
+        var bezsefa = await _db.Employees.SingleAsync(e => e.ExternalId == "bezsefa");
+        var manual = await _db.Employees.SingleAsync(e => e.ExternalId == "manual");
+
+        Assert.Equal(vedouci.Id, novak.ManagerId);
+        Assert.Equal("vvedouci", novak.ManagerAdAccount);
+        Assert.Null(vedouci.ManagerId);
+        Assert.Equal("CN=Externí,OU=Jinde,DC=fnmh,DC=cz", vedouci.ManagerAdAccount); // diagnostika: proč nespárováno
+        Assert.Null(bezsefa.ManagerId);
+        Assert.Null(bezsefa.ManagerAdAccount);
+        Assert.Equal(manualBoss.Id, manual.ManagerId);   // ruční zadání import nepřepsal
+        Assert.True(manual.ManagerManual);
+
+        // Statistika: nadřízený uveden u 2 z 4 (ruční se nepočítá), spárován u 1.
+        Assert.Equal(4, result.EmployeesTotal);
+        Assert.Equal(2, result.ManagersInSource);
+        Assert.Equal(1, result.ManagersLinked);
+        Assert.Contains("nadřízený nalezen u 1 z 4", result.ToString());
+        Assert.Equal(result.ManagerSummary, await _settings.GetAsync(SettingKeys.EmployeeLastManagerStats));
+    }
+
+    [Fact]
+    public async Task EmployeeSync_odebere_nadrizeneho_kdyz_ho_zdroj_uz_neuvadi()
+    {
+        var boss = new Employee { ExternalId = "boss", FirstName = "Boss", LastName = "B", Source = RecordSource.Imported };
+        var sub = new Employee { ExternalId = "sub", FirstName = "Sub", LastName = "S", Source = RecordSource.Imported, Manager = boss };
+        _db.Employees.AddRange(boss, sub);
+        await _db.SaveChangesAsync();
+
+        var source = new StubSource([
+            new EmployeeRecord("boss", null, "Boss", "B", null, null, "boss", null),
+            new EmployeeRecord("sub", null, "Sub", "S", null, null, "sub", null),
+        ]);
+        var result = await new EmployeeSyncService(_db, new StubSourceFactory(source, _settings), _audit).SyncAsync("test");
+
+        Assert.Null((await _db.Employees.SingleAsync(e => e.ExternalId == "sub")).ManagerId);
+        Assert.Contains("neuvádí nadřízeného", result.ManagerSummary);
+    }
+
     private sealed class StubSource(IReadOnlyList<EmployeeRecord> records) : IEmployeeSource
     {
         public Task<IReadOnlyList<EmployeeRecord>> FetchAsync(CancellationToken ct = default)

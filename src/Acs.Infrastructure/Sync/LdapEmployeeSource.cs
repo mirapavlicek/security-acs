@@ -63,6 +63,9 @@ public class LdapEmployeeSource(
         var personalNumberAttributes = LdapAttributes.ParseAttributeList(
             await settings.GetAsync(SettingKeys.EmployeePersonalNumberAttribute, ct),
             DefaultPersonalNumberAttributes);
+        var managerAttribute = LdapAttributes.ParseAttributeList(
+            await settings.GetAsync(SettingKeys.EmployeeLdapManagerAttribute, ct),
+            LdapAttributes.DefaultManagerAttribute)[0];
 
         using var connection = LdapAuthenticator.CreateConnection(server, port, useSsl, bindUser, bindPassword);
         connection.Timeout = TimeSpan.FromMinutes(timeoutMinutes);
@@ -70,7 +73,7 @@ public class LdapEmployeeSource(
         connection.SessionOptions.ReferralChasing = ReferralChasingOptions.None;
         connection.Bind();
 
-        var result = new List<EmployeeRecord>();
+        var result = new List<(EmployeeRecord Record, string? Dn)>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var pageControl = new PageResultRequestControl(pageSize);
         var page = 0;
@@ -80,7 +83,7 @@ public class LdapEmployeeSource(
             ct.ThrowIfCancellationRequested();
 
             var request = new SearchRequest(baseDn, filter, SearchScope.Subtree,
-                LdapAttributes.RequestedAttributes(personalNumberAttributes));
+                LdapAttributes.RequestedAttributes(personalNumberAttributes, managerAttribute));
             request.SizeLimit = 0;            // limit řídí stránkování, ne server-side cap
             request.TimeLimit = TimeSpan.FromMinutes(timeoutMinutes);
             request.Controls.Add(pageControl);
@@ -99,11 +102,11 @@ public class LdapEmployeeSource(
                 logger?.LogWarning(ex,
                     "LDAP: dotaz ukončen serverem ({Result}), pokračuji s dílčím výsledkem ({Count} záznamů).",
                     partial.ResultCode, result.Count);
-                Collect(partial, result, seen, personalNumberAttributes);
+                Collect(partial, result, seen, personalNumberAttributes, managerAttribute);
                 break;
             }
 
-            Collect(response, result, seen, personalNumberAttributes);
+            Collect(response, result, seen, personalNumberAttributes, managerAttribute);
             page++;
             logger?.LogInformation("LDAP: načtena stránka {Page} ({Total} zaměstnanců celkem).", page, result.Count);
 
@@ -113,21 +116,28 @@ public class LdapEmployeeSource(
             pageControl.Cookie = cookie;
         }
 
-        logger?.LogInformation("LDAP: import dokončen — {Count} zaměstnanců z {Pages} stránek.", result.Count, page);
-        return result;
+        // Nadřízený je v AD jako DN — na účet se převede až nad celou dávkou.
+        var resolved = LdapAttributes.ResolveManagers(result);
+        var withManager = resolved.Count(r => r.ManagerRaw is not null);
+        var paired = resolved.Count(r => r.ManagerExternalId is not null);
+        logger?.LogInformation(
+            "LDAP: import dokončen — {Count} zaměstnanců z {Pages} stránek; atribut {Attribute} má {WithManager}, spárováno {Paired}.",
+            resolved.Count, page, managerAttribute, withManager, paired);
+        return resolved;
     }
 
-    private static void Collect(SearchResponse response, List<EmployeeRecord> result,
-        HashSet<string> seen, IReadOnlyList<string> personalNumberAttributes)
+    private static void Collect(SearchResponse response, List<(EmployeeRecord Record, string? Dn)> result,
+        HashSet<string> seen, IReadOnlyList<string> personalNumberAttributes, string managerAttribute)
     {
         foreach (SearchResultEntry entry in response.Entries)
         {
-            var record = LdapAttributes.MapEmployee(LdapAttributes.TextLookup(entry), personalNumberAttributes);
+            var record = LdapAttributes.MapEmployee(LdapAttributes.TextLookup(entry), personalNumberAttributes, managerAttribute);
             // Bez sAMAccountName (servisní objekty) a duplicity ze stránkování se přeskakují.
             if (record is null || !seen.Add(record.ExternalId))
                 continue;
 
-            result.Add(record);
+            var dn = LdapAttributes.FirstValue(LdapAttributes.TextLookup(entry), "distinguishedName") ?? entry.DistinguishedName;
+            result.Add((record, dn));
         }
     }
 }

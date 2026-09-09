@@ -188,6 +188,22 @@ public class Employee
     /// <summary>AD účet (sAMAccountName) pro párování s přihlášeným uživatelem.</summary>
     public string? AdAccount { get; set; }
 
+    /// <summary>
+    /// Přímý nadřízený (z AD atributu <c>manager</c> při synchronizaci, nebo zadaný ručně).
+    /// Používá ho schvalovací matice s typem schvalovatele „nadřízený zaměstnance“.
+    /// </summary>
+    public int? ManagerId { get; set; }
+    public Employee? Manager { get; set; }
+
+    /// <summary>
+    /// Nadřízený tak, jak přišel ze zdroje (sAMAccountName, případně DN, když se v ACS nenašel) —
+    /// diagnostika, proč se <see cref="ManagerId"/> nespároval.
+    /// </summary>
+    public string? ManagerAdAccount { get; set; }
+
+    /// <summary>Nadřízený zadán ručně v ACS — synchronizace ho nepřepisuje.</summary>
+    public bool ManagerManual { get; set; }
+
     /// <summary>Card holder id ve WIN-PAK (jedno na osobu).</summary>
     public string? WinPakCardHolderId { get; set; }
 

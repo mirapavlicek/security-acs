@@ -23,6 +23,8 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
 
         Matrix = matrix;
         Users = await db.Users.Where(u => u.IsActive).OrderBy(u => u.UserName).ToListAsync();
+        EmployeesActive = await db.Employees.CountAsync(e => e.IsActive);
+        EmployeesWithManager = await db.Employees.CountAsync(e => e.IsActive && e.ManagerId != null);
         return Page();
     }
 
@@ -88,28 +90,63 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
         return RedirectToPage(new { id });
     }
 
-    public async Task<IActionResult> OnPostAddApproverAsync(int id, int levelId, int? userId)
+    /// <summary>
+    /// Přidání schvalovatele: <paramref name="kind"/> = <c>User</c> (konkrétní uživatel),
+    /// <c>Manager1</c> (přímý nadřízený cílového zaměstnance z AD) nebo <c>Manager2</c>
+    /// (nadřízený nadřízeného). Nadřízený se vyhodnocuje až u konkrétní žádosti.
+    /// </summary>
+    public async Task<IActionResult> OnPostAddApproverAsync(int id, int levelId, string? kind, int? userId)
     {
-        if (userId is null)
-        {
-            ErrorMessage = "Vyberte uživatele.";
-            return RedirectToPage(new { id });
-        }
-
         var level = await db.ApprovalLevels.Include(l => l.Approvers).FirstOrDefaultAsync(l => l.Id == levelId);
         if (level is null || level.MatrixId != id)
             return NotFound();
 
-        if (level.Approvers.All(a => a.UserId != userId))
+        Approver approver;
+        string detail;
+        switch (kind)
         {
-            db.Approvers.Add(new Approver { LevelId = levelId, UserId = userId });
-            await db.SaveChangesAsync();
-            await audit.LogAsync(User.Identity?.Name, "matrix-approver-added", "ApprovalMatrix", id.ToString(),
-                $"úroveň {level.Order}, uživatel {userId}");
+            case "Manager1":
+            case "Manager2":
+            {
+                var depth = kind == "Manager2" ? 2 : 1;
+                if (level.Approvers.Any(a => a.Kind == ApproverKind.LineManager && a.ManagerDepth == depth))
+                {
+                    ErrorMessage = "Tento typ nadřízeného už úroveň obsahuje.";
+                    return RedirectToPage(new { id });
+                }
+
+                approver = new Approver { LevelId = levelId, Kind = ApproverKind.LineManager, ManagerDepth = depth };
+                detail = depth == 1 ? "nadřízený zaměstnance" : "nadřízený nadřízeného";
+                break;
+            }
+
+            default:
+            {
+                if (userId is null)
+                {
+                    ErrorMessage = "Vyberte uživatele.";
+                    return RedirectToPage(new { id });
+                }
+
+                if (level.Approvers.Any(a => a.Kind == ApproverKind.User && a.UserId == userId))
+                    return RedirectToPage(new { id });
+
+                approver = new Approver { LevelId = levelId, Kind = ApproverKind.User, UserId = userId };
+                detail = $"uživatel {userId}";
+                break;
+            }
         }
 
+        db.Approvers.Add(approver);
+        await db.SaveChangesAsync();
+        await audit.LogAsync(User.Identity?.Name, "matrix-approver-added", "ApprovalMatrix", id.ToString(),
+            $"úroveň {level.Order}, {detail}");
         return RedirectToPage(new { id });
     }
+
+    /// <summary>Kolik zaměstnanců má v ACS nadřízeného — orientace, zda má smysl typ „nadřízený“ použít.</summary>
+    public int EmployeesWithManager { get; private set; }
+    public int EmployeesActive { get; private set; }
 
     public async Task<IActionResult> OnPostRemoveApproverAsync(int id, int approverId)
     {

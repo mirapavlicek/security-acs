@@ -13,6 +13,9 @@ public class DetailModel(AcsDbContext db, RequestWorkflowService workflow) : Pag
     public AccessRequest Request { get; private set; } = null!;
     public HashSet<int> CanDecide { get; private set; } = [];
 
+    /// <summary>Kdo smí rozhodnout na aktuální úrovni každé čekající položky (uživatelé + nadřízený).</summary>
+    public Dictionary<int, LevelResolution> Resolutions { get; private set; } = [];
+
     [TempData] public string? Message { get; set; }
     [TempData] public string? ErrorMessage { get; set; }
 
@@ -52,6 +55,8 @@ public class DetailModel(AcsDbContext db, RequestWorkflowService workflow) : Pag
             return Forbid();
 
         Request = request;
+        Resolutions = await workflow.ResolveCurrentLevelsAsync(
+            request.Items.Where(i => i.Status == RequestStatus.Pending).ToList());
         return Page();
     }
 

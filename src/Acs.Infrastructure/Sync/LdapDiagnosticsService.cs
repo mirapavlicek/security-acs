@@ -41,6 +41,9 @@ public record LdapDumpResult(
     IReadOnlyList<string> PersonalNumberAttributes,
     IReadOnlyList<LdapEntryDump> Entries)
 {
+    /// <summary>Ze kterého atributu se bere nadřízený (Nastavení → Zdroj zaměstnanců).</summary>
+    public string ManagerAttribute { get; init; } = LdapAttributes.DefaultManagerAttribute;
+
     public override string ToString()
         => Entries.Count == 0
             ? $"„{Query}“ v AD nenalezeno (server {Server}, Base DN {BaseDn})"
@@ -85,6 +88,10 @@ public class LdapDiagnosticsService(
                 await settings.GetAsync(SettingKeys.EmployeePersonalNumberAttribute, ct),
                 LdapEmployeeSource.DefaultPersonalNumberAttributes);
 
+        var managerAttribute = LdapAttributes.ParseAttributeList(
+            await settings.GetAsync(SettingKeys.EmployeeLdapManagerAttribute, ct),
+            LdapAttributes.DefaultManagerAttribute)[0];
+
         var filter = BuildFilter(query, personalNumberAttributes);
 
         using var connection = LdapAuthenticator.CreateConnection(server, port, useSsl, bindUser, bindPassword);
@@ -109,7 +116,7 @@ public class LdapDiagnosticsService(
             response = partial;
         }
 
-        var mapping = LdapAttributes.MappingDescription(personalNumberAttributes)
+        var mapping = LdapAttributes.MappingDescription(personalNumberAttributes, managerAttribute)
             .ToDictionary(m => m.Attribute, m => m.MapsTo, StringComparer.OrdinalIgnoreCase);
 
         var entries = new List<LdapEntryDump>();
@@ -133,12 +140,15 @@ public class LdapDiagnosticsService(
             entries.Add(new LdapEntryDump(
                 entry.DistinguishedName,
                 attributes,
-                LdapAttributes.MapEmployee(lookup, personalNumberAttributes),
+                LdapAttributes.MapEmployee(lookup, personalNumberAttributes, managerAttribute),
                 LdapAttributes.SourceAttribute(lookup, [.. personalNumberAttributes])));
         }
 
         logger?.LogInformation("LDAP diagnostika „{Query}“: {Count} účtů.", query, entries.Count);
-        return new LdapDumpResult(query, server, baseDn, filter, personalNumberAttributes, entries);
+        return new LdapDumpResult(query, server, baseDn, filter, personalNumberAttributes, entries)
+        {
+            ManagerAttribute = managerAttribute,
+        };
     }
 
     /// <summary>Parametry spojení z nastavení aplikace (Nastavení → Active Directory).</summary>

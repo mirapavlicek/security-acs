@@ -4,7 +4,12 @@ using Microsoft.Data.SqlClient;
 
 namespace Acs.Infrastructure.Sync;
 
-/// <summary>Záznam zaměstnance z externího zdroje (MSSQL nebo API).</summary>
+/// <summary>
+/// Záznam zaměstnance z externího zdroje (AD, MSSQL nebo API).
+/// <paramref name="ManagerExternalId"/> je <c>ExternalId</c> nadřízeného ve stejném zdroji
+/// (z AD sAMAccountName odvozené z atributu <c>manager</c>); <paramref name="ManagerRaw"/>
+/// je původní hodnota (DN) pro diagnostiku, když se nadřízený nenajde.
+/// </summary>
 public record EmployeeRecord(
     string ExternalId,
     string? PersonalNumber,
@@ -13,7 +18,9 @@ public record EmployeeRecord(
     string? Email,
     string? Department,
     string? AdAccount,
-    string? CardNumber);
+    string? CardNumber,
+    string? ManagerExternalId = null,
+    string? ManagerRaw = null);
 
 /// <summary>Zdroj zaměstnanců — zadání nechává MSSQL/API otevřené, proto adaptér.</summary>
 public interface IEmployeeSource
@@ -24,7 +31,7 @@ public interface IEmployeeSource
 /// <summary>
 /// Načtení zaměstnanců z MSSQL. Dotaz je konfigurovatelný v GUI a musí vracet
 /// sloupce: ExternalId, PersonalNumber, FirstName, LastName, Email, Department,
-/// AdAccount, CardNumber (chybějící sloupce se přeskočí).
+/// AdAccount, CardNumber, volitelně ManagerExternalId (chybějící sloupce se přeskočí).
 /// </summary>
 public class MssqlEmployeeSource(SettingsService settings) : IEmployeeSource
 {
@@ -51,10 +58,13 @@ public class MssqlEmployeeSource(SettingsService settings) : IEmployeeSource
             var externalId = Get("ExternalId") ?? Get("PersonalNumber");
             if (externalId is null)
                 continue;
+            // Volitelný sloupec ManagerExternalId (ExternalId nadřízeného ve stejném dotazu).
+            var managerExternalId = Get("ManagerExternalId") ?? Get("ManagerPersonalNumber");
             result.Add(new EmployeeRecord(
                 externalId, Get("PersonalNumber"),
                 Get("FirstName") ?? "", Get("LastName") ?? "",
-                Get("Email"), Get("Department"), Get("AdAccount"), Get("CardNumber")));
+                Get("Email"), Get("Department"), Get("AdAccount"), Get("CardNumber"),
+                ManagerExternalId: managerExternalId, ManagerRaw: managerExternalId));
         }
 
         return result;

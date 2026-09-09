@@ -346,6 +346,10 @@ zástupy, řetěz fází, notifikace, připomínky); položka žádosti
 **Zaměstnanci a AD**
 5. Zdroj zaměstnanců: jaký MSSQL server / jaké API? Jaká pole potřebujeme
    (osobní číslo, jméno, oddělení, nadřízený, číslo karty…)?
+   *Nadřízený vyřešen:* bere se z AD atributu `manager` (název přepnutelný
+   v nastavení) a matice s ním umí schvalovat — viz
+   [docs/schvalovani-nadrizenym.md](schvalovani-nadrizenym.md). Zbývá ověřit,
+   že ho AD FNMH/NNH plní (Nastavení → „Co vrací AD o účtu“).
 6. AD: doména/DC, povolen LDAPS (636)? Servisní účet pro bind? Mají všichni
    žadatelé AD účet a jak se páruje na zaměstnance (sAMAccountName, mail)?
 7. Mají se role (správce karet, admin…) mapovat na **AD skupiny**, nebo se
@@ -357,7 +361,9 @@ zástupy, řetěz fází, notifikace, připomínky); položka žádosti
 9. Mají přístupy **expirovat** (např. roční recertifikace) a má workflow
    umět i **odebrání** přístupu?
 10. Kdo smí žádat: každý sám za sebe, nebo i nadřízený/personalista za
-    jiného zaměstnance?
+    jiného zaměstnance? *Pozn.:* žádá-li nadřízený za podřízeného, úroveň
+    „nadřízený zaměstnance“ v matici rozhoduje jeho nadřízený (samoschválení
+    se přeskakuje).
 
 **Provoz**
 11. TLS: terminuje HTTPS HAProxy (aplikace poslouchá čistě HTTP na 52000)?

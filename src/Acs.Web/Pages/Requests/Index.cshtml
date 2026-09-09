@@ -37,7 +37,13 @@
                             <span class="badge">řetězec</span>
                         }
                     </td>
-                    <td>@item.CurrentLevelOrder</td>
+                    <td>
+                        @item.CurrentLevelOrder
+                        @if (Model.RoleHint(item) is { } hint)
+                        {
+                            <br /><span class="muted" style="font-size:0.8rem">@hint</span>
+                        }
+                    </td>
                     <td class="muted">@(item.Request?.RequesterUser?.DisplayName ?? item.Request?.RequesterUser?.UserName)</td>
                     <td><a class="btn btn-sm" asp-page="Detail" asp-route-id="@item.RequestId">Rozhodnout</a></td>
                 </tr>
