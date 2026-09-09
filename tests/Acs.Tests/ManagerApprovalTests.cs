@@ -297,6 +297,102 @@ public sealed class ManagerApprovalTests : IDisposable
         Assert.Equal(_managerUser.Id, approver.UserId);
     }
 
+    // ---------- Výchozí matice (SPZ i karty schvalují nadřízení) ----------
+
+    private async Task<ApprovalMatrix> CreateDefaultManagerMatrixAsync()
+    {
+        var matrix = new ApprovalMatrix
+        {
+            Name = "Nadřízený zaměstnance", IsDefault = true,
+            Levels =
+            [
+                new ApprovalLevel
+                {
+                    Order = 1, Mode = ApprovalMode.Any,
+                    Approvers = [new Approver { Kind = ApproverKind.LineManager, ManagerDepth = 1 }],
+                },
+            ],
+        };
+        _db.ApprovalMatrices.Add(matrix);
+        await _db.SaveChangesAsync();
+        return matrix;
+    }
+
+    [Fact]
+    public async Task Vychozi_matice_pokryje_ctecku_bez_matice_a_nadrizeny_ji_schvali()
+    {
+        var defaultMatrix = await CreateDefaultManagerMatrixAsync();
+        var plainDoor = new Reader { Name = "Šatna", IsActive = true }; // bez vlastní matice
+        _db.Readers.Add(plainDoor);
+        await _db.SaveChangesAsync();
+
+        var request = await _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [plainDoor.Id], null,
+            requesterCanActForOthers: true);
+        var item = request.Items.Single();
+
+        Assert.Equal(defaultMatrix.Id, item.MatrixId);
+        Assert.Equal(1, item.CurrentLevelOrder);
+        // Není to položka „bez matice“ — admin ji nevidí, nadřízená ano.
+        Assert.DoesNotContain(await _workflow.GetPendingForApproverAsync(_admin.Id, isAdmin: true), i => i.Id == item.Id);
+        Assert.Contains(await _workflow.GetPendingForApproverAsync(_managerUser.Id), i => i.Id == item.Id);
+
+        await _workflow.DecideAsync(item.Id, _managerUser.Id, true, null);
+        Assert.Equal(RequestStatus.Approved, (await _db.AccessRequestItems.SingleAsync(i => i.Id == item.Id)).Status);
+    }
+
+    [Fact]
+    public async Task Vychozi_matice_neprebiji_vlastni_matici_ctecky()
+    {
+        var defaultMatrix = await CreateDefaultManagerMatrixAsync();
+        var item = await CreateItemAsync(); // _door má vlastní matici _matrix
+        Assert.Equal(_matrix.Id, item.MatrixId);
+        Assert.NotEqual(defaultMatrix.Id, item.MatrixId);
+    }
+
+    [Fact]
+    public async Task Vychozi_matice_pokryje_skupinu_a_parkovaci_povoleni_bez_matice()
+    {
+        var defaultMatrix = await CreateDefaultManagerMatrixAsync();
+        var group = new ReaderGroup { Name = "Ambulance", IsActive = true };
+        var site = new Site { Name = "Motol", Code = "MOT" };
+        var type = new ParkingPermitType { Name = "Zaměstnanec", Binding = PermitBinding.LicensePlate, MaxPlates = 1 };
+        _db.AddRange(group, site, type);
+        await _db.SaveChangesAsync();
+
+        var groupRequest = await _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [], null,
+            requesterCanActForOthers: true, groupIds: [group.Id]);
+        var groupItem = groupRequest.Items.Single();
+        Assert.Equal(defaultMatrix.Id, groupItem.MatrixId);
+        Assert.Equal(defaultMatrix.Id, Assert.Single(groupItem.Stages).MatrixId);
+
+        var parkingRequest = await _workflow.CreateParkingRequestAsync(_requester.Id, _employee.Id,
+            new ParkingRequestInput(type.Id, false, [site.Id], ["1AB2345"], null, null, null, "auto"),
+            requesterCanActForOthers: true);
+        var parkingItem = parkingRequest.Items.Single();
+        Assert.Equal(defaultMatrix.Id, parkingItem.MatrixId);
+
+        // SPZ schvaluje nadřízená, po schválení jde povolení správci parkování.
+        Assert.Contains(await _workflow.GetPendingForApproverAsync(_managerUser.Id), i => i.Id == parkingItem.Id);
+        await _workflow.DecideAsync(parkingItem.Id, _managerUser.Id, true, null);
+        Assert.Equal(RequestStatus.Approved, (await _db.AccessRequestItems.SingleAsync(i => i.Id == parkingItem.Id)).Status);
+    }
+
+    [Fact]
+    public async Task Neaktivni_nebo_prazdna_vychozi_matice_se_nepouzije()
+    {
+        var matrix = await CreateDefaultManagerMatrixAsync();
+        matrix.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var plainDoor = new Reader { Name = "Šatna", IsActive = true };
+        _db.Readers.Add(plainDoor);
+        await _db.SaveChangesAsync();
+
+        var request = await _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [plainDoor.Id], null,
+            requesterCanActForOthers: true);
+        Assert.Null(request.Items.Single().MatrixId); // → administrátor jako dosud
+    }
+
     private sealed class RecordingNotifier : INotificationService
     {
         public List<int> PendingNotified { get; } = [];

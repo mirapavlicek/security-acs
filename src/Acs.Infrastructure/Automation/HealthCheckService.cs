@@ -135,9 +135,11 @@ public class HealthCheckService(
                 "Synchronizace karet ze SQL, nebo ruční doplnění"));
         }
 
+        var hasDefaultMatrix = await db.ApprovalMatrices
+            .AnyAsync(m => m.IsDefault && m.IsActive && m.Levels.Any(), ct);
         var groupsWithoutMatrix = await db.ReaderGroups
             .CountAsync(g => g.IsActive && g.ApprovalMatrixId == null, ct);
-        if (groupsWithoutMatrix > 0)
+        if (groupsWithoutMatrix > 0 && !hasDefaultMatrix)
         {
             items.Add(new HealthItem(HealthSeverity.Info, "Skupiny bez schvalovací matice",
                 $"{groupsWithoutMatrix} skupin musí schvalovat administrátor ručně.",

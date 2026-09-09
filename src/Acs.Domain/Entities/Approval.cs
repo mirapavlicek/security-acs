@@ -24,6 +24,13 @@ public class ApprovalMatrix
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>
+    /// Výchozí matice: použije se pro žádosti o čtečky, skupiny a parkovací povolení,
+    /// které vlastní matici nemají (typicky „schvaluje nadřízený zaměstnance“).
+    /// Bez výchozí matice takové položky rozhoduje administrátor. Nejvýše jedna.
+    /// </summary>
+    public bool IsDefault { get; set; }
+
     /// <summary>Úrovně seřazené podle <see cref="ApprovalLevel.Order"/> — hloubka není omezena.</summary>
     public List<ApprovalLevel> Levels { get; set; } = [];
 }
