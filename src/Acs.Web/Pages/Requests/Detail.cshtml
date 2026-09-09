@@ -47,6 +47,39 @@
             }
         </h2>
 
+        @if (item.Status == RequestStatus.Pending && Model.Resolutions.TryGetValue(item.Id, out var resolution))
+        {
+            <p class="muted" style="margin-top:0">
+                @if (resolution.RequiresAdminFallback)
+                {
+                    <span class="badge badge-danger" title="Úroveň nemá po vyhodnocení žádného schvalovatele">rozhodne správce</span>
+                    <span>@(resolution.Warnings.Count > 0 ? string.Join("; ", resolution.Warnings) : "úroveň bez schvalovatele")</span>
+                }
+                else
+                {
+                    <span>Čeká na:</span>
+                    @foreach (var approver in resolution.Approvers)
+                    {
+                        <span class="badge" title="@approver.OriginLabel">
+                            @if (approver.Origin == Acs.Infrastructure.Workflow.ApproverOrigin.LineManager)
+                            {
+                                <text>@(approver.ManagerDepth >= 2 ? "Nadřízený nadřízeného" : "Nadřízený"): </text>
+                            }
+                            @approver.DisplayName
+                        </span>
+                    }
+                    @if (resolution.Level.Mode != ApprovalMode.Any && resolution.Approvers.Count > 1)
+                    {
+                        <span>(@(resolution.Level.Mode == ApprovalMode.All ? "musí schválit všichni" : $"alespoň {resolution.Level.RequiredCount ?? 1}"))</span>
+                    }
+                    @foreach (var warning in resolution.Warnings)
+                    {
+                        <br /><span class="hint">@warning</span>
+                    }
+                }
+            </p>
+        }
+
         @if (item.ParkingPermit is { } permit)
         {
             <table class="data" style="margin-bottom:0.6rem">

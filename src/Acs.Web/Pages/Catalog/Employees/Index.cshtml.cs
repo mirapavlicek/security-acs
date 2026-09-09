@@ -22,6 +22,13 @@ public class IndexModel(AcsDbContext db, SyncJobRunner jobs) : PageModel
     [BindProperty(SupportsGet = true)]
     public string? Search { get; set; }
 
+    /// <summary>Filtr: jen aktivní zaměstnanci bez nadřízeného (kvůli schvalování nadřízeným).</summary>
+    [BindProperty(SupportsGet = true)]
+    public bool WithoutManager { get; set; }
+
+    public int WithManagerCount { get; private set; }
+    public int ActiveCount { get; private set; }
+
     [TempData] public string? Message { get; set; }
     [TempData] public string? ErrorMessage { get; set; }
 
@@ -43,11 +50,18 @@ public class IndexModel(AcsDbContext db, SyncJobRunner jobs) : PageModel
                 || e.Identifiers.Any(i => i.Value.Contains(normalized)));
         }
 
+        if (WithoutManager)
+            query = query.Where(e => e.IsActive && e.ManagerId == null);
+
         TotalCount = await query.CountAsync();
         Employees = await query
+            .Include(e => e.Manager)
             .OrderBy(e => e.LastName).ThenBy(e => e.FirstName)
             .Take(300)
             .ToListAsync();
+
+        ActiveCount = await db.Employees.CountAsync(e => e.IsActive);
+        WithManagerCount = await db.Employees.CountAsync(e => e.IsActive && e.ManagerId != null);
 
         var ids = Employees.Select(e => e.Id).ToList();
         Identifiers = (await db.EmployeeIdentifiers

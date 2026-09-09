@@ -55,6 +55,9 @@
         <input type="text" name="search" value="@Model.Search"
                placeholder="Jméno, oddělení, osobní číslo, karta, SPZ…"
                style="max-width:340px;display:inline-block" />
+        <label style="display:inline-block;margin:0 0.5rem">
+            <input type="checkbox" name="withoutManager" value="true" checked="@Model.WithoutManager" /> bez nadřízeného
+        </label>
         <button class="btn btn-sm" type="submit">Hledat</button>
     </form>
     <form method="post" asp-page-handler="Sync" class="inline-form" style="float:right">
@@ -73,10 +76,12 @@
 <div class="card">
     <p class="muted" style="margin-top:0">
         Nalezeno @Model.TotalCount zaměstnanců@(Model.TotalCount > Model.Employees.Count ? $", zobrazeno prvních {Model.Employees.Count}" : "").
+        Nadřízeného má @Model.WithManagerCount z @Model.ActiveCount aktivních
+        <span title="Nadřízený se načítá z AD atributu manager při importu; lze ho zadat i ručně. Používá se ve schvalovacích maticích.">ⓘ</span>
     </p>
     <table class="data">
         <thead>
-        <tr><th>Jméno</th><th>Os. číslo</th><th>Oddělení</th><th>AD účet</th><th>Identifikátory</th><th>Zdroj</th><th>Aktivní</th><th></th></tr>
+        <tr><th>Jméno</th><th>Os. číslo</th><th>Oddělení</th><th>Nadřízený</th><th>AD účet</th><th>Identifikátory</th><th>Zdroj</th><th>Aktivní</th><th></th></tr>
         </thead>
         <tbody>
         @foreach (var employee in Model.Employees)
@@ -85,6 +90,24 @@
                 <td>@employee.FullName</td>
                 <td class="muted">@employee.PersonalNumber</td>
                 <td>@employee.Department</td>
+                <td>
+                    @if (employee.Manager is { } manager)
+                    {
+                        <a asp-page="Edit" asp-route-id="@manager.Id">@manager.FullName</a>
+                        @if (employee.ManagerManual)
+                        {
+                            <span class="badge" title="Zadáno ručně — import z AD nepřepisuje">ručně</span>
+                        }
+                    }
+                    else if (employee.ManagerAdAccount is not null)
+                    {
+                        <span class="muted" title="Zdroj nadřízeného uvádí, ale v ACS se nenašel: @employee.ManagerAdAccount">nespárováno</span>
+                    }
+                    else
+                    {
+                        <span class="muted">—</span>
+                    }
+                </td>
                 <td class="muted">@employee.AdAccount</td>
                 <td class="muted">
                     @if (Model.Identifiers.TryGetValue(employee.Id, out var ids) && ids.Count > 0)

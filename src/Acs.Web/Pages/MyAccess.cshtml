@@ -35,6 +35,11 @@ else
             <text>(os. číslo @Model.Employee.PersonalNumber)</text>
         }
         — dveře podle WIN-PAK, vjezdy podle vydaných parkovacích povolení.
+        @if (Model.Employee.Manager is { } manager)
+        {
+            <br /><text>Váš nadřízený: <strong>@manager.FullName</strong></text>
+            <span title="Podle Active Directory; schvaluje vaše žádosti, kde to matice vyžaduje.">ⓘ</span>
+        }
     </p>
 
     <h2>Identifikátory</h2>

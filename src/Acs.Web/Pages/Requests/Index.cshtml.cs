@@ -12,6 +12,9 @@ public class IndexModel(AcsDbContext db, RequestWorkflowService workflow) : Page
     public List<AccessRequest> MyRequests { get; private set; } = [];
     public List<AccessRequestItem> PendingForMe { get; private set; } = [];
 
+    /// <summary>Proč položka čeká právě na mě: „nadřízený“, „rozhodne správce“ (bez schvalovatele) nebo nic.</summary>
+    public Dictionary<int, LevelResolution> Resolutions { get; private set; } = [];
+
     private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
     public async Task OnGetAsync()
@@ -26,6 +29,20 @@ public class IndexModel(AcsDbContext db, RequestWorkflowService workflow) : Page
             .ToListAsync();
 
         PendingForMe = await workflow.GetPendingForApproverAsync(userId, User.IsInRole("Admin"));
+        Resolutions = await workflow.ResolveCurrentLevelsAsync(PendingForMe);
+    }
+
+    /// <summary>Krátký popisek role u položky ve frontě („jako nadřízený“ / „rozhodne správce“).</summary>
+    public string? RoleHint(AccessRequestItem item)
+    {
+        if (!Resolutions.TryGetValue(item.Id, out var resolution))
+            return null;
+        if (resolution.RequiresAdminFallback)
+            return "bez schvalovatele — rozhodne správce";
+        var managers = resolution.Approvers.Where(a => a.Origin == ApproverOrigin.LineManager).ToList();
+        return managers.Count == 0
+            ? null
+            : "nadřízený: " + string.Join(", ", managers.Select(m => m.DisplayName));
     }
 
     public string Summarize(AccessRequest request)

@@ -80,7 +80,8 @@ public class MyAccessModel(AcsDbContext db, RequestWorkflowService workflow) : P
 
     public async Task OnGetAsync()
     {
-        var user = await db.Users.Include(u => u.Employee).FirstOrDefaultAsync(u => u.Id == CurrentUserId);
+        var user = await db.Users.Include(u => u.Employee!).ThenInclude(e => e.Manager)
+            .FirstOrDefaultAsync(u => u.Id == CurrentUserId);
         Employee = user?.Employee;
         if (Employee is null)
             return;

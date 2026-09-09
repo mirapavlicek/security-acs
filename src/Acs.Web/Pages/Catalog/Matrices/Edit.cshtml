@@ -63,7 +63,12 @@
             {
                 <tr>
                     <td>
-                        @if (approver.User is not null)
+                        @if (approver.Kind == ApproverKind.LineManager)
+                        {
+                            <span class="badge">@(approver.ManagerDepth >= 2 ? "Nadřízený nadřízeného" : "Nadřízený zaměstnance")</span>
+                            <span class="muted">z AD (atribut manager) — vyhodnotí se u každé žádosti podle cílového zaměstnance</span>
+                        }
+                        else if (approver.User is not null)
                         {
                             @(approver.User.DisplayName ?? approver.User.UserName)
                         }
@@ -82,9 +87,14 @@
             }
         </table>
 
-        <form method="post" asp-page-handler="AddApprover" class="inline-form" style="display:block;margin-top:0.5rem">
+        <form method="post" asp-page-handler="AddApprover" class="inline-form approver-add" style="display:block;margin-top:0.5rem">
             <input type="hidden" name="levelId" value="@level.Id" />
-            <select name="userId" style="max-width:280px;display:inline-block">
+            <select name="kind" style="max-width:280px;display:inline-block" data-role="approver-kind">
+                <option value="User">Konkrétní uživatel</option>
+                <option value="Manager1">Nadřízený zaměstnance (z AD)</option>
+                <option value="Manager2">Nadřízený nadřízeného</option>
+            </select>
+            <select name="userId" style="max-width:280px;display:inline-block" data-role="approver-user">
                 <option value="">— vyberte uživatele —</option>
                 @foreach (var user in Model.Users)
                 {
@@ -96,6 +106,19 @@
     </div>
 }
 
+<div class="card" style="max-width:760px">
+    <h3 style="margin-top:0">Schvalovatel „nadřízený zaměstnance“</h3>
+    <p class="muted" style="margin-bottom:0">
+        Vyhodnocuje se u každé žádosti podle nadřízeného cílového zaměstnance
+        (z AD atributu <code>manager</code> při importu, nebo zadaného ručně u zaměstnance).
+        Je-li nadřízený zároveň žadatelem, rozhoduje jeho nadřízený. Když zaměstnanec nadřízeného nemá,
+        rozhodne na této úrovni administrátor a dostane upozornění.
+        V ACS má teď nadřízeného <strong>@Model.EmployeesWithManager z @Model.EmployeesActive</strong> aktivních zaměstnanců
+        (<a asp-page="/Catalog/Employees/Index" asp-route-withoutManager="true">bez nadřízeného</a>,
+        <a asp-page="/Admin/Settings" asp-fragment="s-employees">nastavení atributu</a>).
+    </p>
+</div>
+
 <div class="card" style="max-width:480px">
     <h2 style="margin-top:0">Přidat úroveň</h2>
     <form method="post" asp-page-handler="AddLevel">
@@ -103,3 +126,16 @@
         <button class="btn" type="submit">Přidat úroveň @(Model.Matrix.Levels.Count + 1)</button>
     </form>
 </div>
+
+@section Scripts {
+<script>
+    // Výběr uživatele má smysl jen pro typ „konkrétní uživatel“.
+    document.querySelectorAll('form.approver-add').forEach(function (form) {
+        var kind = form.querySelector('[data-role=approver-kind]');
+        var user = form.querySelector('[data-role=approver-user]');
+        function sync() { user.style.display = kind.value === 'User' ? '' : 'none'; }
+        kind.addEventListener('change', sync);
+        sync();
+    });
+</script>
+}
