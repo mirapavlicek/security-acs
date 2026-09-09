@@ -24,7 +24,7 @@
         <input type="text" name="description" value="@Model.Group.Description" />
         <label>Schvalovací matice skupiny</label>
         <select name="approvalMatrixId">
-            <option value="">— bez matice (schvaluje admin) —</option>
+            <option value="">— bez matice (výchozí matice, jinak admin) —</option>
             @foreach (var matrix in Model.Matrices)
             {
                 <option value="@matrix.Id" selected="@(matrix.Id == Model.Group.ApprovalMatrixId)">@matrix.Name</option>

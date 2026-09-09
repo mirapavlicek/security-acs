@@ -36,8 +36,9 @@ public record ParkingRequestInput(
 /// <list type="bullet">
 ///   <item>žádost pro jiného zaměstnance smí podat jen uživatel s oprávněním
 ///     (Admin / CardAdmin / CatalogManager); běžný uživatel jen sám za sebe,</item>
-///   <item>čtečka bez aktivní matice se <b>neschvaluje automaticky</b> — vyžaduje
-///     rozhodnutí administrátora (žádný přístup neobejde lidské schválení).</item>
+///   <item>čtečka bez aktivní matice se <b>neschvaluje automaticky</b> — použije se
+///     výchozí matice (<see cref="ApprovalMatrix.IsDefault"/>, typicky nadřízený), a když
+///     není, vyžaduje rozhodnutí administrátora (žádný přístup neobejde lidské schválení).</item>
 /// </list>
 /// </summary>
 public class RequestWorkflowService(
@@ -47,6 +48,19 @@ public class RequestWorkflowService(
     private ReaderGroupService Groups => groups ?? new ReaderGroupService(db);
 
     // ---------- Podání žádosti ----------
+
+    /// <summary>
+    /// Výchozí matice (<see cref="ApprovalMatrix.IsDefault"/>) — použije se pro čtečky,
+    /// skupiny a parkovací povolení bez vlastní matice, aby žádost nešla rovnou
+    /// k administrátorovi, ale např. k nadřízenému zaměstnance. Null, když není
+    /// nastavena, není aktivní nebo nemá úrovně.
+    /// </summary>
+    public async Task<ApprovalMatrix?> GetDefaultMatrixAsync(CancellationToken ct = default)
+        => await db.ApprovalMatrices
+            .Include(m => m.Levels)
+            .Where(m => m.IsDefault && m.IsActive && m.Levels.Any())
+            .OrderBy(m => m.Id)
+            .FirstOrDefaultAsync(ct);
 
     /// <summary>
     /// Vrátí id čteček rozšířené o všechny vyžadované čtečky (tranzitivně):
@@ -184,14 +198,15 @@ public class RequestWorkflowService(
             Justification = justification,
         };
 
+        var defaultMatrix = await GetDefaultMatrixAsync(ct);
         foreach (var reader in readers.Where(r => !skip.Contains(r.Id)))
         {
             var matrix = reader.ApprovalMatrix is { IsActive: true, Levels.Count: > 0 }
                 ? reader.ApprovalMatrix
-                : null;
+                : defaultMatrix;
 
-            // Čtečka bez matice se NESCHVALUJE automaticky — zůstává Pending
-            // a smí ji schválit pouze administrátor (viz GetPendingForApproverAsync).
+            // Čtečka bez matice (a bez výchozí matice) se NESCHVALUJE automaticky —
+            // zůstává Pending a smí ji schválit pouze administrátor (viz GetPendingForApproverAsync).
             request.Items.Add(new AccessRequestItem
             {
                 ReaderId = reader.Id,
@@ -207,6 +222,8 @@ public class RequestWorkflowService(
         foreach (var groupId in groupIds.Where(g => !skipGroups.Contains(g)))
         {
             var chain = await Groups.GetMatrixChainAsync(groupId, ct);
+            if (chain.Count == 0 && defaultMatrix is not null)
+                chain = [defaultMatrix.Id];
             var firstMatrixId = chain.Count > 0 ? chain[0] : (int?)null;
             int firstLevel = 0;
             if (firstMatrixId is not null)
@@ -382,6 +399,10 @@ public class RequestWorkflowService(
                     chain.Add(mid);
             }
         }
+
+        // Bez jakékoli matice (druh i areály) → výchozí matice, je-li nastavena.
+        if (chain.Count == 0 && await GetDefaultMatrixAsync(ct) is { } defaultMatrix)
+            chain.Add(defaultMatrix.Id);
 
         var firstMatrixId = chain.Count > 0 ? chain[0] : (int?)null;
         var firstLevel = firstMatrixId is null

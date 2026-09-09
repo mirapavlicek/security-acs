@@ -42,6 +42,24 @@ zásahu do kódu:
 Zdroje MSSQL/API mohou vracet volitelný sloupec/pole `ManagerExternalId`
 (`ExternalId` nadřízeného ve stejném zdroji); když chybí, nic se nemění.
 
+### Výchozí matice — SPZ i karty schvalují nadřízení
+
+Aby žádosti o parkovací povolení (SPZ) i o přístupy (karty) šly standardně
+k nadřízenému, nemusí se matice přiřazovat každé čtečce a druhu povolení zvlášť.
+**Katalog → Schvalovací matice → Výchozí matice**: tlačítko *Založit matici
+„Nadřízený zaměstnance“ a nastavit jako výchozí* vytvoří matici s jednou úrovní
+(schvalovatel = přímý nadřízený) a označí ji jako výchozí (`ApprovalMatrix.IsDefault`,
+nejvýše jedna). Výchozí matice se použije pro:
+
+- čtečky bez vlastní matice,
+- skupiny čteček bez matice (a bez matice nadřazených skupin),
+- parkovací povolení, když ani druh povolení, ani vybrané areály matici nemají.
+
+Vlastní matice čtečky / skupiny / druhu / areálu má vždy přednost — výchozí je
+jen záchytná síť. Bez výchozí matice takové položky rozhoduje administrátor
+(jako dosud). Po schválení nadřízeným jde položka standardně do fronty správce
+karet (karty) nebo správce parkování (SPZ), který ji vydá.
+
 ### Matice
 
 V editoru matice (Katalog → Schvalovací matice → úroveň → *Přidat
@@ -95,6 +113,8 @@ nezapojuje.
   `ManagerAdAccount` (co přišlo ze zdroje), `ManagerManual`.
 - `Approver.Kind` (`User` / `AdGroup` / `LineManager`), `Approver.ManagerDepth`
   (1 = přímý, 2 = nadřízený nadřízeného). Stávající řádky matic jsou `User`.
+- `ApprovalMatrix.IsDefault` — výchozí matice pro položky bez vlastní matice
+  (migrace `DefaultMatrix`).
 - Nastavení `Employees:LdapManagerAttribute` (výchozí `manager`) a
   `Employees:LastManagerStats` (jen zobrazení).
 - Migrace `ManagerApprovers`.
@@ -103,6 +123,7 @@ nezapojuje.
 
 `tests/Acs.Tests/ManagerApprovalTests.cs` (workflow: nadřízený rozhoduje,
 bez účtu přes AD účet, zástup, samoschválení, fallback na admina s upozorněním,
-náhradní uživatel, režim *všichni*, hloubka 2, neaktivní nadřízený) a
+náhradní uživatel, režim *všichni*, hloubka 2, neaktivní nadřízený, výchozí
+matice pro čtečku / skupinu / SPZ a její přednost) a
 `SyncServiceTests` (DN → účet, nadřízený mimo dávku, ruční zadání, statistika,
 odebrání vazby).

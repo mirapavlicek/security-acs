@@ -15,12 +15,55 @@
     <div class="alert alert-success">@Model.Message</div>
 }
 
-@if (Model.ReadersWithoutMatrix > 0)
+<div class="card">
+    <h2 style="margin-top:0">Výchozí matice</h2>
+    <p class="muted" style="margin-top:0">
+        Platí pro čtečky, skupiny a parkovací povolení (SPZ), které vlastní matici nemají.
+        Bez výchozí matice takové žádosti rozhoduje administrátor.
+    </p>
+    @if (Model.DefaultMatrix is { } current)
+    {
+        <p>
+            Teď: <strong>@current.Name</strong>
+            <span class="muted">(@current.Levels.Count @(current.Levels.Count == 1 ? "úroveň" : "úrovně"))</span>
+            <a class="btn btn-sm btn-ghost" asp-page="Edit" asp-route-id="@current.Id">Upravit</a>
+        </p>
+    }
+    else
+    {
+        <p><strong>Není nastavena</strong> — položky bez matice rozhoduje administrátor.</p>
+    }
+    <form method="post" asp-page-handler="SetDefault" class="inline-form">
+        <select name="matrixId" style="max-width:320px;display:inline-block">
+            <option value="">— žádná (rozhoduje administrátor) —</option>
+            @foreach (var matrix in Model.Matrices.Where(m => m.IsActive && m.Levels.Count > 0))
+            {
+                <option value="@matrix.Id" selected="@matrix.IsDefault">@matrix.Name</option>
+            }
+        </select>
+        <button class="btn btn-sm" type="submit">Nastavit</button>
+    </form>
+    @if (Model.DefaultMatrix is null || Model.ManagerMatrix is null || !Model.ManagerMatrix.IsDefault)
+    {
+        <form method="post" asp-page-handler="CreateManagerDefault" class="inline-form" style="margin-top:0.6rem">
+            <button class="btn btn-sm" type="submit">
+                @(Model.ManagerMatrix is null ? "Založit matici „Nadřízený zaměstnance“ a nastavit jako výchozí" : $"Nastavit „{Model.ManagerMatrix.Name}“ jako výchozí")
+            </button>
+            <span class="hint">
+                SPZ i karty pak schvalují nadřízení (z AD). Nadřízeného má @Model.EmployeesWithManager z @Model.EmployeesActive aktivních zaměstnanců;
+                bez nadřízeného rozhodne administrátor.
+            </span>
+        </form>
+    }
+</div>
+
+@if (Model.ReadersWithoutMatrix > 0 && Model.DefaultMatrix is null)
 {
     <div class="alert alert-error">
         Bez matice je @Model.ReadersWithoutMatrix čteček — žádosti o ně smí schválit jen administrátor.
         <a asp-page="/Catalog/Readers/Index"
-           asp-route-matrix="@Acs.Web.Pages.Catalog.Readers.IndexModel.NoMatrixFilter">Přiřadit jim matici hromadně</a>.
+           asp-route-matrix="@Acs.Web.Pages.Catalog.Readers.IndexModel.NoMatrixFilter">Přiřadit jim matici hromadně</a>,
+        nebo nastavte výchozí matici výše.
     </div>
 }
 
@@ -33,7 +76,14 @@
         @foreach (var matrix in Model.Matrices)
         {
             <tr>
-                <td>@matrix.Name <span class="muted">@matrix.Description</span></td>
+                <td>
+                    @matrix.Name
+                    @if (matrix.IsDefault)
+                    {
+                        <span class="badge badge-primary" title="Používá se pro položky bez vlastní matice">výchozí</span>
+                    }
+                    <span class="muted">@matrix.Description</span>
+                </td>
                 <td>@matrix.Levels.Count</td>
                 <td>
                     @Model.UsageCounts.GetValueOrDefault(matrix.Id)

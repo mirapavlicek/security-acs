@@ -36,7 +36,7 @@
     <input type="number" name="defaultValidityMonths" min="1" max="120" value="@Model.Type.DefaultValidityMonths" />
     <label>Schvalovací matice druhu</label>
     <select name="approvalMatrixId">
-        <option value="">— bez matice (schvaluje admin) —</option>
+        <option value="">— bez matice (výchozí matice, jinak admin) —</option>
         @foreach (var matrix in Model.Matrices)
         {
             <option value="@matrix.Id" selected="@(matrix.Id == Model.Type.ApprovalMatrixId)">@matrix.Name</option>
