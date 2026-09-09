@@ -1,6 +1,7 @@
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Data;
+using Acs.Infrastructure.Settings;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -13,12 +14,12 @@ namespace Acs.Infrastructure.Sync;
 /// </summary>
 public class EmployeeSyncService(
     AcsDbContext db, EmployeeSourceFactory sourceFactory, AuditService audit,
-    ILogger<EmployeeSyncService>? logger = null)
+    ILogger<EmployeeSyncService>? logger = null, SettingsService? settings = null)
 {
     /// <summary>Po kolika záznamech se průběžně ukládá.</summary>
     private const int BatchSize = 500;
 
-    public async Task<SyncResult> SyncAsync(string? userName, CancellationToken ct = default)
+    public async Task<EmployeeSyncResult> SyncAsync(string? userName, CancellationToken ct = default)
     {
         var source = await sourceFactory.CreateAsync(ct)
             ?? throw new InvalidOperationException("Zdroj zaměstnanců není nakonfigurován (Nastavení → Zdroj zaměstnanců).");
@@ -55,6 +56,8 @@ public class EmployeeSyncService(
                 local.Department = r.Department;
                 local.AdAccount = r.AdAccount;
                 local.CardNumber = r.CardNumber;
+                if (!local.ManagerManual)
+                    local.ManagerAdAccount = r.ManagerExternalId ?? r.ManagerRaw;
                 local.IsActive = true;
                 local.LastSyncedAt = now;
                 updated++;
@@ -71,6 +74,7 @@ public class EmployeeSyncService(
                     Department = r.Department,
                     AdAccount = r.AdAccount,
                     CardNumber = r.CardNumber,
+                    ManagerAdAccount = r.ManagerExternalId ?? r.ManagerRaw,
                     IsActive = true,
                     Source = RecordSource.Imported,
                     LastSyncedAt = now,
@@ -90,6 +94,8 @@ public class EmployeeSyncService(
         }
 
         await db.SaveChangesAsync(ct);
+
+        var managers = await LinkManagersAsync(remote, ct);
 
         // Automatické spárování AD účtů s importovanými zaměstnanci — bez toho
         // by uživatel neviděl „Moje přístupy“ a nešlo by za něj žádat.
@@ -117,9 +123,64 @@ public class EmployeeSyncService(
             }
         }
 
-        var result = new SyncResult(added, updated, deactivated);
+        var result = new EmployeeSyncResult(added, updated, deactivated)
+        {
+            ManagersInSource = managers.InSource,
+            ManagersLinked = managers.Linked,
+            EmployeesTotal = remote.Count,
+        };
         await audit.LogAsync(userName, "employees-synced", "Employee", null, result.ToString(), ct);
+        if (settings is not null)
+            await settings.SetAsync(SettingKeys.EmployeeLastManagerStats, result.ManagerSummary, userName, ct);
         return result;
+    }
+
+    /// <summary>
+    /// Druhý průchod: nastaví <see cref="Employee.ManagerId"/> podle <c>ManagerExternalId</c>
+    /// ze zdroje. Až po uložení všech záznamů — nadřízený může být v dávce později
+    /// než podřízený a musí mít Id. Ručně zadaný nadřízený (<see cref="Employee.ManagerManual"/>)
+    /// se nepřepisuje. Vrací statistiku: kolik záznamů nadřízeného ve zdroji má
+    /// a kolik se podařilo spárovat — okamžitá odpověď, zda AD nadřízené vůbec vede.
+    /// </summary>
+    private async Task<(int InSource, int Linked)> LinkManagersAsync(
+        IReadOnlyList<EmployeeRecord> remote, CancellationToken ct)
+    {
+        var byExternalId = await db.Employees
+            .Where(e => e.ExternalId != null)
+            .ToDictionaryAsync(e => e.ExternalId!, StringComparer.OrdinalIgnoreCase, ct);
+
+        int inSource = 0, linked = 0;
+        foreach (var raw in remote)
+        {
+            var externalId = raw.ExternalId.Trim();
+            if (!byExternalId.TryGetValue(externalId, out var local) || local.ManagerManual)
+                continue;
+
+            if (!string.IsNullOrWhiteSpace(raw.ManagerRaw) || !string.IsNullOrWhiteSpace(raw.ManagerExternalId))
+                inSource++;
+
+            var managerExternalId = Clean(raw.ManagerExternalId);
+            Employee? manager = null;
+            if (managerExternalId is not null
+                && byExternalId.TryGetValue(managerExternalId, out var found)
+                && found.Id != local.Id)
+            {
+                manager = found;
+            }
+
+            if (manager is not null)
+                linked++;
+
+            var managerId = manager?.Id;
+            if (local.ManagerId != managerId)
+                local.ManagerId = managerId;
+        }
+
+        await db.SaveChangesAsync(ct);
+        logger?.LogInformation(
+            "Synchronizace zaměstnanců: nadřízený ve zdroji u {InSource} záznamů, spárováno {Linked}.",
+            inSource, linked);
+        return (inSource, linked);
     }
 
     /// <summary>Ořeže mezery a prázdné texty převede na null, ať se hodnoty párují.</summary>
@@ -133,8 +194,27 @@ public class EmployeeSyncService(
         Department = Clean(r.Department),
         AdAccount = Clean(r.AdAccount),
         CardNumber = Clean(r.CardNumber),
+        ManagerExternalId = Clean(r.ManagerExternalId),
+        ManagerRaw = Clean(r.ManagerRaw),
     };
 
     private static string? Clean(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+}
+
+/// <summary>Výsledek synchronizace zaměstnanců včetně statistiky nadřízených.</summary>
+public record EmployeeSyncResult(int Added, int Updated, int Deactivated)
+    : SyncResult(Added, Updated, Deactivated)
+{
+    /// <summary>U kolika záznamů zdroj nadřízeného uvádí (atribut je vyplněn).</summary>
+    public int ManagersInSource { get; init; }
+    /// <summary>U kolika záznamů se nadřízený spároval s existujícím zaměstnancem.</summary>
+    public int ManagersLinked { get; init; }
+    public int EmployeesTotal { get; init; }
+
+    public string ManagerSummary => ManagersInSource == 0
+        ? $"zdroj neuvádí nadřízeného u žádného z {EmployeesTotal} zaměstnanců"
+        : $"nadřízený nalezen u {ManagersLinked} z {EmployeesTotal} zaměstnanců (zdroj ho uvádí u {ManagersInSource})";
+
+    public override string ToString() => $"{base.ToString()}; {ManagerSummary}";
 }

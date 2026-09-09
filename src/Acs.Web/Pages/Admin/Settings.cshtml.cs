@@ -43,7 +43,8 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         SettingKeys.WinPakAccessSyncEnabled, SettingKeys.WinPakAccessSyncIntervalMinutes,
         SettingKeys.EmployeeSourceMode, SettingKeys.EmployeeMssqlQuery, SettingKeys.EmployeeApiUrl,
         SettingKeys.EmployeeLdapFilter, SettingKeys.EmployeeLdapPageSize, SettingKeys.EmployeeLdapTimeoutMinutes,
-        SettingKeys.EmployeePersonalNumberAttribute,
+        SettingKeys.EmployeePersonalNumberAttribute, SettingKeys.EmployeeLdapManagerAttribute,
+        SettingKeys.EmployeeLastManagerStats,
         SettingKeys.CardsMssqlQuery, SettingKeys.CardsSyncEnabled, SettingKeys.CardsSyncIntervalMinutes,
         SettingKeys.AutomationEnabled, SettingKeys.AutomationIntervalMinutes, SettingKeys.AutoOffboardingEnabled,
         SettingKeys.AutoDepartmentChangeEnabled, SettingKeys.AutoExpirationEnabled, SettingKeys.AutoRemindersEnabled,
@@ -173,8 +174,9 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         string? employeeSourceMode, string? employeeMssqlConnectionString,
         string? employeeMssqlQuery, string? employeeApiUrl, string? employeeApiKey,
         string? employeeLdapFilter, string? employeeLdapPageSize, string? employeeLdapTimeoutMinutes,
-        string? employeePersonalNumberAttribute)
+        string? employeePersonalNumberAttribute, string? employeeLdapManagerAttribute)
     {
+        await settings.SetAsync(SettingKeys.EmployeeLdapManagerAttribute, employeeLdapManagerAttribute, UserName);
         await settings.SetAsync(SettingKeys.EmployeeLdapPageSize, employeeLdapPageSize, UserName);
         await settings.SetAsync(SettingKeys.EmployeeLdapTimeoutMinutes, employeeLdapTimeoutMinutes, UserName);
         await settings.SetAsync(SettingKeys.EmployeeSourceMode, employeeSourceMode, UserName);

@@ -47,18 +47,38 @@ public class ApprovalLevel
     public List<Approver> Approvers { get; set; } = [];
 }
 
-/// <summary>Schvalovatel v úrovni — konkrétní uživatel, nebo AD skupina.</summary>
+/// <summary>Druh schvalovatele v úrovni matice.</summary>
+public enum ApproverKind
+{
+    /// <summary>Konkrétní uživatel ACS (<see cref="Approver.UserId"/>).</summary>
+    User = 0,
+    /// <summary>AD skupina (<see cref="Approver.AdGroup"/>) — zatím se ve workflow nevyhodnocuje.</summary>
+    AdGroup = 1,
+    /// <summary>
+    /// Nadřízený cílového zaměstnance žádosti podle <see cref="Employee.ManagerId"/>
+    /// (<see cref="Approver.ManagerDepth"/> 1 = přímý nadřízený, 2 = nadřízený nadřízeného).
+    /// Vyhodnocuje se dynamicky u každé žádosti.
+    /// </summary>
+    LineManager = 2,
+}
+
+/// <summary>Schvalovatel v úrovni — konkrétní uživatel, AD skupina, nebo nadřízený zaměstnance.</summary>
 public class Approver
 {
     public int Id { get; set; }
     public int LevelId { get; set; }
     public ApprovalLevel? Level { get; set; }
 
+    public ApproverKind Kind { get; set; } = ApproverKind.User;
+
     public int? UserId { get; set; }
     public AppUser? User { get; set; }
 
     /// <summary>Alternativně AD skupina (DN nebo sAMAccountName).</summary>
     public string? AdGroup { get; set; }
+
+    /// <summary>Pro <see cref="ApproverKind.LineManager"/>: 1 = přímý nadřízený, 2 = jeho nadřízený.</summary>
+    public int ManagerDepth { get; set; } = 1;
 }
 
 /// <summary>Zástup: <see cref="DeputyUserId"/> smí schvalovat za <see cref="PrincipalUserId"/> v daném období.</summary>

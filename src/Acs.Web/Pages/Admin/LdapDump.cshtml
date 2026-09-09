@@ -1,5 +1,6 @@
 @page
 @model Acs.Web.Pages.Admin.LdapDumpModel
+@using Acs.Infrastructure.Sync
 @{
     ViewData["Title"] = "Co vrací AD o účtu";
 }
@@ -81,6 +82,19 @@
                         <tr><th>Příjmení</th><td>@mapped.LastName</td></tr>
                         <tr><th>E-mail</th><td>@(mapped.Email ?? "—")</td></tr>
                         <tr><th>Oddělení</th><td>@(mapped.Department ?? "—")</td></tr>
+                        <tr><th>Nadřízený (@result.ManagerAttribute)</th>
+                            <td>
+                                @if (mapped.ManagerRaw is { } managerDn)
+                                {
+                                    <strong>@LdapAttributes.DescribeManager(managerDn)</strong>
+                                    <span class="muted">— @managerDn</span>
+                                    <br /><span class="hint">Při importu se spáruje se zaměstnancem se stejným DN; schvalování „nadřízeným zaměstnance“ v matici pak funguje.</span>
+                                }
+                                else
+                                {
+                                    <span class="muted">— atribut <code>@result.ManagerAttribute</code> je prázdný; nadřízeného lze zadat ručně u zaměstnance nebo přepnout atribut v <a asp-page="Settings">Nastavení</a>.</span>
+                                }
+                            </td></tr>
                     </tbody>
                 </table>
             }
