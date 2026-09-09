@@ -3,6 +3,7 @@ using System.Net.Mail;
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Data;
 using Acs.Infrastructure.Settings;
+using Acs.Infrastructure.Workflow;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -19,6 +20,12 @@ public interface INotificationService
 
     /// <summary>Položka čeká příliš dlouho — eskalace na administrátory.</summary>
     Task NotifyEscalationAsync(int itemId, int waitingDays, CancellationToken ct = default);
+
+    /// <summary>
+    /// Aktuální úroveň položky nemá po vyhodnocení žádného schvalovatele (typicky
+    /// zaměstnanec bez nadřízeného) — administrátoři mají rozhodnout místo něj.
+    /// </summary>
+    Task NotifyNoApproverAsync(int itemId, string reason, CancellationToken ct = default) => Task.CompletedTask;
 }
 
 /// <summary>
@@ -38,21 +45,34 @@ public class EmailNotificationService(
             if (item?.MatrixId is null || item.Status != RequestStatus.Pending)
                 return;
 
-            var approverEmails = await db.Approvers
-                .Where(a => a.Level!.MatrixId == item.MatrixId
-                            && a.Level.Order == item.CurrentLevelOrder
-                            && a.User != null && a.User.Email != null && a.User.IsActive)
-                .Select(a => a.User!.Email!)
-                .Distinct()
-                .ToListAsync(ct);
+            // Příjemci = konkrétní uživatelé úrovně + nadřízený cílového zaměstnance.
+            // Nadřízený bez účtu v ACS dostane e-mail ze záznamu zaměstnance.
+            var resolution = await ResolveCurrentLevelAsync(item, ct);
+            if (resolution is null)
+                return;
+
+            var activeUserIds = resolution.UserIds.ToList();
+            var inactive = activeUserIds.Count == 0
+                ? []
+                : await db.Users.Where(u => activeUserIds.Contains(u.Id) && !u.IsActive).Select(u => u.Id).ToListAsync(ct);
+            var approverEmails = resolution.Approvers
+                .Where(a => a.UserId is null || !inactive.Contains(a.UserId.Value))
+                .Select(a => a.Email)
+                .Where(e => !string.IsNullOrWhiteSpace(e))
+                .Select(e => e!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
             if (approverEmails.Count == 0)
                 return;
 
+            var role = resolution.Approvers.Any(a => a.Origin == ApproverOrigin.LineManager)
+                ? " (jako nadřízený zaměstnance)"
+                : "";
             await SendAsync(approverEmails,
                 $"ACS: žádost #{item.RequestId} čeká na vaše schválení",
                 $"Zaměstnanec: {item.Request!.TargetEmployee!.FullName}\n"
                 + $"Položka: {ItemName(item)}\n"
-                + $"Úroveň: {item.CurrentLevelOrder}\n"
+                + $"Úroveň: {item.CurrentLevelOrder}{role}\n"
                 + $"Zdůvodnění: {item.Request.Justification}\n\n"
                 + $"Rozhodněte v aplikaci: http://acs.fnmh.network/Requests/Detail/{item.RequestId}", ct);
         }
@@ -179,6 +199,44 @@ public class EmailNotificationService(
         {
             logger.LogWarning(ex, "Eskalační notifikace (položka {ItemId}) se nepodařila odeslat.", itemId);
         }
+    }
+
+    public async Task NotifyNoApproverAsync(int itemId, string reason, CancellationToken ct = default)
+    {
+        try
+        {
+            var item = await LoadAsync(itemId, ct);
+            if (item is null || item.Status != RequestStatus.Pending)
+                return;
+
+            var adminEmails = await db.Users
+                .Where(u => u.IsActive && u.Email != null && (u.Roles & AppRole.Admin) == AppRole.Admin)
+                .Select(u => u.Email!)
+                .ToListAsync(ct);
+            if (adminEmails.Count == 0)
+                return;
+
+            await SendAsync(adminEmails,
+                $"ACS: žádost #{item.RequestId} nemá schvalovatele — rozhodne správce",
+                $"Zaměstnanec: {item.Request!.TargetEmployee!.FullName}\n"
+                + $"Položka: {ItemName(item)}\n"
+                + $"Úroveň {item.CurrentLevelOrder}: {reason}\n\n"
+                + "Úroveň matice po vyhodnocení nemá žádného schvalovatele (typicky zaměstnanec bez nadřízeného).\n"
+                + "Rozhodněte jako administrátor, nebo doplňte zaměstnanci nadřízeného (Katalog → Zaměstnanci).\n\n"
+                + $"Detail: http://acs.fnmh.network/Requests/Detail/{item.RequestId}", ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Notifikace o chybějícím schvalovateli (položka {ItemId}) se nepodařila odeslat.", itemId);
+        }
+    }
+
+    private async Task<LevelResolution?> ResolveCurrentLevelAsync(AccessRequestItem item, CancellationToken ct)
+    {
+        var level = await db.ApprovalLevels.AsNoTracking()
+            .Include(l => l.Approvers)
+            .FirstOrDefaultAsync(l => l.MatrixId == item.MatrixId && l.Order == item.CurrentLevelOrder, ct);
+        return level is null ? null : await new ApproverResolver(db).ResolveAsync(level, item, ct);
     }
 
     private Task<AccessRequestItem?> LoadAsync(int itemId, CancellationToken ct)

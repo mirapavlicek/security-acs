@@ -250,7 +250,7 @@ public class RequestWorkflowService(
             foreach (var item in request.Items)
             {
                 if (item.Status == RequestStatus.Pending)
-                    await notifier.NotifyPendingAsync(item.Id, ct);
+                    await NotifyPendingOrFallbackAsync(item, ct);
                 else if (item.Status == RequestStatus.Approved)
                     await notifier.NotifyDecidedAsync(item.Id, ct);
             }
@@ -427,7 +427,7 @@ public class RequestWorkflowService(
             $"zaměstnanec {targetEmployeeId}, druh {type.Name}, {permit.SubjectText()}, {(input.AllSites ? "všechny areály" : string.Join(", ", sites.Select(s => s.Name)))}", ct);
 
         if (notifier is not null)
-            await notifier.NotifyPendingAsync(request.Items[0].Id, ct);
+            await NotifyPendingOrFallbackAsync(request.Items[0], ct);
 
         return request;
     }
@@ -490,13 +490,47 @@ public class RequestWorkflowService(
 
     /// <summary>Vrátí id uživatelů, za které smí <paramref name="userId"/> aktuálně jednat (on sám + zástupy).</summary>
     public async Task<HashSet<int>> GetActingIdentitiesAsync(int userId, CancellationToken ct = default)
+        => (await new ApproverResolver(db).GetActingIdentityAsync(userId, ct)).UserIds;
+
+    /// <summary>
+    /// Vyhodnocení aktuální úrovně položky — kdo na ní smí rozhodnout (konkrétní
+    /// uživatelé + nadřízený cílového zaměstnance). Null u položky bez matice nebo
+    /// bez odpovídající úrovně. Pro zobrazení v detailu/seznamu žádostí.
+    /// </summary>
+    public async Task<LevelResolution?> ResolveCurrentLevelAsync(AccessRequestItem item, CancellationToken ct = default)
     {
-        var now = DateTime.UtcNow;
-        var principals = await db.Deputies
-            .Where(d => d.DeputyUserId == userId && d.ValidFrom <= now && now <= d.ValidTo)
-            .Select(d => d.PrincipalUserId)
+        if (item.MatrixId is null)
+            return null;
+        var level = await db.ApprovalLevels.AsNoTracking()
+            .Include(l => l.Approvers)
+            .FirstOrDefaultAsync(l => l.MatrixId == item.MatrixId && l.Order == item.CurrentLevelOrder, ct);
+        return level is null ? null : await new ApproverResolver(db).ResolveAsync(level, item, ct);
+    }
+
+    /// <summary>Vyhodnocení aktuálních úrovní pro víc položek najednou (sdílená cache zaměstnanců a uživatelů).</summary>
+    public async Task<Dictionary<int, LevelResolution>> ResolveCurrentLevelsAsync(
+        IReadOnlyCollection<AccessRequestItem> items, CancellationToken ct = default)
+    {
+        var result = new Dictionary<int, LevelResolution>();
+        var matrixIds = items.Where(i => i.MatrixId != null).Select(i => i.MatrixId!.Value).Distinct().ToList();
+        if (matrixIds.Count == 0)
+            return result;
+
+        var levels = await db.ApprovalLevels.AsNoTracking()
+            .Include(l => l.Approvers)
+            .Where(l => matrixIds.Contains(l.MatrixId))
             .ToListAsync(ct);
-        return [userId, .. principals];
+        var resolver = new ApproverResolver(db);
+        foreach (var item in items)
+        {
+            if (item.MatrixId is null)
+                continue;
+            var level = levels.FirstOrDefault(l => l.MatrixId == item.MatrixId && l.Order == item.CurrentLevelOrder);
+            if (level is not null)
+                result[item.Id] = await resolver.ResolveAsync(level, item, ct);
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -507,7 +541,8 @@ public class RequestWorkflowService(
     public async Task<List<AccessRequestItem>> GetPendingForApproverAsync(
         int userId, bool isAdmin = false, CancellationToken ct = default)
     {
-        var identities = await GetActingIdentitiesAsync(userId, ct);
+        var resolver = new ApproverResolver(db);
+        var identity = await resolver.GetActingIdentityAsync(userId, ct);
 
         var items = await db.AccessRequestItems
             .Include(i => i.Request!).ThenInclude(r => r.TargetEmployee)
@@ -527,21 +562,35 @@ public class RequestWorkflowService(
             .Where(l => matrixIds.Contains(l.MatrixId))
             .ToListAsync(ct);
 
-        return items.Where(item =>
+        var result = new List<AccessRequestItem>();
+        foreach (var item in items)
         {
             // Položka bez matice — smí rozhodnout jen administrátor.
             if (item.MatrixId is null)
-                return isAdmin;
+            {
+                if (isAdmin)
+                    result.Add(item);
+                continue;
+            }
 
             var level = levels.FirstOrDefault(l =>
                 l.MatrixId == item.MatrixId && l.Order == item.CurrentLevelOrder);
             if (level is null)
-                return false;
+                continue;
 
-            var approverIds = level.Approvers.Where(a => a.UserId != null).Select(a => a.UserId!.Value);
-            var eligible = approverIds.Where(identities.Contains).ToList();
+            var resolution = await resolver.ResolveAsync(level, item, ct);
+
+            // Úroveň bez schvalovatele (zaměstnanec bez nadřízeného) — rozhoduje administrátor.
+            if (resolution.RequiresAdminFallback)
+            {
+                if (isAdmin)
+                    result.Add(item);
+                continue;
+            }
+
+            var eligible = resolution.Approvers.Where(a => a.Matches(identity)).ToList();
             if (eligible.Count == 0)
-                return false;
+                continue;
 
             // Už na této úrovni (aktuální matice) rozhodl — sám nebo v zástupu?
             var decided = item.Decisions
@@ -549,8 +598,11 @@ public class RequestWorkflowService(
                             && (d.MatrixId ?? item.MatrixId) == item.MatrixId)
                 .Select(d => d.OnBehalfOfUserId ?? d.ApproverUserId)
                 .ToHashSet();
-            return eligible.Any(id => !decided.Contains(id));
-        }).ToList();
+            if (eligible.Any(a => a.UserId is null || !decided.Contains(a.UserId.Value)))
+                result.Add(item);
+        }
+
+        return result;
     }
 
     // ---------- Rozhodnutí ----------
@@ -597,20 +649,37 @@ public class RequestWorkflowService(
             .FirstOrDefaultAsync(l => l.MatrixId == item.MatrixId && l.Order == item.CurrentLevelOrder, ct)
             ?? throw new InvalidOperationException("Úroveň matice nenalezena.");
 
-        var identities = await GetActingIdentitiesAsync(userId, ct);
-        var levelApproverIds = level.Approvers
-            .Where(a => a.UserId != null)
-            .Select(a => a.UserId!.Value)
-            .ToHashSet();
+        var resolver = new ApproverResolver(db);
+        var identity = await resolver.GetActingIdentityAsync(userId, ct);
+        var resolution = await resolver.ResolveAsync(level, item, ct);
+
+        // Úroveň bez schvalovatele (např. zaměstnanec bez nadřízeného) — rozhoduje
+        // administrátor místo chybějícího schvalovatele; důvod se zapíše k rozhodnutí.
+        if (resolution.RequiresAdminFallback)
+        {
+            if (!isAdmin)
+                throw new UnauthorizedAccessException(
+                    "Na této úrovni není žádný schvalovatel (" + string.Join("; ", resolution.Warnings)
+                    + ") — rozhodnout smí pouze administrátor.");
+            var reason = resolution.Warnings.Count > 0 ? string.Join("; ", resolution.Warnings) : "úroveň bez schvalovatele";
+            comment = string.IsNullOrWhiteSpace(comment)
+                ? $"[rozhodl administrátor — {reason}]"
+                : $"[rozhodl administrátor — {reason}] {comment}";
+        }
 
         // Za koho uživatel jedná: přednostně sám za sebe, jinak první zastoupený schvalovatel.
         int? onBehalfOf = null;
-        if (!levelApproverIds.Contains(userId))
+        if (!resolution.RequiresAdminFallback)
         {
-            var principal = identities.FirstOrDefault(id => id != userId && levelApproverIds.Contains(id));
-            if (principal == 0)
-                throw new UnauthorizedAccessException("Nejste schvalovatelem této úrovně (ani zástupem).");
-            onBehalfOf = principal;
+            var self = identity.SelfOnly();
+            if (!resolution.Approvers.Any(a => a.Matches(self)))
+            {
+                var principal = resolution.Approvers
+                    .FirstOrDefault(a => a.UserId is { } uid && uid != userId && identity.UserIds.Contains(uid));
+                if (principal is null)
+                    throw new UnauthorizedAccessException("Nejste schvalovatelem této úrovně (ani zástupem).");
+                onBehalfOf = principal.UserId;
+            }
         }
 
         var effectiveIdentity = onBehalfOf ?? userId;
@@ -636,7 +705,7 @@ public class RequestWorkflowService(
             item.Status = RequestStatus.Rejected;
             item.DecidedAt = DateTime.UtcNow;
         }
-        else if (IsLevelSatisfied(level, item))
+        else if (resolution.RequiresAdminFallback || IsLevelSatisfied(level, item, resolution.Approvers.Count))
         {
             var nextOrder = await db.ApprovalLevels
                 .Where(l => l.MatrixId == item.MatrixId && l.Order > item.CurrentLevelOrder)
@@ -679,19 +748,44 @@ public class RequestWorkflowService(
         await db.SaveChangesAsync(ct);
         await audit.LogAsync(null, approve ? "item-approved" : "item-rejected",
             "AccessRequestItem", item.Id.ToString(),
-            onBehalfOf is null ? $"uživatel {userId}" : $"uživatel {userId} v zástupu za {onBehalfOf}", ct);
+            resolution.RequiresAdminFallback
+                ? $"administrátor {userId} místo chybějícího schvalovatele"
+                : onBehalfOf is null ? $"uživatel {userId}" : $"uživatel {userId} v zástupu za {onBehalfOf}", ct);
 
         if (notifier is not null)
         {
             if (item.Status is RequestStatus.Approved or RequestStatus.Rejected)
                 await notifier.NotifyDecidedAsync(item.Id, ct);
             else if (item.Status == RequestStatus.Pending)
-                await notifier.NotifyPendingAsync(item.Id, ct); // postup na další úroveň
+                await NotifyPendingOrFallbackAsync(item, ct); // postup na další úroveň
         }
     }
 
-    /// <summary>Vyhodnotí, zda je úroveň po posledním schválení splněna (Any / All / Quorum).</summary>
-    private static bool IsLevelSatisfied(ApprovalLevel level, AccessRequestItem item)
+    /// <summary>
+    /// Upozorní schvalovatele aktuální úrovně; když úroveň po vyhodnocení nikoho nemá
+    /// (zaměstnanec bez nadřízeného), upozorní místo toho administrátory, že mají rozhodnout.
+    /// </summary>
+    private async Task NotifyPendingOrFallbackAsync(AccessRequestItem item, CancellationToken ct)
+    {
+        if (notifier is null)
+            return;
+
+        var resolution = item.MatrixId is null ? null : await ResolveCurrentLevelAsync(item, ct);
+        if (resolution is { RequiresAdminFallback: true })
+        {
+            await notifier.NotifyNoApproverAsync(item.Id,
+                resolution.Warnings.Count > 0 ? string.Join("; ", resolution.Warnings) : "úroveň bez schvalovatele", ct);
+            return;
+        }
+
+        await notifier.NotifyPendingAsync(item.Id, ct);
+    }
+
+    /// <summary>
+    /// Vyhodnotí, zda je úroveň po posledním schválení splněna (Any / All / Quorum).
+    /// <paramref name="totalApprovers"/> = konkrétní uživatelé + vyhodnocení nadřízení.
+    /// </summary>
+    private static bool IsLevelSatisfied(ApprovalLevel level, AccessRequestItem item, int totalApprovers)
     {
         var approvals = item.Decisions
             .Where(d => d.LevelOrder == level.Order && d.Approved
@@ -700,7 +794,6 @@ public class RequestWorkflowService(
             .Distinct()
             .Count();
 
-        var totalApprovers = level.Approvers.Count(a => a.UserId != null);
         return level.Mode switch
         {
             ApprovalMode.Any => approvals >= 1,

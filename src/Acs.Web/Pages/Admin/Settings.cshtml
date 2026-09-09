@@ -222,7 +222,7 @@
             ukáže <a asp-page="LdapDump">Co vrací AD o účtu</a> — řádek „Nadřízený“.
             @if (!string.IsNullOrWhiteSpace(Model.Values[SettingKeys.EmployeeLastManagerStats]))
             {
-                <br /><strong>Poslední synchronizace:</strong> @(Model.Values[SettingKeys.EmployeeLastManagerStats]).
+                <br /><strong>Poslední synchronizace:</strong> <span>@Model.Values[SettingKeys.EmployeeLastManagerStats]</span>
             }
         </p>
         <label>Velikost stránky LDAP dotazu (AD zvládá max 1000)</label>
