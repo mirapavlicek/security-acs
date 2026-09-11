@@ -39,6 +39,7 @@ public class IndexModel(
     public bool IsCatalogManager => User.IsInRole("Admin") || User.IsInRole("CatalogManager");
     public bool IsCardAdmin => User.IsInRole("Admin") || User.IsInRole("CardAdmin");
     public bool IsParkingAdmin => User.IsInRole("Admin") || User.IsInRole("ParkingAdmin");
+    public bool IsIctAdmin => User.IsInRole("Admin") || User.IsInRole("IctAdmin");
     public bool IsAdmin => User.IsInRole("Admin");
 
     public async Task OnGetAsync()

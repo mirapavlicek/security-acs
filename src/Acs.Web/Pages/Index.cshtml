@@ -6,7 +6,7 @@
 }
 <h1>Přehled</h1>
 
-@if (a.PendingApprovals > 0 || (Model.IsCardAdmin && a.CardQueue > 0) || (Model.IsParkingAdmin && a.ParkingQueue > 0))
+@if (a.PendingApprovals > 0 || (Model.IsCardAdmin && a.CardQueue > 0) || (Model.IsParkingAdmin && a.ParkingQueue > 0) || (Model.IsIctAdmin && a.SecurityQueue > 0))
 {
     <section class="dash-section">
         <h2>Čeká na vás</h2>
@@ -33,6 +33,14 @@
                     <span class="tile-count">@a.ParkingQueue</span>
                     <span class="tile-title">Fronta parkování</span>
                     <span class="tile-desc">parkovacích povolení k vydání nebo odebrání</span>
+                </a>
+            }
+            @if (Model.IsIctAdmin && a.SecurityQueue > 0)
+            {
+                <a class="tile tile-attention" asp-page="/Security/Queue">
+                    <span class="tile-count">@a.SecurityQueue</span>
+                    <span class="tile-title">Fronta kamer / EZS</span>
+                    <span class="tile-desc">schválených požadavků k realizaci ICT</span>
                 </a>
             }
         </div>
@@ -81,7 +89,7 @@
     </div>
 </section>
 
-@if (Model.IsCardAdmin || Model.IsParkingAdmin)
+@if (Model.IsCardAdmin || Model.IsParkingAdmin || Model.IsIctAdmin)
 {
     <section class="dash-section">
         <h2>Fronty</h2>
@@ -100,6 +108,14 @@
                     <span class="tile-count">@a.ParkingQueue</span>
                     <span class="tile-title">Fronta správce parkování</span>
                     <span class="tile-desc">@(a.ParkingQueue > 0 ? "povolení k vydání nebo odebrání" : "fronta je prázdná")</span>
+                </a>
+            }
+            @if (Model.IsIctAdmin)
+            {
+                <a class="tile @(a.SecurityQueue > 0 ? "tile-attention" : "")" asp-page="/Security/Queue">
+                    <span class="tile-count">@a.SecurityQueue</span>
+                    <span class="tile-title">Fronta kamer / EZS (ICT)</span>
+                    <span class="tile-desc">@(a.SecurityQueue > 0 ? "požadavků k realizaci" : "fronta je prázdná")</span>
                 </a>
             }
         </div>

@@ -182,7 +182,7 @@
             }
         </select>
         <button class="btn btn-sm btn-ghost" type="submit"
-                onclick="var f=this.form, t=f.querySelector('[data-role=ownership-target]').value.split(':'); f.kind.value=t[0]; f.id.value=t[1];">
+                onclick="var f=this.form, t=f.querySelector('[data-role=ownership-target]').value.split(':'); f.elements['kind'].value=t[0]; f.elements['id'].value=t[1];">
             Uložit vlastníka
         </button>
     </form>
