@@ -63,6 +63,10 @@ public static class SettingKeys
     /// <summary>Statistika nadřízených z poslední synchronizace („spárováno X z Y, zdroj uvádí Z“) — jen k zobrazení.</summary>
     public const string EmployeeLastManagerStats = "Employees:LastManagerStats";
 
+    // Schvalování
+    /// <summary>Id schvalovací matice pro žádosti o kamery / EZS (prázdné = výchozí matice, jinak administrátor).</summary>
+    public const string SecurityMatrixId = "Security:MatrixId";
+
     // Karty z MSSQL (zaměstnanci z AD, karty z SQL)
     public const string CardsMssqlConnectionString = "Cards:MssqlConnectionString"; // secret
     public const string CardsMssqlQuery = "Cards:MssqlQuery";

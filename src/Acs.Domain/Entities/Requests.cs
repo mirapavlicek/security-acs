@@ -84,7 +84,25 @@ public class AccessRequestItem
     /// <summary>Jde o položku parkovacího povolení (ne o přístup ke čtečce)?</summary>
     public bool IsParking => ParkingPermitId is not null;
 
+    /// <summary>Žádost o kamery / EZS (null, pokud jde o přístup nebo parkování).</summary>
+    public int? SecurityRequestId { get; set; }
+    public SecurityRequest? SecurityRequest { get; set; }
+
+    /// <summary>Jde o položku kamer / EZS (realizuje ICT útvar, ne správce karet)?</summary>
+    public bool IsSecurity => SecurityRequestId is not null;
+
+    /// <summary>Položka přístupu ke čtečce / skupině (jde do fronty správce karet).</summary>
+    public bool IsAccess => ParkingPermitId is null && SecurityRequestId is null;
+
     public bool AutoAdded { get; set; }
+
+    /// <summary>
+    /// Schváleno bez schvalovacího stupně: pro položku neplatila žádná úroveň matice
+    /// (např. ředitel, náměstek ve vlastním úseku) a matice to dovoluje
+    /// (<see cref="ApprovalMatrix.AutoApproveWhenNoLevels"/>).
+    /// </summary>
+    public bool AutoApproved { get; set; }
+
     public RequestStatus Status { get; set; } = RequestStatus.Pending;
 
     /// <summary>Pořadí úrovně aktuální matice, na které položka právě čeká.</summary>

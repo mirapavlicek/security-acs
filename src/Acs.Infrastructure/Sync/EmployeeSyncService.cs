@@ -1,6 +1,7 @@
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Data;
+using Acs.Infrastructure.Organization;
 using Acs.Infrastructure.Settings;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -97,6 +98,10 @@ public class EmployeeSyncService(
 
         var managers = await LinkManagersAsync(remote, ct);
 
+        // Úseky (z oddělení podle mapování) a kategorie (z hierarchie) pro schvalovací matici.
+        var structure = await new OrgStructureService(db).RecalculateAsync(userName, ct);
+        logger?.LogInformation("Synchronizace zaměstnanců: {Structure}.", structure);
+
         // Automatické spárování AD účtů s importovanými zaměstnanci — bez toho
         // by uživatel neviděl „Moje přístupy“ a nešlo by za něj žádat.
         var unpaired = await db.Users.Where(u => !u.IsLocal && u.EmployeeId == null).ToListAsync(ct);
@@ -128,6 +133,7 @@ public class EmployeeSyncService(
             ManagersInSource = managers.InSource,
             ManagersLinked = managers.Linked,
             EmployeesTotal = remote.Count,
+            Structure = structure,
         };
         await audit.LogAsync(userName, "employees-synced", "Employee", null, result.ToString(), ct);
         if (settings is not null)
@@ -212,9 +218,13 @@ public record EmployeeSyncResult(int Added, int Updated, int Deactivated)
     public int ManagersLinked { get; init; }
     public int EmployeesTotal { get; init; }
 
+    /// <summary>Výsledek odvození úseků a kategorií (null u starších výsledků).</summary>
+    public OrgStructureResult? Structure { get; init; }
+
     public string ManagerSummary => ManagersInSource == 0
         ? $"zdroj neuvádí nadřízeného u žádného z {EmployeesTotal} zaměstnanců"
         : $"nadřízený nalezen u {ManagersLinked} z {EmployeesTotal} zaměstnanců (zdroj ho uvádí u {ManagersInSource})";
 
-    public override string ToString() => $"{base.ToString()}; {ManagerSummary}";
+    public override string ToString()
+        => $"{base.ToString()}; {ManagerSummary}" + (Structure is null ? "" : $"; {Structure}");
 }

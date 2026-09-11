@@ -6,7 +6,7 @@ namespace Acs.Domain.Entities;
 /// Při žádosti o skupinu se schvaluje řetěz matic: matice skupiny a poté
 /// matice všech nadřazených skupin (např. Chirurgie → Bezpečnost).
 /// </summary>
-public class ReaderGroup
+public class ReaderGroup : IOwnedArea
 {
     public int Id { get; set; }
     public required string Name { get; set; }
@@ -15,6 +15,14 @@ public class ReaderGroup
     /// <summary>Schvalovací matice skupiny (null = bez vlastní matice).</summary>
     public int? ApprovalMatrixId { get; set; }
     public ApprovalMatrix? ApprovalMatrix { get; set; }
+
+    /// <summary>Úsek, kterému skupina (prostor) patří — pro rozlišení vlastní / cizí úsek.</summary>
+    public int? OrgUnitId { get; set; }
+    public OrgUnit? OrgUnit { get; set; }
+
+    /// <summary>Odpovědná osoba skupiny (null = vedoucí úseku).</summary>
+    public int? ResponsibleEmployeeId { get; set; }
+    public Employee? ResponsibleEmployee { get; set; }
 
     public bool IsActive { get; set; } = true;
 

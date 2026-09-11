@@ -93,9 +93,13 @@ public class EmailNotificationService(
             var statusText = item.Status switch
             {
                 RequestStatus.Approved when item.IsParking => "schváleno — čeká na vydání správcem parkování",
+                RequestStatus.Approved when item.IsSecurity && item.AutoApproved => "přijato bez schvalovacího stupně — čeká na realizaci ICT",
+                RequestStatus.Approved when item.IsSecurity => "schváleno — čeká na realizaci ICT útvarem",
+                RequestStatus.Approved when item.AutoApproved => "přijato bez schvalovacího stupně — čeká na zadání správcem karet",
                 RequestStatus.Approved => "schváleno — čeká na zadání správcem karet",
                 RequestStatus.Rejected => "zamítnuto",
                 RequestStatus.PushedToWinPak => "zapsáno do WIN-PAK — přístup je aktivní",
+                RequestStatus.ManuallyConfirmed when item.IsSecurity => "realizováno ICT útvarem",
                 RequestStatus.ManuallyConfirmed => "zadáno do WIN-PAK (ručně) — přístup je aktivní",
                 RequestStatus.Issued => "vydáno — parkovací povolení je platné",
                 RequestStatus.Revoked when item.IsParking => "parkovací povolení odebráno",
@@ -137,7 +141,7 @@ public class EmailNotificationService(
     /// <summary>Upozornění správcům karet (resp. parkování), že do jejich fronty přibyla schválená položka.</summary>
     private async Task NotifyQueueAdminsAsync(AccessRequestItem item, CancellationToken ct)
     {
-        var role = item.IsParking ? AppRole.ParkingAdmin : AppRole.CardAdmin;
+        var role = item.IsParking ? AppRole.ParkingAdmin : item.IsSecurity ? AppRole.IctAdmin : AppRole.CardAdmin;
         var emails = await db.Users
             .Where(u => u.IsActive && u.Email != null
                         && ((u.Roles & role) == role
@@ -149,10 +153,12 @@ public class EmailNotificationService(
             return;
 
         var action = item.Request!.Kind == RequestKind.Revoke ? "odebrání" : "udělení";
-        var what = item.IsParking ? "parkovacího povolení" : "přístupu";
+        var what = item.IsParking ? "parkovacího povolení" : item.IsSecurity ? "kamer / EZS" : "přístupu";
         var queue = item.IsParking
             ? "Fronta správce parkování: http://acs.fnmh.network/Parking/Queue"
-            : "Fronta správce karet: http://acs.fnmh.network/CardQueue";
+            : item.IsSecurity
+                ? "Fronta realizace ICT: http://acs.fnmh.network/Security/Queue"
+                : "Fronta správce karet: http://acs.fnmh.network/CardQueue";
         await SendAsync(emails,
             $"ACS: ve frontě čeká {action} {what} (#{item.RequestId})",
             $"Zaměstnanec: {item.Request.TargetEmployee!.FullName}\n"
@@ -164,6 +170,9 @@ public class EmailNotificationService(
     /// <summary>Lidský popis předmětu položky — čtečka, skupina, nebo parkovací povolení.</summary>
     public static string ItemName(AccessRequestItem item)
     {
+        if (item.SecurityRequest is { } security)
+            return $"{security.KindLabel}: {security.Title} ({security.LocationPath()})";
+
         if (item.ParkingPermit is { } permit)
         {
             var type = permit.PermitType?.Name ?? "parkovací povolení";
@@ -248,6 +257,9 @@ public class EmailNotificationService(
             .Include(i => i.ParkingPermit!).ThenInclude(p => p.PermitType)
             .Include(i => i.ParkingPermit!).ThenInclude(p => p.Plates)
             .Include(i => i.ParkingPermit!).ThenInclude(p => p.Sites).ThenInclude(s => s.Site)
+            .Include(i => i.SecurityRequest!).ThenInclude(s => s.Building)
+            .Include(i => i.SecurityRequest!).ThenInclude(s => s.Floor)
+            .Include(i => i.SecurityRequest!).ThenInclude(s => s.Room)
             .AsNoTracking()
             .FirstOrDefaultAsync(i => i.Id == itemId, ct);
 
