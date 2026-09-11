@@ -295,6 +295,58 @@ public class WebAppTests(AcsWebFactory factory) : IClassFixture<AcsWebFactory>
     }
 
     [Fact]
+    public async Task Bezny_uzivatel_nevidi_zadny_text_o_winpaku()
+    {
+        const string knownPassword = "Znam3Heslo!Uzivatel";
+        int requestId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Acs.Infrastructure.Data.AcsDbContext>();
+            var employee = new Acs.Domain.Entities.Employee { FirstName = "Běžný", LastName = "Uživatel", Department = "Účtárna" };
+            var user = new Acs.Domain.Entities.AppUser
+            {
+                UserName = "bezny", IsLocal = true, Roles = Acs.Domain.Entities.AppRole.Employee,
+                PasswordHash = Acs.Infrastructure.Auth.PasswordHasher.Hash(knownPassword), Employee = employee,
+            };
+            var reader = new Acs.Domain.Entities.Reader { Name = "Dveře účtárny", IsActive = true, AccessLevelExternalId = "5" };
+            var request = new Acs.Domain.Entities.AccessRequest
+            {
+                RequesterUser = user, TargetEmployee = employee, Justification = "test",
+                Items =
+                [
+                    new Acs.Domain.Entities.AccessRequestItem { Reader = reader, Status = Acs.Domain.Entities.RequestStatus.PushedToWinPak, PushResult = "API: přiřazeny access levely 5" },
+                    new Acs.Domain.Entities.AccessRequestItem { Reader = new Acs.Domain.Entities.Reader { Name = "Sklad", IsActive = true }, Status = Acs.Domain.Entities.RequestStatus.ManuallyConfirmed },
+                ],
+            };
+            db.AccessRequests.Add(request);
+            await db.SaveChangesAsync();
+            requestId = request.Id;
+        }
+
+        var client = CreateClientWithCookies(allowRedirects: true);
+        var loginPage = await client.GetStringAsync("/Account/Login");
+        await client.PostAsync("/Account/Login", new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                ["UserName"] = "bezny",
+                ["Password"] = knownPassword,
+                ["__RequestVerificationToken"] = ExtractAntiforgeryToken(loginPage),
+            }));
+
+        foreach (var path in new[] { "/", "/Requests", $"/Requests/Detail/{requestId}", "/Requests/New", "/MyAccess", "/Parking", "/Parking/New", "/Security/New", "/Plans", "/Deputies" })
+        {
+            var response = await client.GetAsync(path);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var body = await response.Content.ReadAsStringAsync();
+            Assert.DoesNotContain("win-pak", body, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("winpak", body, StringComparison.OrdinalIgnoreCase);
+        }
+
+        var detail = await client.GetStringAsync($"/Requests/Detail/{requestId}");
+        Assert.Contains("přístup aktivní", detail);
+    }
+
+    [Fact]
     public async Task Stranky_pristupovych_urovni_se_otevrou_i_bez_konektoru()
     {
         const string knownPassword = "Znam3Heslo!Urovne";
