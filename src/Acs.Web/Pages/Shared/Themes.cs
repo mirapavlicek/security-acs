@@ -14,8 +14,19 @@ public static class Themes
         ("green", "Zelené"),
         ("purple", "Fialové"),
         ("contrast", "Kontrastní"),
-        ("sparta", "Sparta"),
+        ("dark-red", "Dark red"),
     ];
 
+    /// <summary>Původní název tématu „dark-red“ — uložený v cookie a u uživatelů z dřívějška.</summary>
+    private const string LegacyDarkRed = "sparta";
+
     public static bool IsKnown(string? value) => All.Any(t => t.Value == value);
+
+    /// <summary>Převede uložené téma na aktuální hodnotu (včetně přejmenovaných); neznámé → světlé.</summary>
+    public static string Normalize(string? value)
+    {
+        if (value == LegacyDarkRed)
+            return "dark-red";
+        return IsKnown(value) ? value! : "light";
+    }
 }

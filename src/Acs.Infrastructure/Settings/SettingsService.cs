@@ -159,6 +159,36 @@ public class SettingsService(AcsDbContext db, IDataProtectionProvider dataProtec
     public async Task<int> GetIntAsync(string key, int defaultValue, CancellationToken ct = default)
         => int.TryParse(await GetAsync(key, ct), out var v) ? v : defaultValue;
 
+    /// <summary>Doména AD (UPN sufix), když není nastavená ani odvoditelná z Base DN.</summary>
+    public const string DefaultLdapDomain = "nnh.local";
+
+    /// <summary>
+    /// Doména AD pro doplnění k účtu při přihlášení (<c>jnovak</c> → <c>jnovak@nnh.local</c>):
+    /// nastavení <see cref="SettingKeys.LdapDomain"/>, jinak odvozená z Base DN
+    /// (<c>DC=nnh,DC=local</c> → <c>nnh.local</c>), jinak <see cref="DefaultLdapDomain"/>.
+    /// </summary>
+    public async Task<string> GetLdapDomainAsync(CancellationToken ct = default)
+    {
+        var configured = await GetAsync(SettingKeys.LdapDomain, ct);
+        if (!string.IsNullOrWhiteSpace(configured))
+            return configured.Trim().TrimStart('@');
+        return DomainFromBaseDn(await GetAsync(SettingKeys.LdapBaseDn, ct)) ?? DefaultLdapDomain;
+    }
+
+    /// <summary>Z Base DN (<c>OU=Users,DC=nnh,DC=local</c>) složí doménu <c>nnh.local</c>; null, když DN žádné DC nemá.</summary>
+    public static string? DomainFromBaseDn(string? baseDn)
+    {
+        if (string.IsNullOrWhiteSpace(baseDn))
+            return null;
+        var parts = baseDn.Split(',')
+            .Select(p => p.Trim())
+            .Where(p => p.StartsWith("DC=", StringComparison.OrdinalIgnoreCase))
+            .Select(p => p[3..].Trim())
+            .Where(p => p.Length > 0)
+            .ToList();
+        return parts.Count == 0 ? null : string.Join('.', parts);
+    }
+
     public async Task SetAsync(string key, string? value, string? updatedBy = null, CancellationToken ct = default)
     {
         var isSecret = SettingKeys.SecretKeys.Contains(key);

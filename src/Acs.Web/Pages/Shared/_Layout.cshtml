@@ -1,6 +1,6 @@
 ﻿@inject Acs.Infrastructure.Notifications.AttentionService Attention
 @{
-    var theme = Context.Request.Cookies["acs-theme"] ?? "light";
+    var theme = Acs.Web.Pages.Shared.Themes.Normalize(Context.Request.Cookies["acs-theme"]);
     var isAuthenticated = User.Identity?.IsAuthenticated == true;
     bool HasRole(string role) => User.IsInRole("Admin") || User.IsInRole(role);
 

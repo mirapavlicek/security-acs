@@ -186,7 +186,7 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
             {
                 if (string.IsNullOrWhiteSpace(user))
                     throw new InvalidOperationException("Přihlášení Windows účtem: není zadaný účet ani servisní účet pro AD (Nastavení → Active Directory).");
-                handler.Credentials = WindowsCredential(user, password ?? "", await settings.GetAsync(SettingKeys.LdapDomain, ct));
+                handler.Credentials = WindowsCredential(user, password ?? "", await settings.GetLdapDomainAsync(ct));
             }
 
             return new IdentifiersApiCardSource(new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(2) }, options);

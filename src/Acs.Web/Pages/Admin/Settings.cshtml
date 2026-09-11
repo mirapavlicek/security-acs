@@ -33,7 +33,7 @@
         <select name="DefaultTheme">
             @foreach (var (t, label) in Acs.Web.Pages.Shared.Themes.All)
             {
-                <option value="@t" selected="@(Model.Values[SettingKeys.DefaultTheme] == t)">@label (@t)</option>
+                <option value="@t" selected="@(Acs.Web.Pages.Shared.Themes.Normalize(Model.Values[SettingKeys.DefaultTheme]) == t)">@label (@t)</option>
             }
         </select>
         <button class="btn" type="submit">Uložit</button>
@@ -64,8 +64,8 @@
         </div>
         <label>Base DN</label>
         <input type="text" name="LdapBaseDn" value="@Model.Values[SettingKeys.LdapBaseDn]" placeholder="DC=fnmh,DC=local" />
-        <label>Doména (UPN sufix)</label>
-        <input type="text" name="LdapDomain" value="@Model.Values[SettingKeys.LdapDomain]" placeholder="fnmh.local" />
+        <label>Doména (UPN sufix) — doplní se k AD účtu při přihlášení (jnovak → jnovak@@nnh.local); prázdné = z Base DN, jinak @SettingsService.DefaultLdapDomain</label>
+        <input type="text" name="LdapDomain" value="@Model.Values[SettingKeys.LdapDomain]" placeholder="@SettingsService.DefaultLdapDomain" />
         <label>Servisní účet pro bind (UPN nebo DN) — používá se pro načítání zaměstnanců z AD</label>
         <input type="text" name="LdapBindUser" value="@Model.Values[SettingKeys.LdapBindUser]"
                placeholder="svc-acs@nnh.local" autocomplete="off" />

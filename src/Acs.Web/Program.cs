@@ -462,9 +462,7 @@ app.MapGet("/health", async (AcsDbContext db) =>
 // Přepnutí barevného tématu (cookie → funguje bez ohledu na node).
 app.MapPost("/set-theme", async (HttpContext context, AcsDbContext db) =>
 {
-    var theme = context.Request.Form["theme"].FirstOrDefault() ?? "light";
-    if (!Acs.Web.Pages.Shared.Themes.IsKnown(theme))
-        theme = "light";
+    var theme = Acs.Web.Pages.Shared.Themes.Normalize(context.Request.Form["theme"].FirstOrDefault());
     context.Response.Cookies.Append("acs-theme", theme, new CookieOptions
     {
         Expires = DateTimeOffset.UtcNow.AddYears(1),
