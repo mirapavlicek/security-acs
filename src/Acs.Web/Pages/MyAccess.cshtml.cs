@@ -31,6 +31,9 @@ public class MyAccessModel(AcsDbContext db, RequestWorkflowService workflow) : P
     /// <summary>Parkovací žádosti čekající na schválení / vydání.</summary>
     public List<AccessRequestItem> PendingParkingItems { get; private set; } = [];
 
+    /// <summary>Žádosti o kamery / EZS zaměstnance (čekající i realizované).</summary>
+    public List<AccessRequestItem> SecurityItems { get; private set; } = [];
+
     /// <summary>Poslední vjezdy / výjezdy a rozhodnutí u brány z parkovacího systému.</summary>
     public List<IntegrationEvent> RecentGateEvents { get; private set; } = [];
 
@@ -81,6 +84,7 @@ public class MyAccessModel(AcsDbContext db, RequestWorkflowService workflow) : P
     public async Task OnGetAsync()
     {
         var user = await db.Users.Include(u => u.Employee!).ThenInclude(e => e.Manager)
+            .Include(u => u.Employee!).ThenInclude(e => e.OrgUnit)
             .FirstOrDefaultAsync(u => u.Id == CurrentUserId);
         Employee = user?.Employee;
         if (Employee is null)
@@ -92,7 +96,17 @@ public class MyAccessModel(AcsDbContext db, RequestWorkflowService workflow) : P
             .Include(i => i.Reader).ThenInclude(r => r!.Corridor).ThenInclude(c => c!.Floor).ThenInclude(f => f!.Building)
             .Include(i => i.ReaderGroup)
             .Where(i => i.Request!.TargetEmployeeId == Employee.Id && i.Request.Kind == RequestKind.Grant
-                        && i.ParkingPermitId == null)
+                        && i.ParkingPermitId == null && i.SecurityRequestId == null)
+            .ToListAsync();
+
+        SecurityItems = await db.AccessRequestItems
+            .Include(i => i.Request)
+            .Include(i => i.SecurityRequest!).ThenInclude(s => s.Building)
+            .Include(i => i.SecurityRequest!).ThenInclude(s => s.Floor)
+            .Include(i => i.SecurityRequest!).ThenInclude(s => s.Room)
+            .Where(i => i.SecurityRequestId != null && i.Request!.TargetEmployeeId == Employee.Id)
+            .OrderByDescending(i => i.Request!.CreatedAt)
+            .Take(20)
             .ToListAsync();
 
         ActiveItems = items

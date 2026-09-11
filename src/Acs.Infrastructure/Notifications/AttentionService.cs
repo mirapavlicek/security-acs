@@ -7,9 +7,9 @@ using Microsoft.EntityFrameworkCore;
 namespace Acs.Infrastructure.Notifications;
 
 /// <summary>Počty věcí, které čekají na zásah přihlášeného uživatele.</summary>
-public record AttentionCounts(int PendingApprovals, int CardQueue, int MyPending, int ParkingQueue = 0)
+public record AttentionCounts(int PendingApprovals, int CardQueue, int MyPending, int ParkingQueue = 0, int SecurityQueue = 0)
 {
-    public int Total => PendingApprovals + CardQueue + ParkingQueue;
+    public int Total => PendingApprovals + CardQueue + ParkingQueue + SecurityQueue;
 }
 
 /// <summary>
@@ -36,7 +36,12 @@ public class AttentionService(AcsDbContext db, RequestWorkflowService workflow)
 
         var cardQueue = isAdmin || user.IsInRole(nameof(AppRole.CardAdmin))
             ? await db.AccessRequestItems.CountAsync(
-                i => i.Status == RequestStatus.Approved && i.ParkingPermitId == null, ct)
+                i => i.Status == RequestStatus.Approved && i.ParkingPermitId == null && i.SecurityRequestId == null, ct)
+            : 0;
+
+        var securityQueue = isAdmin || user.IsInRole(nameof(AppRole.IctAdmin))
+            ? await db.AccessRequestItems.CountAsync(
+                i => i.Status == RequestStatus.Approved && i.SecurityRequestId != null, ct)
             : 0;
 
         var parkingQueue = isAdmin || user.IsInRole(nameof(AppRole.ParkingAdmin))
@@ -49,6 +54,6 @@ public class AttentionService(AcsDbContext db, RequestWorkflowService workflow)
             i => i.Request!.RequesterUserId == userId
                  && (i.Status == RequestStatus.Pending || i.Status == RequestStatus.Approved), ct);
 
-        return _cached = new AttentionCounts(pendingApprovals, cardQueue, myPending, parkingQueue);
+        return _cached = new AttentionCounts(pendingApprovals, cardQueue, myPending, parkingQueue, securityQueue);
     }
 }

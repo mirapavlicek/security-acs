@@ -1,0 +1,98 @@
+@page
+@using Acs.Domain.Entities
+@model Acs.Web.Pages.Security.QueueModel
+@{
+    ViewData["Title"] = "Fronta realizace ICT — kamery / EZS";
+}
+<h1>Fronta realizace ICT — kamery / EZS</h1>
+<p class="muted">
+    Schválené žádosti o zřízení / rozšíření kamerového systému nebo EZS. Po technickém zajištění
+    požadavek potvrďte; technicky nerealizovatelný zamítněte s důvodem (žadatel dostane e-mail).
+</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="card">
+    <h2 style="margin-top:0">Čeká na realizaci (@Model.Queue.Count)</h2>
+    <table class="data">
+        <thead>
+        <tr><th>Žádost</th><th>Druh</th><th>Požadavek</th><th>Umístění</th><th>Žadatel</th><th>Podáno</th><th></th></tr>
+        </thead>
+        <tbody>
+        @foreach (var item in Model.Queue)
+        {
+            var security = item.SecurityRequest!;
+            <tr>
+                <td><a asp-page="/Requests/Detail" asp-route-id="@item.RequestId">#@item.RequestId</a></td>
+                <td><span class="badge">@security.KindLabel</span></td>
+                <td>
+                    <strong>@security.Title</strong>
+                    <div class="muted" style="white-space:pre-wrap;font-size:0.9rem">@security.Description</div>
+                </td>
+                <td class="muted">@security.LocationPath()</td>
+                <td>@item.Request?.TargetEmployee?.FullName <span class="muted">@(security.OrgUnit?.DisplayName ?? item.Request?.TargetEmployee?.Department)</span></td>
+                <td class="muted">@item.Request?.CreatedAt.ToString("d. M. yyyy")</td>
+                <td style="white-space:nowrap">
+                    <form method="post" asp-page-handler="Implement" asp-route-search="@Model.Search" class="inline-form">
+                        <input type="hidden" name="itemId" value="@item.Id" />
+                        <input type="text" name="note" placeholder="poznámka k realizaci" style="width:12rem;display:inline-block;margin:0" />
+                        <button class="btn btn-sm" type="submit">Realizováno</button>
+                    </form>
+                    <form method="post" asp-page-handler="Reject" asp-route-search="@Model.Search" class="inline-form"
+                          onsubmit="return confirm('Zamítnout požadavek @security.Title jako nerealizovatelný?');">
+                        <input type="hidden" name="itemId" value="@item.Id" />
+                        <input type="text" name="reason" placeholder="důvod" required style="width:9rem;display:inline-block;margin:0" />
+                        <button class="btn btn-sm btn-danger" type="submit">Zamítnout</button>
+                    </form>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Queue.Count == 0)
+    {
+        <p class="muted">Fronta je prázdná.</p>
+    }
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">Realizované (@Model.Implemented.Count)</h2>
+    <form method="get" class="filterbar" style="margin-bottom:0.6rem">
+        <input type="text" name="search" value="@Model.Search" placeholder="název, místo, žadatel…" />
+        <button class="btn btn-sm" type="submit">Hledat</button>
+        @if (!string.IsNullOrWhiteSpace(Model.Search))
+        {
+            <a class="btn btn-sm btn-ghost" asp-page="Queue">Zrušit filtr</a>
+        }
+    </form>
+    <table class="data">
+        <thead>
+        <tr><th>Žádost</th><th>Druh</th><th>Požadavek</th><th>Umístění</th><th>Žadatel</th><th>Realizováno</th></tr>
+        </thead>
+        <tbody>
+        @foreach (var item in Model.Implemented)
+        {
+            var security = item.SecurityRequest!;
+            <tr>
+                <td><a asp-page="/Requests/Detail" asp-route-id="@item.RequestId">#@item.RequestId</a></td>
+                <td><span class="badge">@security.KindLabel</span></td>
+                <td>@security.Title</td>
+                <td class="muted">@security.LocationPath()</td>
+                <td>@item.Request?.TargetEmployee?.FullName</td>
+                <td class="muted">@security.ImplementedAt?.ToString("d. M. yyyy") @(security.ImplementedByUser?.DisplayName ?? security.ImplementedByUser?.UserName) @security.ImplementationNote</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Implemented.Count == 0)
+    {
+        <p class="muted">@(string.IsNullOrWhiteSpace(Model.Search) ? "Zatím nic nebylo realizováno." : "Nic nenalezeno.")</p>
+    }
+</div>

@@ -24,6 +24,17 @@ public record ParkingRequestInput(
     DateTime? ValidTo,
     string? Justification);
 
+/// <summary>Vstup žádosti o kamery / EZS.</summary>
+public record SecurityRequestInput(
+    SecurityRequestKind Kind,
+    string Title,
+    string? Description,
+    int? BuildingId,
+    int? FloorId,
+    int? RoomId,
+    string? LocationText,
+    string? Justification);
+
 /// <summary>
 /// Jádro schvalovacího workflow:
 /// <list type="bullet">
@@ -38,7 +49,11 @@ public record ParkingRequestInput(
 ///     (Admin / CardAdmin / CatalogManager); běžný uživatel jen sám za sebe,</item>
 ///   <item>čtečka bez aktivní matice se <b>neschvaluje automaticky</b> — použije se
 ///     výchozí matice (<see cref="ApprovalMatrix.IsDefault"/>, typicky nadřízený), a když
-///     není, vyžaduje rozhodnutí administrátora (žádný přístup neobejde lidské schválení).</item>
+///     není, vyžaduje rozhodnutí administrátora (žádný přístup neobejde lidské schválení),</item>
+///   <item>úrovně matice mohou být <b>podmíněné</b> kategorií zaměstnance a vztahem k prostoru
+///     (vlastní / cizí úsek, <see cref="ApprovalContext"/>) — neplatné úrovně se přeskočí; když
+///     neplatí žádná, položka se schválí bez stupně jen u matice s
+///     <see cref="ApprovalMatrix.AutoApproveWhenNoLevels"/>, jinak ji rozhoduje administrátor.</item>
 /// </list>
 /// </summary>
 public class RequestWorkflowService(
@@ -199,6 +214,8 @@ public class RequestWorkflowService(
         };
 
         var defaultMatrix = await GetDefaultMatrixAsync(ct);
+        var contexts = new ApprovalContextResolver(db);
+        var matrixCache = new Dictionary<int, ApprovalMatrix>();
         foreach (var reader in readers.Where(r => !skip.Contains(r.Id)))
         {
             var matrix = reader.ApprovalMatrix is { IsActive: true, Levels.Count: > 0 }
@@ -207,50 +224,32 @@ public class RequestWorkflowService(
 
             // Čtečka bez matice (a bez výchozí matice) se NESCHVALUJE automaticky —
             // zůstává Pending a smí ji schválit pouze administrátor (viz GetPendingForApproverAsync).
-            request.Items.Add(new AccessRequestItem
+            var item = new AccessRequestItem
             {
                 ReaderId = reader.Id,
                 AutoAdded = !explicitIds.Contains(reader.Id),
-                MatrixId = matrix?.Id,
                 Status = RequestStatus.Pending,
-                CurrentLevelOrder = matrix?.Levels.Min(l => l.Order) ?? 0,
-            });
+            };
+            var context = await contexts.ForReaderAsync(targetEmployeeId, reader.Id, ct);
+            await StartItemAsync(item, matrix is null ? [] : [matrix.Id], context, matrixCache, ct, trackStages: false);
+            request.Items.Add(item);
         }
 
         // Skupinové položky: řetěz matic = matice skupiny + matic nadřazených skupin.
-        var levelCache = new Dictionary<int, int>(); // matrixId -> první úroveň
         foreach (var groupId in groupIds.Where(g => !skipGroups.Contains(g)))
         {
             var chain = await Groups.GetMatrixChainAsync(groupId, ct);
             if (chain.Count == 0 && defaultMatrix is not null)
                 chain = [defaultMatrix.Id];
-            var firstMatrixId = chain.Count > 0 ? chain[0] : (int?)null;
-            int firstLevel = 0;
-            if (firstMatrixId is not null)
-            {
-                if (!levelCache.TryGetValue(firstMatrixId.Value, out firstLevel))
-                {
-                    firstLevel = await db.ApprovalLevels
-                        .Where(l => l.MatrixId == firstMatrixId.Value)
-                        .MinAsync(l => (int?)l.Order, ct) ?? 0;
-                    levelCache[firstMatrixId.Value] = firstLevel;
-                }
 
-                if (firstLevel == 0)
-                    firstMatrixId = null; // matice bez úrovní → jako bez matice (schvaluje admin)
-            }
-
-            request.Items.Add(new AccessRequestItem
+            var item = new AccessRequestItem
             {
                 ReaderGroupId = groupId,
-                MatrixId = firstMatrixId,
                 Status = RequestStatus.Pending,
-                CurrentStageOrder = 1,
-                CurrentLevelOrder = firstLevel,
-                Stages = firstMatrixId is null
-                    ? []
-                    : chain.Select((m, idx) => new AccessRequestItemStage { Order = idx + 1, MatrixId = m }).ToList(),
-            });
+            };
+            var context = await contexts.ForGroupAsync(targetEmployeeId, groupId, ct);
+            await StartItemAsync(item, chain, context, matrixCache, ct);
+            request.Items.Add(item);
         }
 
         if (request.Items.Count == 0)
@@ -404,11 +403,6 @@ public class RequestWorkflowService(
         if (chain.Count == 0 && await GetDefaultMatrixAsync(ct) is { } defaultMatrix)
             chain.Add(defaultMatrix.Id);
 
-        var firstMatrixId = chain.Count > 0 ? chain[0] : (int?)null;
-        var firstLevel = firstMatrixId is null
-            ? 0
-            : await db.ApprovalLevels.Where(l => l.MatrixId == firstMatrixId.Value).MinAsync(l => (int?)l.Order, ct) ?? 0;
-
         var permit = new ParkingPermit
         {
             EmployeeId = targetEmployeeId,
@@ -421,6 +415,10 @@ public class RequestWorkflowService(
             ValidTo = validTo,
         };
 
+        var item = new AccessRequestItem { ParkingPermit = permit, Status = RequestStatus.Pending };
+        var context = await new ApprovalContextResolver(db).ForEmployeeAsync(targetEmployeeId, ct);
+        await StartItemAsync(item, chain, context, new Dictionary<int, ApprovalMatrix>(), ct);
+
         var request = new AccessRequest
         {
             Kind = RequestKind.Grant,
@@ -428,18 +426,7 @@ public class RequestWorkflowService(
             TargetEmployeeId = targetEmployeeId,
             Justification = input.Justification,
             ValidUntil = validTo,
-            Items =
-            [
-                new AccessRequestItem
-                {
-                    ParkingPermit = permit,
-                    MatrixId = firstMatrixId,
-                    Status = RequestStatus.Pending,
-                    CurrentStageOrder = 1,
-                    CurrentLevelOrder = firstLevel,
-                    Stages = chain.Select((m, idx) => new AccessRequestItemStage { Order = idx + 1, MatrixId = m }).ToList(),
-                },
-            ],
+            Items = [item],
         };
 
         db.AccessRequests.Add(request);
@@ -448,10 +435,201 @@ public class RequestWorkflowService(
             $"zaměstnanec {targetEmployeeId}, druh {type.Name}, {permit.SubjectText()}, {(input.AllSites ? "všechny areály" : string.Join(", ", sites.Select(s => s.Name)))}", ct);
 
         if (notifier is not null)
-            await NotifyPendingOrFallbackAsync(request.Items[0], ct);
+        {
+            if (item.Status == RequestStatus.Approved)
+                await notifier.NotifyDecidedAsync(item.Id, ct);
+            else
+                await NotifyPendingOrFallbackAsync(item, ct);
+        }
 
         return request;
     }
+
+    // ---------- Kamery / EZS ----------
+
+    /// <summary>
+    /// Podání žádosti o zřízení / rozšíření kamerového systému nebo EZS. Cílový zaměstnanec je
+    /// žadatel (vedoucí úseku); <paramref name="matrixId"/> je matice nastavená pro kamery / EZS
+    /// (Katalog → Schvalovací matice), bez ní výchozí matice, bez obojího rozhoduje administrátor.
+    /// Schválená položka jde do fronty realizace ICT (<see cref="AppRole.IctAdmin"/>).
+    /// </summary>
+    public async Task<AccessRequest> CreateSecurityRequestAsync(
+        int requesterUserId, int targetEmployeeId, SecurityRequestInput input, int? matrixId,
+        bool requesterCanActForOthers = false, CancellationToken ct = default)
+    {
+        await EnsureCanRequestForAsync(requesterUserId, targetEmployeeId, requesterCanActForOthers, ct);
+
+        var title = input.Title?.Trim();
+        if (string.IsNullOrWhiteSpace(title))
+            throw new InvalidOperationException("Zadejte název požadavku.");
+        if (string.IsNullOrWhiteSpace(input.Description) && string.IsNullOrWhiteSpace(input.Justification))
+            throw new InvalidOperationException("Popište, co a proč se má zřídit nebo rozšířit.");
+
+        var employee = await db.Employees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == targetEmployeeId, ct)
+            ?? throw new InvalidOperationException("Zaměstnanec nenalezen.");
+
+        if (input.RoomId is { } roomId && !await db.Rooms.AnyAsync(r => r.Id == roomId, ct))
+            throw new InvalidOperationException("Vybraná místnost neexistuje.");
+        if (input.FloorId is { } floorId && !await db.Floors.AnyAsync(f => f.Id == floorId, ct))
+            throw new InvalidOperationException("Vybrané patro neexistuje.");
+        if (input.BuildingId is { } buildingId && !await db.Buildings.AnyAsync(b => b.Id == buildingId, ct))
+            throw new InvalidOperationException("Vybraná budova neexistuje.");
+
+        var chain = new List<int>();
+        if (matrixId is { } mid
+            && await db.ApprovalMatrices.AnyAsync(m => m.Id == mid && m.IsActive && m.Levels.Any(), ct))
+            chain.Add(mid);
+        if (chain.Count == 0 && await GetDefaultMatrixAsync(ct) is { } defaultMatrix)
+            chain.Add(defaultMatrix.Id);
+
+        var security = new SecurityRequest
+        {
+            Kind = input.Kind,
+            Title = title,
+            Description = input.Description?.Trim(),
+            BuildingId = input.BuildingId,
+            FloorId = input.FloorId,
+            RoomId = input.RoomId,
+            LocationText = input.LocationText?.Trim(),
+            OrgUnitId = employee.OrgUnitId,
+        };
+
+        var item = new AccessRequestItem { SecurityRequest = security, Status = RequestStatus.Pending };
+        var context = await new ApprovalContextResolver(db).ForEmployeeAsync(targetEmployeeId, ct);
+        await StartItemAsync(item, chain, context, new Dictionary<int, ApprovalMatrix>(), ct);
+
+        var request = new AccessRequest
+        {
+            Kind = RequestKind.Grant,
+            RequesterUserId = requesterUserId,
+            TargetEmployeeId = targetEmployeeId,
+            Justification = input.Justification,
+            Items = [item],
+        };
+
+        db.AccessRequests.Add(request);
+        await db.SaveChangesAsync(ct);
+        await audit.LogAsync(null, "security-request-created", "SecurityRequest", security.Id.ToString(),
+            $"zaměstnanec {targetEmployeeId}, {security.KindLabel}: {title}", ct);
+
+        if (notifier is not null)
+        {
+            if (item.Status == RequestStatus.Approved)
+                await notifier.NotifyDecidedAsync(item.Id, ct);
+            else
+                await NotifyPendingOrFallbackAsync(item, ct);
+        }
+
+        return request;
+    }
+
+    // ---------- Průchod úrovněmi ----------
+
+    private sealed record LevelPosition(int StageOrder, int MatrixId, int LevelOrder);
+
+    private async Task<Dictionary<int, ApprovalMatrix>> LoadMatricesAsync(
+        IEnumerable<int> ids, Dictionary<int, ApprovalMatrix> cache, CancellationToken ct)
+    {
+        var missing = ids.Distinct().Where(id => !cache.ContainsKey(id)).ToList();
+        if (missing.Count > 0)
+        {
+            var loaded = await db.ApprovalMatrices.AsNoTracking()
+                .Include(m => m.Levels)
+                .Where(m => missing.Contains(m.Id))
+                .ToListAsync(ct);
+            foreach (var matrix in loaded)
+                cache[matrix.Id] = matrix;
+        }
+
+        return cache;
+    }
+
+    /// <summary>
+    /// Další platná úroveň v řetězu matic za pozicí (<paramref name="fromStage"/>, <paramref name="fromLevelOrder"/>);
+    /// úrovně, které pro kontext položky neplatí, se přeskočí. Null = řetěz vyčerpán.
+    /// </summary>
+    private static LevelPosition? FindNextLevel(
+        IReadOnlyList<int> chain, int fromStage, int fromLevelOrder, ApprovalContext context,
+        IReadOnlyDictionary<int, ApprovalMatrix> matrices)
+    {
+        for (var stage = Math.Max(1, fromStage); stage <= chain.Count; stage++)
+        {
+            if (!matrices.TryGetValue(chain[stage - 1], out var matrix))
+                continue;
+            var minOrder = stage == fromStage ? fromLevelOrder : 0;
+            var level = matrix.Levels
+                .Where(l => l.Order > minOrder)
+                .OrderBy(l => l.Order)
+                .FirstOrDefault(l => context.Applies(l, matrix.TreatUnknownUnitAsOutside));
+            if (level is not null)
+                return new LevelPosition(stage, matrix.Id, level.Order);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Nastaví novou položku na první platnou úroveň řetězu matic. Bez řetězu (nebo s maticí bez
+    /// úrovní) rozhoduje administrátor. Když žádná úroveň neplatí (podmínky kategorie / úseku):
+    /// všechny matice řetězu s <see cref="ApprovalMatrix.AutoApproveWhenNoLevels"/> → schváleno
+    /// bez stupně; jinak administrátor.
+    /// </summary>
+    private async Task StartItemAsync(
+        AccessRequestItem item, IReadOnlyList<int> chain, ApprovalContext context,
+        Dictionary<int, ApprovalMatrix> matrixCache, CancellationToken ct, bool trackStages = true)
+    {
+        item.CurrentStageOrder = 1;
+        if (chain.Count == 0)
+        {
+            item.MatrixId = null;
+            item.CurrentLevelOrder = 0;
+            return;
+        }
+
+        var matrices = await LoadMatricesAsync(chain, matrixCache, ct);
+        var usable = chain.Where(id => matrices.TryGetValue(id, out var m) && m.Levels.Count > 0).ToList();
+        if (usable.Count == 0)
+        {
+            item.MatrixId = null; // matice bez úrovní → jako bez matice (schvaluje admin)
+            item.CurrentLevelOrder = 0;
+            return;
+        }
+
+        if (trackStages || usable.Count > 1)
+            item.Stages = usable.Select((m, idx) => new AccessRequestItemStage { Order = idx + 1, MatrixId = m }).ToList();
+
+        var next = FindNextLevel(usable, 1, 0, context, matrices);
+        if (next is not null)
+        {
+            item.MatrixId = next.MatrixId;
+            item.CurrentStageOrder = next.StageOrder;
+            item.CurrentLevelOrder = next.LevelOrder;
+            return;
+        }
+
+        if (usable.All(id => matrices[id].AutoApproveWhenNoLevels))
+        {
+            // Bez schvalovacího stupně (např. ředitel, náměstek ve vlastním úseku) → rovnou realizace.
+            item.MatrixId = usable[0];
+            item.CurrentLevelOrder = 0;
+            item.Status = RequestStatus.Approved;
+            item.DecidedAt = DateTime.UtcNow;
+            item.PushResult = null;
+            item.Stages = [];
+            item.AutoApproved = true;
+            return;
+        }
+
+        item.MatrixId = null;
+        item.CurrentLevelOrder = 0;
+        item.Stages = [];
+    }
+
+    /// <summary>Řetěz matic položky (fáze, nebo jen aktuální matice).</summary>
+    private static List<int> ChainOf(AccessRequestItem item)
+        => item.Stages.Count > 0
+            ? item.Stages.OrderBy(s => s.Order).Select(s => s.MatrixId).ToList()
+            : item.MatrixId is { } mid ? [mid] : [];
 
     /// <summary>
     /// Žádost o odebrání vydaného parkovacího povolení. Neprochází schvalováním —
@@ -526,6 +704,17 @@ public class RequestWorkflowService(
             .Include(l => l.Approvers)
             .FirstOrDefaultAsync(l => l.MatrixId == item.MatrixId && l.Order == item.CurrentLevelOrder, ct);
         return level is null ? null : await new ApproverResolver(db).ResolveAsync(level, item, ct);
+    }
+
+    /// <summary>Kontext položek (kategorie zaměstnance, úsek prostoru, vlastní / cizí) — pro zobrazení v detailu.</summary>
+    public async Task<Dictionary<int, ApprovalContext>> ResolveContextsAsync(
+        IReadOnlyCollection<AccessRequestItem> items, CancellationToken ct = default)
+    {
+        var resolver = new ApprovalContextResolver(db);
+        var result = new Dictionary<int, ApprovalContext>();
+        foreach (var item in items)
+            result[item.Id] = await resolver.ForItemAsync(item, ct);
+        return result;
     }
 
     /// <summary>Vyhodnocení aktuálních úrovní pro víc položek najednou (sdílená cache zaměstnanců a uživatelů).</summary>
@@ -634,6 +823,7 @@ public class RequestWorkflowService(
         var item = await db.AccessRequestItems
             .Include(i => i.Decisions)
             .Include(i => i.Request)
+            .Include(i => i.Stages)
             .FirstOrDefaultAsync(i => i.Id == itemId, ct)
             ?? throw new KeyNotFoundException("Položka žádosti nenalezena.");
 
@@ -728,41 +918,23 @@ public class RequestWorkflowService(
         }
         else if (resolution.RequiresAdminFallback || IsLevelSatisfied(level, item, resolution.Approvers.Count))
         {
-            var nextOrder = await db.ApprovalLevels
-                .Where(l => l.MatrixId == item.MatrixId && l.Order > item.CurrentLevelOrder)
-                .OrderBy(l => l.Order)
-                .Select(l => (int?)l.Order)
-                .FirstOrDefaultAsync(ct);
-
-            if (nextOrder is not null)
+            // Další platná úroveň — v aktuální matici, nebo v další fázi řetězu (vnořené
+            // schvalování, např. skupina → bezpečnost). Úrovně neplatné pro kategorii /
+            // úsek se přeskočí; vyčerpaný řetěz = schváleno.
+            var chain = ChainOf(item);
+            var matrices = await LoadMatricesAsync(chain, new Dictionary<int, ApprovalMatrix>(), ct);
+            var context = await resolver.Contexts.ForItemAsync(item, ct);
+            var next = FindNextLevel(chain, item.CurrentStageOrder, item.CurrentLevelOrder, context, matrices);
+            if (next is not null)
             {
-                item.CurrentLevelOrder = nextOrder.Value;
+                item.CurrentStageOrder = next.StageOrder;
+                item.MatrixId = next.MatrixId;
+                item.CurrentLevelOrder = next.LevelOrder;
             }
             else
             {
-                // Aktuální matice dokončena — existuje další fáze řetězu
-                // (vnořené schvalování, např. skupina → bezpečnost)?
-                var nextStage = await db.AccessRequestItemStages
-                    .Where(s => s.ItemId == item.Id && s.Order > item.CurrentStageOrder)
-                    .OrderBy(s => s.Order)
-                    .FirstOrDefaultAsync(ct);
-                var nextFirstLevel = nextStage is null
-                    ? null
-                    : await db.ApprovalLevels
-                        .Where(l => l.MatrixId == nextStage.MatrixId)
-                        .MinAsync(l => (int?)l.Order, ct);
-
-                if (nextStage is not null && nextFirstLevel is not null)
-                {
-                    item.CurrentStageOrder = nextStage.Order;
-                    item.MatrixId = nextStage.MatrixId;
-                    item.CurrentLevelOrder = nextFirstLevel.Value;
-                }
-                else
-                {
-                    item.Status = RequestStatus.Approved;
-                    item.DecidedAt = DateTime.UtcNow;
-                }
+                item.Status = RequestStatus.Approved;
+                item.DecidedAt = DateTime.UtcNow;
             }
         }
 

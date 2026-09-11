@@ -40,6 +40,12 @@ else
             <br /><text>Váš nadřízený: <strong>@manager.FullName</strong></text>
             <span title="Podle Active Directory; schvaluje vaše žádosti, kde to matice vyžaduje.">ⓘ</span>
         }
+        <br /><text>Kategorie pro schvalování: <strong>@Model.Employee.EffectiveRank.Label()</strong></text>
+        @if (Model.Employee.OrgUnit is { } unit)
+        {
+            <text>, úsek: <strong>@unit.DisplayName</strong></text>
+        }
+        <span title="Podle kategorie a úseku matice rozlišuje vstup v rámci vlastního / mimo vlastní úsek a přeskakuje či přidává schvalovací stupně.">ⓘ</span>
     </p>
 
     <h2>Identifikátory</h2>
@@ -246,4 +252,25 @@ else
             <p class="muted">Nic nečeká na vyřízení.</p>
         }
     </div>
+
+    @if (Model.SecurityItems.Count > 0)
+    {
+        <h2>Kamery / EZS</h2>
+        <div class="card">
+            <table class="data">
+                <thead><tr><th>Požadavek</th><th>Umístění</th><th>Stav</th><th>Žádost</th></tr></thead>
+                <tbody>
+                @foreach (var item in Model.SecurityItems)
+                {
+                    <tr>
+                        <td>@item.SecurityRequest!.Title <span class="muted">(@item.SecurityRequest.KindLabel)</span></td>
+                        <td class="muted">@item.SecurityRequest.LocationPath()</td>
+                        <td>@Acs.Web.Pages.Shared.StatusText.Label(item)</td>
+                        <td><a class="btn btn-sm btn-ghost" asp-page="/Requests/Detail" asp-route-id="@item.RequestId">#@item.RequestId</a></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
 }

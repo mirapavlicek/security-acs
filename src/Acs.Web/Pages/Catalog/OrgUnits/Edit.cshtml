@@ -1,0 +1,126 @@
+@page "{id:int}"
+@using Acs.Domain.Entities
+@model Acs.Web.Pages.Catalog.OrgUnits.EditModel
+@{
+    ViewData["Title"] = $"Úsek: {Model.Unit.Name}";
+}
+<h1>@ViewData["Title"]</h1>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="settings-grid">
+<div class="card">
+    <h2 style="margin-top:0">Vlastnosti</h2>
+    <form method="post">
+        <label>Název</label>
+        <input type="text" name="name" value="@Model.Unit.Name" required />
+        <label>Kód</label>
+        <input type="text" name="code" value="@Model.Unit.Code" />
+        <label>Popis</label>
+        <input type="text" name="description" value="@Model.Unit.Description" />
+        <label>Nadřazený úsek</label>
+        <select name="parentId">
+            <option value="">— nejvyšší úroveň —</option>
+            @foreach (var candidate in Model.ParentCandidates)
+            {
+                <option value="@candidate.Id" selected="@(candidate.Id == Model.Unit.ParentId)">@candidate.DisplayName</option>
+            }
+        </select>
+        <label>Vedoucí úseku (odpovědná osoba) — pište pro hledání</label>
+        <input type="text" id="head-search" placeholder="Hledat jméno, oddělení, osobní číslo…" autocomplete="off" style="margin-bottom:0.3rem" />
+        <select name="headEmployeeId" id="head-select" size="1">
+            <option value="">— bez vedoucího —</option>
+            @foreach (var employee in Model.Employees)
+            {
+                <option value="@employee.Id" selected="@(employee.Id == Model.Unit.HeadEmployeeId)"
+                        data-search="@($"{employee.FullName} {employee.Department} {employee.PersonalNumber} {employee.AdAccount}")">
+                    @employee.FullName @(employee.Department is null ? "" : $"({employee.Department})")
+                </option>
+            }
+        </select>
+        <p class="hint" id="head-hint">
+            Vedoucí je odpovědnou osobou prostorů úseku (schvalovatel „odpovědná osoba cílového úseku“),
+            pokud u prostoru není uvedena jiná. U kategorií se počítá jako vedoucí zaměstnanec.
+        </p>
+        <label>Mapování oddělení zaměstnanců (jeden vzor na řádek; „*“ na konci = předpona)</label>
+        <textarea name="departmentPatterns" rows="5" placeholder="Chirurgická klinika&#10;Chirurgická klinika – JIP&#10;Chir*">@Model.Unit.DepartmentPatterns</textarea>
+        <p class="hint">
+            Zaměstnanec s oddělením odpovídajícím vzoru se při importu / přepočtu zařadí do tohoto úseku.
+            Přesná shoda má přednost před předponou, delší vzor před kratším. Ručně zařazený zaměstnanec se nepřepisuje.
+        </p>
+        <label>Pořadí</label>
+        <input type="number" name="sortOrder" value="@Model.Unit.SortOrder" style="max-width:120px" />
+        <div class="checkbox-row">
+            <input type="checkbox" id="isActive" name="isActive" value="true" checked="@Model.Unit.IsActive" />
+            <label for="isActive">Aktivní</label>
+        </div>
+        <button class="btn" type="submit">Uložit</button>
+        <a class="btn btn-ghost" asp-page="Index">Zpět</a>
+    </form>
+    <form method="post" asp-page-handler="Delete" class="inline-form" style="margin-top:0.6rem">
+        <button class="btn btn-ghost" type="submit"
+                onclick="return confirm('Smazat úsek @Model.Unit.Name? Zaměstnanci a prostory zůstanou bez úseku.')">Smazat úsek</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">Podřízené úseky (@Model.Children.Count)</h2>
+    @if (Model.Children.Count == 0)
+    {
+        <p class="muted">Žádné.</p>
+    }
+    else
+    {
+        <ul style="margin:0">
+            @foreach (var child in Model.Children)
+            {
+                <li><a asp-page="Edit" asp-route-id="@child.Id">@child.DisplayName</a></li>
+            }
+        </ul>
+    }
+
+    <h2>Zaměstnanci úseku (@Model.MembersTotal)</h2>
+    @if (Model.Members.Count == 0)
+    {
+        <p class="muted">Zatím nikdo — doplňte mapování oddělení a přepočítejte, nebo zařaďte zaměstnance ručně v jeho editaci.</p>
+    }
+    else
+    {
+        <ul style="margin:0">
+            @foreach (var member in Model.Members)
+            {
+                <li>
+                    <a asp-page="/Catalog/Employees/Edit" asp-route-id="@member.Id">@member.FullName</a>
+                    <span class="muted">@member.Department · @member.EffectiveRank.Label()</span>
+                </li>
+            }
+            @if (Model.MembersTotal > Model.Members.Count)
+            {
+                <li class="muted">… a dalších @(Model.MembersTotal - Model.Members.Count)</li>
+            }
+        </ul>
+    }
+
+    <h2>Prostory úseku (@Model.Areas.Count)</h2>
+    @if (Model.Areas.Count == 0)
+    {
+        <p class="muted">Žádný prostor zatím k úseku nepatří — úsek se nastavuje u budovy / patra / chodby / místnosti (Budovy a místnosti), u čtečky a u skupiny čteček.</p>
+    }
+    else
+    {
+        <p class="muted" style="margin:0">@string.Join(" · ", Model.Areas)</p>
+    }
+</div>
+</div>
+
+@section Scripts {
+<script src="~/js/employee-search.js" asp-append-version="true"></script>
+<script>window.acsEmployeeSearch('head');</script>
+}

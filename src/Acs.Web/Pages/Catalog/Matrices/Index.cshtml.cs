@@ -1,14 +1,25 @@
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Data;
+using Acs.Infrastructure.Settings;
+using Acs.Infrastructure.Workflow;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 
 namespace Acs.Web.Pages.Catalog.Matrices;
 
-public class IndexModel(AcsDbContext db, AuditService audit) : PageModel
+public class IndexModel(AcsDbContext db, AuditService audit, SettingsService settings, MatrixTemplateService templates) : PageModel
 {
+    /// <summary>Matice pro žádosti o kamery / EZS (null = výchozí matice, jinak administrátor).</summary>
+    public ApprovalMatrix? SecurityMatrix { get; private set; }
+
+    /// <summary>Uživatelé pro výběr vedoucího OVBKŘ v průvodci.</summary>
+    public List<AppUser> Users { get; private set; } = [];
+
+    /// <summary>Matice podle dokumentu FN Motol už existují?</summary>
+    public bool FnmTemplateExists { get; private set; }
+
     public List<ApprovalMatrix> Matrices { get; private set; } = [];
     public Dictionary<int, int> UsageCounts { get; private set; } = new();
     public Dictionary<int, int> GroupUsageCounts { get; private set; } = new();
@@ -52,6 +63,35 @@ public class IndexModel(AcsDbContext db, AuditService audit) : PageModel
             .FirstOrDefaultAsync();
         EmployeesActive = await db.Employees.CountAsync(e => e.IsActive);
         EmployeesWithManager = await db.Employees.CountAsync(e => e.IsActive && e.ManagerId != null);
+
+        var securityMatrixId = await settings.GetIntAsync(SettingKeys.SecurityMatrixId, 0);
+        SecurityMatrix = securityMatrixId > 0 ? Matrices.FirstOrDefault(m => m.Id == securityMatrixId) : null;
+        Users = await db.Users.Where(u => u.IsActive).OrderBy(u => u.DisplayName ?? u.UserName).ToListAsync();
+        FnmTemplateExists = Matrices.Any(m => m.Name == MatrixTemplateService.AccessName);
+    }
+
+    /// <summary>Matice pro žádosti o kamery / EZS.</summary>
+    public async Task<IActionResult> OnPostSetSecurityAsync(int? matrixId)
+    {
+        if (matrixId is not null && !await db.ApprovalMatrices.AnyAsync(m => m.Id == matrixId))
+            return NotFound();
+
+        await settings.SetAsync(SettingKeys.SecurityMatrixId, matrixId?.ToString() ?? "", User.Identity?.Name);
+        await audit.LogAsync(User.Identity?.Name, "security-matrix-changed", "ApprovalMatrix", matrixId?.ToString(), null);
+        Message = matrixId is null
+            ? "Žádosti o kamery / EZS schvaluje výchozí matice (bez ní administrátor)."
+            : "Matice pro kamery / EZS nastavena.";
+        return RedirectToPage();
+    }
+
+    /// <summary>Založí matice podle schvalovací matice FN Motol (EKV, parkování, kamery / EZS).</summary>
+    public async Task<IActionResult> OnPostCreateFnmAsync(int? ovbkrUserId)
+    {
+        var result = await templates.CreateFnmAsync(ovbkrUserId, User.Identity?.Name);
+        await settings.SetAsync(SettingKeys.SecurityMatrixId, result.Security.Id.ToString(), User.Identity?.Name);
+        Message = $"Založeno: „{result.Access.Name}“ (výchozí), „{result.Parking.Name}“ (přiřazena {result.PermitTypesAssigned} druhům povolení), „{result.Security.Name}“ (kamery / EZS)."
+                  + (result.Notes.Count > 0 ? " " + string.Join(" ", result.Notes) : "");
+        return RedirectToPage();
     }
 
     /// <summary>Nastaví (nebo zruší, <paramref name="matrixId"/> = null) výchozí matici — nejvýše jedna.</summary>

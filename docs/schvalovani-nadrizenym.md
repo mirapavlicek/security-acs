@@ -67,7 +67,13 @@ schvalovatele*) se vybere typ:
 
 - **Konkrétní uživatel** — jako dosud,
 - **Nadřízený zaměstnance (z AD)** — přímý nadřízený cílového zaměstnance,
-- **Nadřízený nadřízeného** — o úroveň výš.
+- **Nadřízený nadřízeného** — o úroveň výš,
+- **Odpovědná osoba cílového úseku** — vlastník prostoru žádosti (čtečka →
+  místnost → patro → budova, skupina), nebo vedoucí úseku, kterému prostor patří.
+
+Úroveň může platit jen pro některé **kategorie zaměstnance** (řadový / vedoucí /
+přímo pod ředitelem / ředitel) a jen pro vstup **v rámci vlastního / mimo vlastní
+úsek** — viz [Schvalovací matice FN Motol](schvalovaci-matice-fnm.md).
 
 Typy lze na jedné úrovni kombinovat, např. „nadřízený **nebo** vedoucí IT“
 (režim *stačí kterýkoli*) nebo „nadřízený **a** bezpečnost“ (režim *všichni*).

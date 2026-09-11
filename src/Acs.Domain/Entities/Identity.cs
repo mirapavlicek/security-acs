@@ -17,6 +17,10 @@ public enum AppRole
     Employee = 16,
     /// <summary>Správce parkování — fronta vydávání parkovacích povolení, tisk kartiček, odebírání.</summary>
     ParkingAdmin = 32,
+    /// <summary>Správce ICT — fronta realizace schválených žádostí o kamery / EZS.</summary>
+    IctAdmin = 64,
+    /// <summary>Kontrola (OBP) — jen čtení všech žádostí, přehledů a nastavení schvalování; nerozhoduje.</summary>
+    Auditor = 128,
 }
 
 /// <summary>Uživatelský účet (lokální nebo mapovaný z Active Directory).</summary>

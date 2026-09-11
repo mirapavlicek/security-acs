@@ -28,7 +28,8 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
         return Page();
     }
 
-    public async Task<IActionResult> OnPostRenameAsync(int id, string name, string? description, string? isActive)
+    public async Task<IActionResult> OnPostRenameAsync(int id, string name, string? description, string? isActive,
+        string? autoApprove, string? unknownAsOutside)
     {
         var matrix = await db.ApprovalMatrices.FindAsync(id);
         if (matrix is null)
@@ -37,6 +38,8 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
         matrix.Name = name.Trim();
         matrix.Description = description;
         matrix.IsActive = isActive == "true";
+        matrix.AutoApproveWhenNoLevels = autoApprove == "true";
+        matrix.TreatUnknownUnitAsOutside = unknownAsOutside == "true";
         await db.SaveChangesAsync();
         await audit.LogAsync(User.Identity?.Name, "matrix-updated", "ApprovalMatrix", id.ToString(), name);
         Message = "Matice uložena.";
@@ -58,7 +61,8 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
         return RedirectToPage(new { id });
     }
 
-    public async Task<IActionResult> OnPostUpdateLevelAsync(int id, int levelId, string mode, int? requiredCount)
+    public async Task<IActionResult> OnPostUpdateLevelAsync(int id, int levelId, string mode, int? requiredCount,
+        string[]? ranks, string? scope, string? name)
     {
         var level = await db.ApprovalLevels.FindAsync(levelId);
         if (level is null || level.MatrixId != id)
@@ -66,6 +70,18 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
 
         level.Mode = Enum.TryParse<ApprovalMode>(mode, out var parsed) ? parsed : ApprovalMode.Any;
         level.RequiredCount = level.Mode == ApprovalMode.Quorum ? Math.Max(1, requiredCount ?? 1) : null;
+        level.Name = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+
+        // Podmínky: kategorie (nic nebo všechny zaškrtnuté = platí pro všechny) a vztah k prostoru.
+        var flags = RankFlags.None;
+        foreach (var rank in ranks ?? [])
+        {
+            if (Enum.TryParse<RankFlags>(rank, out var flag))
+                flags |= flag;
+        }
+
+        level.AppliesToRanks = flags == RankFlags.All ? RankFlags.None : flags;
+        level.Scope = Enum.TryParse<LevelScope>(scope, out var parsedScope) ? parsedScope : LevelScope.Always;
         await db.SaveChangesAsync();
         Message = $"Úroveň {level.Order} uložena.";
         return RedirectToPage(new { id });
@@ -105,6 +121,19 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
         string detail;
         switch (kind)
         {
+            case "AreaOwner":
+            {
+                if (level.Approvers.Any(a => a.Kind == ApproverKind.AreaOwner))
+                {
+                    ErrorMessage = "Odpovědnou osobu úseku už úroveň obsahuje.";
+                    return RedirectToPage(new { id });
+                }
+
+                approver = new Approver { LevelId = levelId, Kind = ApproverKind.AreaOwner };
+                detail = "odpovědná osoba cílového úseku";
+                break;
+            }
+
             case "Manager1":
             case "Manager2":
             {

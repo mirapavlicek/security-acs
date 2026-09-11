@@ -16,6 +16,9 @@ public class DetailModel(AcsDbContext db, RequestWorkflowService workflow) : Pag
     /// <summary>Kdo smí rozhodnout na aktuální úrovni každé čekající položky (uživatelé + nadřízený).</summary>
     public Dictionary<int, LevelResolution> Resolutions { get; private set; } = [];
 
+    /// <summary>Kontext položek: kategorie zaměstnance, úsek / odpovědná osoba prostoru, vlastní / cizí úsek.</summary>
+    public Dictionary<int, ApprovalContext> Contexts { get; private set; } = [];
+
     [TempData] public string? Message { get; set; }
     [TempData] public string? ErrorMessage { get; set; }
 
@@ -32,6 +35,11 @@ public class DetailModel(AcsDbContext db, RequestWorkflowService workflow) : Pag
             .Include(r => r.Items).ThenInclude(i => i.ParkingPermit!).ThenInclude(p => p.PermitType)
             .Include(r => r.Items).ThenInclude(i => i.ParkingPermit!).ThenInclude(p => p.Plates)
             .Include(r => r.Items).ThenInclude(i => i.ParkingPermit!).ThenInclude(p => p.Sites).ThenInclude(s => s.Site)
+            .Include(r => r.Items).ThenInclude(i => i.SecurityRequest!).ThenInclude(s => s.Building)
+            .Include(r => r.Items).ThenInclude(i => i.SecurityRequest!).ThenInclude(s => s.Floor)
+            .Include(r => r.Items).ThenInclude(i => i.SecurityRequest!).ThenInclude(s => s.Room)
+            .Include(r => r.Items).ThenInclude(i => i.SecurityRequest!).ThenInclude(s => s.OrgUnit)
+            .Include(r => r.Items).ThenInclude(i => i.SecurityRequest!).ThenInclude(s => s.ImplementedByUser)
             .Include(r => r.Items).ThenInclude(i => i.Stages)
             .Include(r => r.Items).ThenInclude(i => i.Decisions).ThenInclude(d => d.ApproverUser)
             .FirstOrDefaultAsync(r => r.Id == id);
@@ -46,8 +54,10 @@ public class DetailModel(AcsDbContext db, RequestWorkflowService workflow) : Pag
         var myEmployeeId = await db.Users.Where(u => u.Id == CurrentUserId)
             .Select(u => u.EmployeeId).FirstOrDefaultAsync();
         var canView = IsAdmin
+            || User.IsInRole("Auditor")
             || User.IsInRole("CardAdmin")
             || (User.IsInRole("ParkingAdmin") && request.Items.Any(i => i.IsParking))
+            || (User.IsInRole("IctAdmin") && request.Items.Any(i => i.IsSecurity))
             || request.RequesterUserId == CurrentUserId
             || (myEmployeeId is not null && request.TargetEmployeeId == myEmployeeId)
             || CanDecide.Count > 0;
@@ -57,6 +67,8 @@ public class DetailModel(AcsDbContext db, RequestWorkflowService workflow) : Pag
         Request = request;
         Resolutions = await workflow.ResolveCurrentLevelsAsync(
             request.Items.Where(i => i.Status == RequestStatus.Pending).ToList());
+        Contexts = await workflow.ResolveContextsAsync(
+            request.Items.Where(i => i.MatrixId != null || i.AutoApproved).ToList());
         return Page();
     }
 

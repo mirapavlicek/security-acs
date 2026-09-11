@@ -38,6 +38,8 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
     public DbSet<ParkingPermitPlate> ParkingPermitPlates => Set<ParkingPermitPlate>();
     public DbSet<ParkingSpot> ParkingSpots => Set<ParkingSpot>();
     public DbSet<IntegrationEvent> IntegrationEvents => Set<IntegrationEvent>();
+    public DbSet<OrgUnit> OrgUnits => Set<OrgUnit>();
+    public DbSet<SecurityRequest> SecurityRequests => Set<SecurityRequest>();
     public DbSet<Setting> Settings => Set<Setting>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
@@ -66,6 +68,47 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
             // Nadřízený: po smazání nadřízeného zůstává podřízený bez nadřízeného.
             e.HasOne(x => x.Manager).WithMany()
                 .HasForeignKey(x => x.ManagerId).OnDelete(DeleteBehavior.SetNull);
+            // Úsek zaměstnance: N:1 (konvence by z dvojice Employee.OrgUnit ↔ OrgUnit.HeadEmployee
+            // udělala 1:1 s unikátním indexem — proto explicitně a index výslovně neunikátní).
+            e.HasOne(x => x.OrgUnit).WithMany()
+                .HasForeignKey(x => x.OrgUnitId).OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(x => x.OrgUnitId).IsUnique(false);
+            e.Ignore(x => x.EffectiveRank);
+        });
+
+        modelBuilder.Entity<OrgUnit>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(256);
+            e.Property(x => x.Code).HasMaxLength(32);
+            e.Property(x => x.Description).HasMaxLength(1024);
+            e.HasIndex(x => x.ParentId);
+            e.HasOne(x => x.Parent).WithMany(p => p.Children)
+                .HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.HeadEmployee).WithMany()
+                .HasForeignKey(x => x.HeadEmployeeId).OnDelete(DeleteBehavior.SetNull);
+            e.Ignore(x => x.DisplayName);
+        });
+
+        // Vlastnictví prostorů (úsek + odpovědná osoba) — stejně pro všechny druhy prostorů.
+        ConfigureOwnedArea<Building>(modelBuilder);
+        ConfigureOwnedArea<Floor>(modelBuilder);
+        ConfigureOwnedArea<Corridor>(modelBuilder);
+        ConfigureOwnedArea<Room>(modelBuilder);
+        ConfigureOwnedArea<Reader>(modelBuilder);
+        ConfigureOwnedArea<ReaderGroup>(modelBuilder);
+
+        modelBuilder.Entity<SecurityRequest>(e =>
+        {
+            e.Property(x => x.Title).HasMaxLength(256);
+            e.Property(x => x.LocationText).HasMaxLength(512);
+            e.Property(x => x.ImplementationNote).HasMaxLength(1024);
+            e.HasOne(x => x.Building).WithMany().HasForeignKey(x => x.BuildingId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.Floor).WithMany().HasForeignKey(x => x.FloorId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.Room).WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.OrgUnit).WithMany().HasForeignKey(x => x.OrgUnitId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.ImplementedByUser).WithMany()
+                .HasForeignKey(x => x.ImplementedByUserId).OnDelete(DeleteBehavior.SetNull);
+            e.Ignore(x => x.KindLabel);
         });
 
         modelBuilder.Entity<EmployeeIdentifier>(e =>
@@ -155,6 +198,7 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
 
         modelBuilder.Entity<ApprovalLevel>(e =>
         {
+            e.Ignore(x => x.IsConditional);
             e.HasIndex(x => new { x.MatrixId, x.Order }).IsUnique();
             e.HasOne(x => x.Matrix).WithMany(m => m.Levels)
                 .HasForeignKey(x => x.MatrixId).OnDelete(DeleteBehavior.Cascade);
@@ -193,7 +237,11 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
                 .HasForeignKey(x => x.ReaderGroupId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.ParkingPermit).WithMany()
                 .HasForeignKey(x => x.ParkingPermitId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.SecurityRequest).WithMany()
+                .HasForeignKey(x => x.SecurityRequestId).OnDelete(DeleteBehavior.Restrict);
             e.Ignore(x => x.IsParking);
+            e.Ignore(x => x.IsSecurity);
+            e.Ignore(x => x.IsAccess);
         });
 
         modelBuilder.Entity<Site>(e =>
@@ -327,6 +375,18 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
         modelBuilder.Entity<AuditLog>(e =>
         {
             e.HasIndex(x => x.At);
+        });
+    }
+
+    private static void ConfigureOwnedArea<T>(ModelBuilder modelBuilder) where T : class, IOwnedArea
+    {
+        modelBuilder.Entity<T>(e =>
+        {
+            e.HasIndex(x => x.OrgUnitId);
+            e.HasOne(typeof(OrgUnit), "OrgUnit").WithMany()
+                .HasForeignKey(nameof(IOwnedArea.OrgUnitId)).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(typeof(Employee), "ResponsibleEmployee").WithMany()
+                .HasForeignKey(nameof(IOwnedArea.ResponsibleEmployeeId)).OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

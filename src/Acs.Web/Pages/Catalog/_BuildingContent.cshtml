@@ -1,9 +1,14 @@
 @model Acs.Web.Pages.Catalog.BuildingContent
 @{
     var building = Model.Building;
+    var ownershipForm = new Acs.Web.Pages.Catalog.OwnershipForm(
+        "building", building.Id, $"Budova {building.Name}", building, Model.Ownership, BuildingId: building.Id);
 }
 
-<h4 style="margin:0.4rem 0 0.2rem">Části budovy</h4>
+<h4 style="margin:0.4rem 0 0.2rem">Vlastník budovy</h4>
+<partial name="_OwnershipForm" model="ownershipForm" />
+
+<h4 style="margin:0.8rem 0 0.2rem">Části budovy</h4>
 @if (Model.Sections.Count > 0)
 {
     <table class="data" style="margin-bottom:0.4rem">

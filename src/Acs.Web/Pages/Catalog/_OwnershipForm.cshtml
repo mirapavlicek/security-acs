@@ -1,0 +1,38 @@
+@model Acs.Web.Pages.Catalog.OwnershipForm
+@{
+    var current = Model.Options.Describe(Model.Area);
+}
+<form method="post" asp-page="/Catalog/Places" asp-page-handler="SetOwnership" class="inline-form ownership-form" style="display:block;margin-top:0.3rem">
+    <input type="hidden" name="kind" value="@Model.Kind" />
+    <input type="hidden" name="id" value="@Model.Id" />
+    @if (Model.FloorId is not null)
+    {
+        <input type="hidden" name="floorId" value="@Model.FloorId" />
+    }
+    @if (Model.BuildingId is not null)
+    {
+        <input type="hidden" name="buildingId" value="@Model.BuildingId" />
+    }
+    <span class="muted" title="Úsek a odpovědná osoba prostoru — pro rozlišení vstupu v rámci vlastního / mimo vlastní úsek a schvalovatele „odpovědná osoba cílového úseku“. Prázdné dědí z nadřazeného prostoru.">
+        @Model.Label:
+    </span>
+    <select name="orgUnitId" style="max-width:220px;display:inline-block">
+        <option value="">— úsek: dědí —</option>
+        @foreach (var unit in Model.Options.Units)
+        {
+            <option value="@unit.Id" selected="@(unit.Id == Model.Area.OrgUnitId)">@unit.DisplayName</option>
+        }
+    </select>
+    <select name="responsibleEmployeeId" style="max-width:260px;display:inline-block">
+        <option value="">— odpovědná osoba: vedoucí úseku / dědí —</option>
+        @foreach (var employee in Model.Options.Employees)
+        {
+            <option value="@employee.Id" selected="@(employee.Id == Model.Area.ResponsibleEmployeeId)">@employee.FullName @(employee.Department is null ? "" : $"({employee.Department})")</option>
+        }
+    </select>
+    <button class="btn btn-sm btn-ghost" type="submit">Uložit vlastníka</button>
+    @if (current is not null)
+    {
+        <span class="badge" title="Aktuální vlastník">@current</span>
+    }
+</form>

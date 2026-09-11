@@ -26,7 +26,16 @@ public class IndexModel(AcsDbContext db, SyncJobRunner jobs) : PageModel
     [BindProperty(SupportsGet = true)]
     public bool WithoutManager { get; set; }
 
+    /// <summary>Filtr podle kategorie (řadový / vedoucí / přímo pod ředitelem / ředitel).</summary>
+    [BindProperty(SupportsGet = true)]
+    public EmployeeRank? Rank { get; set; }
+
+    /// <summary>Filtr: jen aktivní zaměstnanci bez úseku.</summary>
+    [BindProperty(SupportsGet = true)]
+    public bool WithoutUnit { get; set; }
+
     public int WithManagerCount { get; private set; }
+    public int WithUnitCount { get; private set; }
     public int ActiveCount { get; private set; }
 
     [TempData] public string? Message { get; set; }
@@ -52,16 +61,24 @@ public class IndexModel(AcsDbContext db, SyncJobRunner jobs) : PageModel
 
         if (WithoutManager)
             query = query.Where(e => e.IsActive && e.ManagerId == null);
+        if (WithoutUnit)
+            query = query.Where(e => e.IsActive && e.OrgUnitId == null);
+        if (Rank is { } rank)
+            query = rank == EmployeeRank.Staff
+                ? query.Where(e => e.Rank == EmployeeRank.Staff || e.Rank == EmployeeRank.Auto)
+                : query.Where(e => e.Rank == rank);
 
         TotalCount = await query.CountAsync();
         Employees = await query
             .Include(e => e.Manager)
+            .Include(e => e.OrgUnit)
             .OrderBy(e => e.LastName).ThenBy(e => e.FirstName)
             .Take(300)
             .ToListAsync();
 
         ActiveCount = await db.Employees.CountAsync(e => e.IsActive);
         WithManagerCount = await db.Employees.CountAsync(e => e.IsActive && e.ManagerId != null);
+        WithUnitCount = await db.Employees.CountAsync(e => e.IsActive && e.OrgUnitId != null);
 
         var ids = Employees.Select(e => e.Id).ToList();
         Identifiers = (await db.EmployeeIdentifiers

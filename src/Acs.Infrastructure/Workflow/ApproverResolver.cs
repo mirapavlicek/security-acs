@@ -11,6 +11,13 @@ public enum ApproverOrigin
     User = 0,
     /// <summary>Nadřízený cílového zaměstnance podle <see cref="Employee.ManagerId"/>.</summary>
     LineManager = 1,
+    /// <summary>Odpovědná osoba cílového úseku (prostoru žádosti).</summary>
+    AreaOwner = 2,
+    /// <summary>
+    /// Nadřízený konkrétního schvalovatele — nastoupil místo něj, protože schvalovatel je sám
+    /// žadatelem nebo cílovým zaměstnancem (např. vedoucí OVBKŘ žádá sám → jeho nadřízený).
+    /// </summary>
+    EscalatedManager = 3,
 }
 
 /// <summary>
@@ -33,8 +40,13 @@ public record ResolvedApprover(
     {
         ApproverOrigin.LineManager when ManagerDepth >= 2 => "nadřízený nadřízeného",
         ApproverOrigin.LineManager => "nadřízený",
+        ApproverOrigin.AreaOwner => "odpovědná osoba úseku",
+        ApproverOrigin.EscalatedManager => "nadřízený schvalovatele (schvalovatel je žadatelem)",
         _ => "schvalovatel",
     };
+
+    /// <summary>Schvalovatel vyhodnocený dynamicky (ne konkrétní uživatel z matice).</summary>
+    public bool IsDynamic => Origin != ApproverOrigin.User;
 
     /// <summary>Jedná daná identita (uživatel + zástupy) za tohoto schvalovatele?</summary>
     public bool Matches(ActingIdentity identity)
@@ -61,8 +73,8 @@ public record LevelResolution(
     IReadOnlyList<ResolvedApprover> Approvers,
     IReadOnlyList<string> Warnings)
 {
-    /// <summary>Úroveň obsahuje schvalovatele typu „nadřízený“.</summary>
-    public bool HasManagerApprovers => Level.Approvers.Any(a => a.Kind == ApproverKind.LineManager);
+    /// <summary>Úroveň obsahuje schvalovatele typu „nadřízený“ nebo „odpovědná osoba úseku“.</summary>
+    public bool HasManagerApprovers => Level.Approvers.Any(a => a.Kind is ApproverKind.LineManager or ApproverKind.AreaOwner);
 
     /// <summary>
     /// Po vyhodnocení nezůstal nikdo, kdo by mohl rozhodnout (např. zaměstnanec bez
@@ -98,6 +110,10 @@ public class ApproverResolver(AcsDbContext db)
     private readonly Dictionary<int, Employee?> _employees = [];
     private readonly Dictionary<int, AppUser?> _users = [];
     private readonly Dictionary<int, AppUser?> _usersByEmployee = [];
+    private ApprovalContextResolver? _contexts;
+
+    /// <summary>Kontexty položek (kategorie, úsek, vlastní / cizí) — sdílené cache v rámci požadavku.</summary>
+    public ApprovalContextResolver Contexts => _contexts ??= new ApprovalContextResolver(db);
 
     /// <summary>Identita uživatele včetně zástupů a navázaných zaměstnanců.</summary>
     public async Task<ActingIdentity> GetActingIdentityAsync(int userId, CancellationToken ct = default)
@@ -143,12 +159,26 @@ public class ApproverResolver(AcsDbContext db)
         var request = item.Request
             ?? await db.AccessRequests.AsNoTracking().FirstOrDefaultAsync(r => r.Id == item.RequestId, ct)
             ?? throw new InvalidOperationException("Žádost položky nenalezena.");
-        return await ResolveAsync(level, request.TargetEmployeeId, request.RequesterUserId, ct);
+        item.Request ??= request;
+        var context = level.Approvers.Any(a => a.Kind == ApproverKind.AreaOwner)
+            ? await Contexts.ForItemAsync(item, ct)
+            : null;
+        return await ResolveAsync(level, request.TargetEmployeeId, request.RequesterUserId, context, ct);
     }
 
     /// <summary>Vyhodnotí úroveň pro cílového zaměstnance a žadatele.</summary>
-    public async Task<LevelResolution> ResolveAsync(
+    public Task<LevelResolution> ResolveAsync(
         ApprovalLevel level, int targetEmployeeId, int requesterUserId, CancellationToken ct = default)
+        => ResolveAsync(level, targetEmployeeId, requesterUserId, null, ct);
+
+    /// <summary>
+    /// Vyhodnotí úroveň pro cílového zaměstnance a žadatele; <paramref name="context"/> je potřeba
+    /// pro schvalovatele typu „odpovědná osoba úseku“ (bez něj se úroveň chová, jako by prostor
+    /// odpovědnou osobu neměl).
+    /// </summary>
+    public async Task<LevelResolution> ResolveAsync(
+        ApprovalLevel level, int targetEmployeeId, int requesterUserId, ApprovalContext? context,
+        CancellationToken ct = default)
     {
         var approvers = new List<ResolvedApprover>();
         var warnings = new List<string>();
@@ -162,13 +192,62 @@ public class ApproverResolver(AcsDbContext db)
                 case ApproverKind.User when approver.UserId is { } userId:
                 {
                     var user = await GetUserAsync(userId, ct);
-                    if (user is null || !seenUsers.Add(user.Id))
+                    if (user is null)
+                        continue;
+
+                    // Samoschválení konkrétního uživatele: je-li sám cílovým zaměstnancem
+                    // (vedoucí OVBKŘ žádá kamery pro svůj úsek), rozhoduje místo něj jeho nadřízený.
+                    var (isSelf, selfEmployee) = await SelfEmployeeAsync(user, targetEmployeeId, ct);
+                    if (isSelf && selfEmployee is not null)
+                    {
+                        var (escalated, warning) = await EscalateAsync(selfEmployee, targetEmployeeId, requesterUserId, ct);
+                        if (escalated is null)
+                        {
+                            warnings.Add(warning ?? $"{user.DisplayName ?? user.UserName} je žadatelem a nemá nadřízeného");
+                            continue;
+                        }
+
+                        await AddEmployeeApproverAsync(escalated, ApproverOrigin.EscalatedManager, 0, approvers, warnings, seenUsers, seenEmployees, ct);
+                        continue;
+                    }
+
+                    if (!seenUsers.Add(user.Id))
                         continue;
                     if (user.EmployeeId is { } eid)
                         seenEmployees.Add(eid);
                     approvers.Add(new ResolvedApprover(
                         user.Id, user.EmployeeId, user.DisplayName ?? user.UserName, user.Email,
                         ApproverOrigin.User, AdAccount: user.UserName));
+                    break;
+                }
+
+                case ApproverKind.AreaOwner:
+                {
+                    if (context?.Area is not { ResponsibleEmployeeId: { } ownerId })
+                    {
+                        warnings.Add(context?.Area is null
+                            ? "položka nemá prostor — odpovědná osoba úseku se neuplatní"
+                            : "prostor nemá odpovědnou osobu ani úsek s vedoucím");
+                        continue;
+                    }
+
+                    var owner = await GetEmployeeAsync(ownerId, ct);
+                    if (owner is null || !owner.IsActive)
+                    {
+                        warnings.Add("odpovědná osoba prostoru není aktivní zaměstnanec");
+                        continue;
+                    }
+
+                    var (resolvedOwner, ownerWarning) = await EscalateAsync(owner, targetEmployeeId, requesterUserId, ct);
+                    if (resolvedOwner is null)
+                    {
+                        warnings.Add(ownerWarning ?? "odpovědná osoba úseku nenalezena");
+                        continue;
+                    }
+
+                    await AddEmployeeApproverAsync(resolvedOwner,
+                        resolvedOwner.Id == owner.Id ? ApproverOrigin.AreaOwner : ApproverOrigin.EscalatedManager,
+                        0, approvers, warnings, seenUsers, seenEmployees, ct);
                     break;
                 }
 
@@ -182,21 +261,7 @@ public class ApproverResolver(AcsDbContext db)
                         continue;
                     }
 
-                    var user = await GetUserByEmployeeAsync(manager, ct);
-                    if (user is not null && !seenUsers.Add(user.Id))
-                        continue;
-                    if (!seenEmployees.Add(manager.Id))
-                        continue;
-                    if (user?.EmployeeId is { } eid)
-                        seenEmployees.Add(eid);
-
-                    approvers.Add(new ResolvedApprover(
-                        user?.Id, manager.Id,
-                        user?.DisplayName ?? manager.FullName,
-                        user?.Email ?? manager.Email,
-                        ApproverOrigin.LineManager, depth, manager.AdAccount ?? user?.UserName));
-                    if (user is null)
-                        warnings.Add($"{manager.FullName} se do ACS ještě nepřihlásil — rozhodne po prvním přihlášení.");
+                    await AddEmployeeApproverAsync(manager, ApproverOrigin.LineManager, depth, approvers, warnings, seenUsers, seenEmployees, ct);
                     break;
                 }
 
@@ -205,6 +270,82 @@ public class ApproverResolver(AcsDbContext db)
         }
 
         return new LevelResolution(level, approvers, warnings);
+    }
+
+    /// <summary>Přidá zaměstnance jako schvalovatele (s účtem, nebo přes vazbu zaměstnanec / AD účet).</summary>
+    private async Task AddEmployeeApproverAsync(
+        Employee employee, ApproverOrigin origin, int depth,
+        List<ResolvedApprover> approvers, List<string> warnings,
+        HashSet<int> seenUsers, HashSet<int> seenEmployees, CancellationToken ct)
+    {
+        var user = await GetUserByEmployeeAsync(employee, ct);
+        if (user is not null && !seenUsers.Add(user.Id))
+            return;
+        if (!seenEmployees.Add(employee.Id))
+            return;
+        if (user?.EmployeeId is { } eid)
+            seenEmployees.Add(eid);
+
+        approvers.Add(new ResolvedApprover(
+            user?.Id, employee.Id,
+            user?.DisplayName ?? employee.FullName,
+            user?.Email ?? employee.Email,
+            origin, depth, employee.AdAccount ?? user?.UserName));
+        if (user is null)
+            warnings.Add($"{employee.FullName} se do ACS ještě nepřihlásil — rozhodne po prvním přihlášení.");
+    }
+
+    /// <summary>
+    /// Je konkrétní uživatel z matice zároveň cílovým zaměstnancem žádosti (schvaloval by sám
+    /// sobě)? Vrací i zaměstnance odpovídajícího uživateli (přes vazbu nebo AD účet). Podání
+    /// žádosti za jiného zaměstnance samoschválením není — schvalovatel smí rozhodovat dál.
+    /// </summary>
+    private async Task<(bool IsSelf, Employee? Employee)> SelfEmployeeAsync(AppUser user, int targetEmployeeId, CancellationToken ct)
+    {
+        Employee? employee = null;
+        if (user.EmployeeId is { } eid)
+            employee = await GetEmployeeAsync(eid, ct);
+        if (employee is null && !user.IsLocal)
+        {
+            employee = await db.Employees.AsNoTracking()
+                .FirstOrDefaultAsync(e => e.AdAccount != null && e.AdAccount == user.UserName, ct);
+            if (employee is not null)
+                _employees[employee.Id] = employee;
+        }
+
+        return (employee is not null && employee.Id == targetEmployeeId, employee);
+    }
+
+    /// <summary>
+    /// Přeskočení samoschválení: je-li kandidát cílovým zaměstnancem nebo žadatelem, jde se
+    /// po nadřízených výš, dokud je kam. Vrací kandidáta (případně jeho nadřízeného) nebo důvod.
+    /// </summary>
+    public async Task<(Employee? Approver, string? Warning)> EscalateAsync(
+        Employee candidate, int targetEmployeeId, int? requesterUserId, CancellationToken ct = default)
+    {
+        var requester = requesterUserId is { } rid ? await GetUserAsync(rid, ct) : null;
+        bool IsSelf(Employee e)
+            => e.Id == targetEmployeeId
+               || (requester is not null
+                   && (e.Id == requester.EmployeeId
+                       || (e.AdAccount is { } acc && !requester.IsLocal
+                           && string.Equals(acc, requester.UserName, StringComparison.OrdinalIgnoreCase))));
+
+        var visited = new HashSet<int> { candidate.Id };
+        var current = candidate;
+        while (IsSelf(current))
+        {
+            if (current.ManagerId is not { } upId)
+                return (null, $"{current.FullName} je zároveň žadatelem a nemá nadřízeného");
+            var up = await GetEmployeeAsync(upId, ct);
+            if (up is null || !visited.Add(up.Id) || visited.Count > MaxChainLength)
+                return (null, "řetěz nadřízených je přerušený nebo cyklický");
+            if (!up.IsActive)
+                return (null, $"nadřízený {up.FullName} není aktivní zaměstnanec");
+            current = up;
+        }
+
+        return (current, null);
     }
 
     /// <summary>

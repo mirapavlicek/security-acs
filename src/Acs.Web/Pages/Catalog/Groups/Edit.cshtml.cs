@@ -12,6 +12,8 @@ public class EditModel(AcsDbContext db, ReaderGroupService groups, AuditService 
 {
     public ReaderGroup Group { get; private set; } = null!;
     public List<ApprovalMatrix> Matrices { get; private set; } = [];
+    public List<OrgUnit> OrgUnits { get; private set; } = [];
+    public List<Employee> Employees { get; private set; } = [];
     public List<Reader> AvailableReaders { get; private set; } = [];
     public List<ReaderGroup> AvailableGroups { get; private set; } = [];
     public List<ReaderGroup> ParentGroups { get; private set; } = [];
@@ -30,6 +32,8 @@ public class EditModel(AcsDbContext db, ReaderGroupService groups, AuditService 
 
         Group = group;
         Matrices = await db.ApprovalMatrices.Where(m => m.IsActive).OrderBy(m => m.Name).ToListAsync();
+        OrgUnits = await db.OrgUnits.Where(u => u.IsActive).OrderBy(u => u.Name).ToListAsync();
+        Employees = await db.Employees.Where(e => e.IsActive).OrderBy(e => e.LastName).ThenBy(e => e.FirstName).ToListAsync();
 
         var memberReaderIds = group.Members.Where(m => m.ReaderId != null).Select(m => m.ReaderId!.Value).ToHashSet();
         AvailableReaders = await db.Readers
@@ -51,7 +55,7 @@ public class EditModel(AcsDbContext db, ReaderGroupService groups, AuditService 
     }
 
     public async Task<IActionResult> OnPostSaveAsync(int id, string name, string? description,
-        int? approvalMatrixId, string? isActive)
+        int? approvalMatrixId, string? isActive, int? orgUnitId, int? responsibleEmployeeId)
     {
         var group = await db.ReaderGroups.FindAsync(id);
         if (group is null)
@@ -60,6 +64,8 @@ public class EditModel(AcsDbContext db, ReaderGroupService groups, AuditService 
         group.Name = name.Trim();
         group.Description = description;
         group.ApprovalMatrixId = approvalMatrixId;
+        group.OrgUnitId = orgUnitId;
+        group.ResponsibleEmployeeId = responsibleEmployeeId;
         group.IsActive = isActive == "true";
         await db.SaveChangesAsync();
         await audit.LogAsync(User.Identity?.Name, "group-updated", "ReaderGroup", id.ToString(), name);

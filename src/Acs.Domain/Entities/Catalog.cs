@@ -9,13 +9,21 @@ public enum RecordSource
     Manual = 1,
 }
 
-public class Building
+public class Building : IOwnedArea
 {
     public int Id { get; set; }
     public required string Name { get; set; }
     public string? Description { get; set; }
     public byte[]? SchemaImage { get; set; }
     public string? SchemaContentType { get; set; }
+
+    /// <summary>Úsek, kterému prostor patří (null = dědí z nadřazeného prostoru).</summary>
+    public int? OrgUnitId { get; set; }
+    public OrgUnit? OrgUnit { get; set; }
+
+    /// <summary>Odpovědná osoba prostoru (null = vedoucí úseku, nebo dědí z nadřazeného prostoru).</summary>
+    public int? ResponsibleEmployeeId { get; set; }
+    public Employee? ResponsibleEmployee { get; set; }
     public List<BuildingSection> Sections { get; set; } = [];
     public List<Floor> Floors { get; set; } = [];
 }
@@ -31,11 +39,19 @@ public class BuildingSection
     public List<Floor> Floors { get; set; } = [];
 }
 
-public class Floor
+public class Floor : IOwnedArea
 {
     public int Id { get; set; }
     public int BuildingId { get; set; }
     public Building? Building { get; set; }
+
+    /// <summary>Úsek, kterému prostor patří (null = dědí z nadřazeného prostoru).</summary>
+    public int? OrgUnitId { get; set; }
+    public OrgUnit? OrgUnit { get; set; }
+
+    /// <summary>Odpovědná osoba prostoru (null = vedoucí úseku, nebo dědí z nadřazeného prostoru).</summary>
+    public int? ResponsibleEmployeeId { get; set; }
+    public Employee? ResponsibleEmployee { get; set; }
 
     /// <summary>Část budovy, do které patro patří (volitelné — malé budovy části nemají).</summary>
     public int? SectionId { get; set; }
@@ -54,12 +70,20 @@ public class Floor
 /// přes <see cref="ParentCorridorId"/> (i napříč patry — např. chodba → schodiště).
 /// Při žádosti o čtečku místnosti se automaticky přidají čtečky celého řetězu chodeb.
 /// </summary>
-public class Corridor
+public class Corridor : IOwnedArea
 {
     public int Id { get; set; }
     public int FloorId { get; set; }
     public Floor? Floor { get; set; }
     public required string Name { get; set; }
+
+    /// <summary>Úsek, kterému prostor patří (null = dědí z nadřazeného prostoru).</summary>
+    public int? OrgUnitId { get; set; }
+    public OrgUnit? OrgUnit { get; set; }
+
+    /// <summary>Odpovědná osoba prostoru (null = vedoucí úseku, nebo dědí z nadřazeného prostoru).</summary>
+    public int? ResponsibleEmployeeId { get; set; }
+    public Employee? ResponsibleEmployee { get; set; }
 
     /// <summary>Nadřazená chodba v řetězu (kudy se do této chodby vchází).</summary>
     public int? ParentCorridorId { get; set; }
@@ -69,11 +93,19 @@ public class Corridor
     public List<Reader> Readers { get; set; } = [];
 }
 
-public class Room
+public class Room : IOwnedArea
 {
     public int Id { get; set; }
     public int FloorId { get; set; }
     public Floor? Floor { get; set; }
+
+    /// <summary>Úsek, kterému prostor patří (null = dědí z nadřazeného prostoru).</summary>
+    public int? OrgUnitId { get; set; }
+    public OrgUnit? OrgUnit { get; set; }
+
+    /// <summary>Odpovědná osoba prostoru (null = vedoucí úseku, nebo dědí z nadřazeného prostoru).</summary>
+    public int? ResponsibleEmployeeId { get; set; }
+    public Employee? ResponsibleEmployee { get; set; }
 
     /// <summary>Chodba, ze které se do místnosti vchází (volitelné).</summary>
     public int? CorridorId { get; set; }
@@ -99,7 +131,7 @@ public class Room
 }
 
 /// <summary>Čtečka — importovaná z WIN-PAK přes konektor, nebo ruční.</summary>
-public class Reader
+public class Reader : IOwnedArea
 {
     public int Id { get; set; }
 
@@ -135,6 +167,14 @@ public class Reader
     /// <summary>Schvalovací matice pro žádosti o tuto čtečku (null = bez schvalování).</summary>
     public int? ApprovalMatrixId { get; set; }
     public ApprovalMatrix? ApprovalMatrix { get; set; }
+
+    /// <summary>Úsek, kterému prostor patří (null = dědí z nadřazeného prostoru).</summary>
+    public int? OrgUnitId { get; set; }
+    public OrgUnit? OrgUnit { get; set; }
+
+    /// <summary>Odpovědná osoba prostoru (null = vedoucí úseku, nebo dědí z nadřazeného prostoru).</summary>
+    public int? ResponsibleEmployeeId { get; set; }
+    public Employee? ResponsibleEmployee { get; set; }
 
     /// <summary>Pozice na schématu patra (procenta 0–100), pro grafické plány.</summary>
     public double? SchemaX { get; set; }
@@ -203,6 +243,28 @@ public class Employee
 
     /// <summary>Nadřízený zadán ručně v ACS — synchronizace ho nepřepisuje.</summary>
     public bool ManagerManual { get; set; }
+
+    /// <summary>
+    /// Úsek zaměstnance — doplňuje se při synchronizaci z <see cref="Department"/> podle
+    /// mapování oddělení na úseky (<see cref="OrgUnit.DepartmentPatterns"/>), nebo ručně.
+    /// </summary>
+    public int? OrgUnitId { get; set; }
+    public OrgUnit? OrgUnit { get; set; }
+
+    /// <summary>Úsek zadán ručně — synchronizace ho nepřepisuje.</summary>
+    public bool OrgUnitManual { get; set; }
+
+    /// <summary>
+    /// Kategorie pro schvalovací matici (řadový / vedoucí / přímo pod ředitelem / ředitel).
+    /// Odvozuje se z hierarchie nadřízených při synchronizaci, nebo se zadá ručně.
+    /// </summary>
+    public EmployeeRank Rank { get; set; } = EmployeeRank.Auto;
+
+    /// <summary>Kategorie zadána ručně — odvození z hierarchie ji nepřepisuje.</summary>
+    public bool RankManual { get; set; }
+
+    /// <summary>Kategorie pro vyhodnocení matice (<see cref="EmployeeRank.Auto"/> = řadový).</summary>
+    public EmployeeRank EffectiveRank => Rank == EmployeeRank.Auto ? EmployeeRank.Staff : Rank;
 
     /// <summary>Card holder id ve WIN-PAK (jedno na osobu).</summary>
     public string? WinPakCardHolderId { get; set; }

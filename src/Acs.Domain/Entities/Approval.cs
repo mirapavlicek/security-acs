@@ -31,8 +31,34 @@ public class ApprovalMatrix
     /// </summary>
     public bool IsDefault { get; set; }
 
+    /// <summary>
+    /// Když pro položku žádosti neplatí žádná úroveň matice (podmínky kategorie / úseku
+    /// všechny úrovně vyloučí — např. ředitel nebo náměstek ve vlastním úseku), položka se
+    /// schválí bez schvalovacího stupně a jde rovnou do fronty realizace. Výchozí false:
+    /// položku bez platné úrovně pak rozhoduje administrátor.
+    /// </summary>
+    public bool AutoApproveWhenNoLevels { get; set; }
+
+    /// <summary>
+    /// Když prostor žádosti nemá určený úsek ani odpovědnou osobu (nelze rozlišit vlastní /
+    /// cizí úsek), berou se úrovně „jen mimo vlastní úsek“ jako platné (přísnější). Výchozí
+    /// false: neurčený prostor se bere jako vlastní úsek (chová se jako dosud — jen nadřízený).
+    /// </summary>
+    public bool TreatUnknownUnitAsOutside { get; set; }
+
     /// <summary>Úrovně seřazené podle <see cref="ApprovalLevel.Order"/> — hloubka není omezena.</summary>
     public List<ApprovalLevel> Levels { get; set; } = [];
+}
+
+/// <summary>Podmínka úrovně podle vztahu zaměstnance a prostoru žádosti.</summary>
+public enum LevelScope
+{
+    /// <summary>Úroveň platí vždy.</summary>
+    Always = 0,
+    /// <summary>Jen když je prostor ve vlastním úseku cílového zaměstnance.</summary>
+    InsideOwnUnit = 1,
+    /// <summary>Jen když je prostor mimo vlastní úsek cílového zaměstnance.</summary>
+    OutsideOwnUnit = 2,
 }
 
 /// <summary>Jedna úroveň schvalovací matice (žádost jimi prochází postupně).</summary>
@@ -51,6 +77,19 @@ public class ApprovalLevel
     /// <summary>Počet nutných schválení pro režim <see cref="ApprovalMode.Quorum"/>.</summary>
     public int? RequiredCount { get; set; }
 
+    /// <summary>
+    /// Pro které kategorie zaměstnance úroveň platí (<see cref="RankFlags.None"/> = pro všechny).
+    /// Úroveň, která pro cílového zaměstnance neplatí, se při průchodu přeskočí.
+    /// </summary>
+    public RankFlags AppliesToRanks { get; set; } = RankFlags.None;
+
+    /// <summary>Podmínka podle vztahu zaměstnance a prostoru (vlastní / cizí úsek).</summary>
+    public LevelScope Scope { get; set; } = LevelScope.Always;
+
+    /// <summary>Má úroveň nějakou podmínku (kategorie nebo úsek)?</summary>
+    public bool IsConditional => (AppliesToRanks != RankFlags.None && AppliesToRanks != RankFlags.All)
+                                 || Scope != LevelScope.Always;
+
     public List<Approver> Approvers { get; set; } = [];
 }
 
@@ -67,6 +106,12 @@ public enum ApproverKind
     /// Vyhodnocuje se dynamicky u každé žádosti.
     /// </summary>
     LineManager = 2,
+    /// <summary>
+    /// Odpovědná osoba cílového úseku — odpovědná osoba prostoru žádosti (čtečky / místnosti /
+    /// patra / budovy / skupiny), nebo vedoucí úseku, kterému prostor patří.
+    /// Vyhodnocuje se dynamicky u každé žádosti.
+    /// </summary>
+    AreaOwner = 3,
 }
 
 /// <summary>Schvalovatel v úrovni — konkrétní uživatel, AD skupina, nebo nadřízený zaměstnance.</summary>

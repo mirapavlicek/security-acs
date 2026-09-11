@@ -30,6 +30,27 @@
                 <option value="@matrix.Id" selected="@(matrix.Id == Model.Group.ApprovalMatrixId)">@matrix.Name</option>
             }
         </select>
+        <label>Úsek, kterému skupina patří (pro rozlišení vlastní / cizí úsek)</label>
+        <select name="orgUnitId">
+            <option value="">— bez úseku —</option>
+            @foreach (var unit in Model.OrgUnits)
+            {
+                <option value="@unit.Id" selected="@(unit.Id == Model.Group.OrgUnitId)">@unit.DisplayName</option>
+            }
+        </select>
+        <label>Odpovědná osoba skupiny (prázdné = vedoucí úseku) — pište pro hledání</label>
+        <input type="text" id="owner-search" placeholder="Hledat jméno, oddělení, osobní číslo…" autocomplete="off" style="margin-bottom:0.3rem" />
+        <select name="responsibleEmployeeId" id="owner-select" size="1">
+            <option value="">— vedoucí úseku —</option>
+            @foreach (var employee in Model.Employees)
+            {
+                <option value="@employee.Id" selected="@(employee.Id == Model.Group.ResponsibleEmployeeId)"
+                        data-search="@($"{employee.FullName} {employee.Department} {employee.PersonalNumber} {employee.AdAccount}")">
+                    @employee.FullName @(employee.Department is null ? "" : $"({employee.Department})")
+                </option>
+            }
+        </select>
+        <p class="hint" id="owner-hint">Schvalovatel „odpovědná osoba cílového úseku“ v matici.</p>
         <div class="checkbox-row">
             <input type="checkbox" id="isActive" name="isActive" value="true" checked="@Model.Group.IsActive" />
             <label for="isActive">Aktivní</label>
@@ -96,3 +117,8 @@
     </form>
 </div>
 </div>
+
+@section Scripts {
+<script src="~/js/employee-search.js" asp-append-version="true"></script>
+<script>window.acsEmployeeSearch('owner');</script>
+}

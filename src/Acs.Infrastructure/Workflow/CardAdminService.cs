@@ -24,7 +24,7 @@ public class CardAdminService(AcsDbContext db, WinPakClient winPak, AuditService
             .Include(i => i.Request!).ThenInclude(r => r.RequesterUser)
             .Include(i => i.Reader)
             .Include(i => i.ReaderGroup)
-            .Where(i => i.Status == RequestStatus.Approved && i.ParkingPermitId == null)
+            .Where(i => i.Status == RequestStatus.Approved && i.ParkingPermitId == null && i.SecurityRequestId == null)
             .OrderBy(i => i.Request!.CreatedAt)
             .ToListAsync(ct);
 

@@ -1,0 +1,110 @@
+@page
+@using Acs.Domain.Entities
+@model Acs.Web.Pages.Security.NewModel
+@{
+    ViewData["Title"] = "Žádost o kamery / EZS";
+}
+<h1>Žádost o zřízení / rozšíření kamerového systému nebo EZS</h1>
+<p class="muted">
+    Žádá vedoucí daného úseku (referát, odbor, oddělení, klinika…). Požadavek posoudí vedoucí OVBKŘ
+    (nutnost, bezpečnostní význam, relevance; ověří u nadřízeného úseku) a po schválení ho technicky
+    zajistí ICT útvar.
+    @if (Model.Matrix is { } matrix)
+    {
+        <text>Schvaluje matice <strong>@matrix.Name</strong> (@matrix.Levels.Count @(matrix.Levels.Count == 1 ? "úroveň" : "úrovně")).</text>
+    }
+    else
+    {
+        <text>Není nastavena matice pro kamery / EZS ani výchozí matice — rozhodne administrátor.</text>
+    }
+</p>
+
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<form method="post">
+<div class="settings-grid">
+<div class="card">
+    <h2 style="margin-top:0">Žadatel a požadavek</h2>
+
+    @if (Model.CanActForOthers)
+    {
+        <label>Žadatel (pište pro hledání)</label>
+        <input type="text" id="employee-search" placeholder="Hledat jméno, oddělení, osobní číslo…" autocomplete="off" style="margin-bottom:0.3rem" />
+        <select name="targetEmployeeId" id="employee-select" required size="1">
+            <option value="">— vyberte —</option>
+            @foreach (var e in Model.Employees)
+            {
+                <option value="@e.Id" selected="@(e.Id == Model.MyEmployeeId)"
+                        data-search="@($"{e.LastName} {e.FirstName} {e.Department} {e.PersonalNumber}")">
+                    @e.LastName @e.FirstName@(e.Department is null ? "" : $" ({e.Department})")
+                </option>
+            }
+        </select>
+        <p class="muted" id="employee-hint" style="font-size:0.85rem;margin:0.2rem 0 0">@Model.Employees.Count zaměstnanců; hledá se bez ohledu na diakritiku.</p>
+    }
+    else if (Model.MyEmployeeId is not null)
+    {
+        <input type="hidden" name="targetEmployeeId" value="@Model.MyEmployeeId" />
+        <p>Žádáte za sebe: <strong>@Model.MyEmployeeName</strong></p>
+    }
+    else
+    {
+        <div class="alert alert-error">Váš účet není navázaný na zaměstnance — žádost nelze podat. Obraťte se na administrátora.</div>
+    }
+
+    <label>Druh</label>
+    <select name="kind">
+        <option value="@SecurityRequestKind.Camera">Kamerový systém</option>
+        <option value="@SecurityRequestKind.Alarm">EZS (zabezpečovací signalizace)</option>
+        <option value="@SecurityRequestKind.Both">Kamery i EZS</option>
+    </select>
+    <label>Název požadavku</label>
+    <input type="text" name="title" required maxlength="256" placeholder="např. Kamera u vjezdu do skladu léčiv" />
+    <label>Popis — co, kolik, kde, požadovaný termín</label>
+    <textarea name="description" rows="5" required></textarea>
+    <label>Zdůvodnění — proč (bezpečnostní význam)</label>
+    <textarea name="justification" rows="3"></textarea>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">Umístění</h2>
+    <label>Budova</label>
+    <select name="buildingId">
+        <option value="">— nevybráno —</option>
+        @foreach (var building in Model.Buildings)
+        {
+            <option value="@building.Id">@building.Name</option>
+        }
+    </select>
+    <label>Patro</label>
+    <select name="floorId">
+        <option value="">— nevybráno —</option>
+        @foreach (var floor in Model.Floors)
+        {
+            <option value="@floor.Id">@floor.Building?.Name / @floor.Name</option>
+        }
+    </select>
+    <label>Místnost</label>
+    <select name="roomId">
+        <option value="">— nevybráno —</option>
+        @foreach (var room in Model.Rooms)
+        {
+            <option value="@room.Id">@room.Floor?.Building?.Name / @room.Floor?.Name / @room.Name</option>
+        }
+    </select>
+    <label>Upřesnění místa (text)</label>
+    <input type="text" name="locationText" maxlength="512" placeholder="např. chodba před výtahy, vstup ze dvora" />
+
+    <button class="btn" type="submit" style="margin-top:0.8rem">Podat žádost</button>
+    <a class="btn btn-ghost" asp-page="/Requests/Index">Zpět</a>
+</div>
+</div>
+</form>
+
+@section Scripts {
+<script src="~/js/employee-search.js" asp-append-version="true"></script>
+<script>window.acsEmployeeSearch('employee');</script>
+}
