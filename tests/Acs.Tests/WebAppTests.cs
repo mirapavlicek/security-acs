@@ -197,6 +197,104 @@ public class WebAppTests(AcsWebFactory factory) : IClassFixture<AcsWebFactory>
     }
 
     [Fact]
+    public async Task Stranky_schvalovaci_matice_fnm_se_otevrou_a_pruvodce_zalozi_matice()
+    {
+        const string knownPassword = "Znam3Heslo!Matice";
+        int employeeId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Acs.Infrastructure.Data.AcsDbContext>();
+            var admin = await db.Users.FirstAsync(u => u.UserName == "admin");
+            admin.PasswordHash = Acs.Infrastructure.Auth.PasswordHasher.Hash(knownPassword);
+            admin.MustChangePassword = false;
+            var employee = new Acs.Domain.Entities.Employee { FirstName = "Test", LastName = "Vedoucí", Department = "Testovací klinika" };
+            admin.Employee = employee;
+            db.OrgUnits.Add(new Acs.Domain.Entities.OrgUnit { Name = "Testovací klinika", Code = "TST", HeadEmployee = employee, DepartmentPatterns = "Testovací klinika" });
+            db.Buildings.Add(new Acs.Domain.Entities.Building { Name = "TST-B" });
+            await db.SaveChangesAsync();
+            employeeId = employee.Id;
+        }
+
+        var client = CreateClientWithCookies(allowRedirects: true);
+        var loginPage = await client.GetStringAsync("/Account/Login");
+        await client.PostAsync("/Account/Login", new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                ["UserName"] = "admin",
+                ["Password"] = knownPassword,
+                ["__RequestVerificationToken"] = ExtractAntiforgeryToken(loginPage),
+            }));
+
+        // Úseky: seznam, přepočet, editace.
+        var units = await client.GetStringAsync("/Catalog/OrgUnits");
+        Assert.Contains("Testovací klinika", units);
+        var recalculated = await client.PostAsync("/Catalog/OrgUnits?handler=Recalculate", new FormUrlEncodedContent(
+            new Dictionary<string, string> { ["__RequestVerificationToken"] = ExtractAntiforgeryToken(units) }));
+        Assert.Contains("Přepočítáno", await recalculated.Content.ReadAsStringAsync());
+        var unitEdit = await client.GetStringAsync("/Catalog/OrgUnits/Edit/1");
+        Assert.Contains("Mapování oddělení", unitEdit);
+
+        // Zaměstnanec má po přepočtu úsek; jako jediný vrchol hierarchie, který něco řídí, je odvozen jako ředitel.
+        var employees = await client.GetStringAsync("/Catalog/Employees?rank=Director");
+        Assert.Contains("Test Vedoucí", employees);
+        Assert.Contains("TST · Testovací klinika", employees);
+        Assert.Contains("Kategorie pro schvalovací matici", await client.GetStringAsync($"/Catalog/Employees/Edit/{employeeId}"));
+
+        // Průvodce založí matice FN Motol a nastaví je (výchozí + kamery / EZS).
+        var matrices = await client.GetStringAsync("/Catalog/Matrices");
+        Assert.Contains("Založit matice FN Motol", matrices);
+        var created = await client.PostAsync("/Catalog/Matrices?handler=CreateFnm", new FormUrlEncodedContent(
+            new Dictionary<string, string> { ["__RequestVerificationToken"] = ExtractAntiforgeryToken(matrices), ["ovbkrUserId"] = "1" }));
+        var afterWizard = await created.Content.ReadAsStringAsync();
+        Assert.Contains("Založeno", afterWizard);
+        Assert.Contains(Acs.Infrastructure.Workflow.MatrixTemplateService.AccessName, afterWizard);
+        Assert.Contains("kamery / EZS", afterWizard);
+
+        // Editor matice zobrazuje podmínky úrovní a nový typ schvalovatele.
+        int accessMatrixId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Acs.Infrastructure.Data.AcsDbContext>();
+            accessMatrixId = await db.ApprovalMatrices.Where(m => m.Name == Acs.Infrastructure.Workflow.MatrixTemplateService.AccessName)
+                .Select(m => m.Id).SingleAsync();
+        }
+
+        var editor = await client.GetStringAsync($"/Catalog/Matrices/Edit/{accessMatrixId}");
+        Assert.Contains("jen mimo vlastní úsek", editor);
+        Assert.Contains("Odpovědná osoba cílového úseku", editor);
+        Assert.Contains("Bez platné úrovně schválit bez schvalovacího stupně", editor);
+
+        // Kamery / EZS: formulář, podání (admin žádá sám za sebe — vedoucí, bez úseku → OVBKŘ = admin sám → eskalace), fronta ICT.
+        var securityForm = await client.GetStringAsync("/Security/New");
+        Assert.Contains("Žádost o zřízení / rozšíření kamerového systému", securityForm);
+        var submitted = await client.PostAsync("/Security/New", new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = ExtractAntiforgeryToken(securityForm),
+                ["targetEmployeeId"] = employeeId.ToString(),
+                ["kind"] = "Camera",
+                ["title"] = "Kamera u vjezdu",
+                ["description"] = "Dvě kamery na parkoviště.",
+                ["locationText"] = "vjezd ze dvora",
+            }));
+        var detail = await submitted.Content.ReadAsStringAsync();
+        Assert.Contains("Kamery / EZS: Kamera u vjezdu", detail);
+        Assert.Contains("vjezd ze dvora", detail);
+
+        var queue = await client.GetStringAsync("/Security/Queue");
+        Assert.Contains("Fronta realizace ICT", queue);
+
+        // Vlastník prostoru v Budovách a místnostech; role v seznamu uživatelů; kamery v Žádostech a Můj přístup.
+        var buildingContent = await client.GetStringAsync("/Catalog/Places?handler=Building&id=1");
+        Assert.Contains("Uložit vlastníka", buildingContent);
+        Assert.Contains("IctAdmin", await client.GetStringAsync("/Admin/Users"));
+        Assert.Contains("Auditor", await client.GetStringAsync("/Admin/Users"));
+        Assert.Contains("Žádost o kamery / EZS", await client.GetStringAsync("/Requests"));
+        Assert.Contains("Kamery / EZS", await client.GetStringAsync("/MyAccess"));
+        Assert.Contains("/Catalog/OrgUnits", ExtractBlock(await client.GetStringAsync("/"), "class=\"mainnav\"", "</nav>"));
+    }
+
+    [Fact]
     public async Task Stranky_pristupovych_urovni_se_otevrou_i_bez_konektoru()
     {
         const string knownPassword = "Znam3Heslo!Urovne";

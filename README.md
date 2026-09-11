@@ -29,6 +29,7 @@ Webová aplikace pro schvalování přístupů k místnostem (`acs.fnmh.network`
 - [Osobní čísla z Active Directory](docs/ad-osobni-cisla.md)
 - [Přihlášení účtem Windows (NTLM / Kerberos)](docs/prihlaseni-windows.md)
 - [Schvalování nadřízeným zaměstnance (z AD)](docs/schvalovani-nadrizenym.md)
+- [Schvalovací matice FN Motol — úseky, kategorie, podmíněné úrovně, kamery / EZS](docs/schvalovaci-matice-fnm.md)
 - [Univerzální integrační API (podklad do zadávačky)](docs/integrace/README.md)
 - [Import čteček z tabulek EKV](docs/import-ctecek-ekv.md)
 - [Přístupové úrovně WIN-PAKu z ACS](docs/pristupove-urovne.md)
