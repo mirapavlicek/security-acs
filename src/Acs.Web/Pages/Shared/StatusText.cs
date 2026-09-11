@@ -2,7 +2,10 @@ using Acs.Domain.Entities;
 
 namespace Acs.Web.Pages.Shared;
 
-/// <summary>Jednotné české popisky stavů a předmětů položek žádosti (přístupy i parkování).</summary>
+/// <summary>
+/// Jednotné české popisky stavů a předmětů položek žádosti (přístupy i parkování).
+/// Bez názvu přístupového systému (WIN-PAK) — texty vidí i běžní uživatelé.
+/// </summary>
 public static class StatusText
 {
     public static string Label(RequestStatus status, bool isParking = false, bool isSecurity = false) => status switch
@@ -12,9 +15,9 @@ public static class StatusText
         RequestStatus.Approved when isParking => "schváleno — u správce parkování",
         RequestStatus.Approved when isSecurity => "schváleno — čeká na realizaci ICT",
         RequestStatus.Approved => "schváleno — u správce karet",
-        RequestStatus.PushedToWinPak => "zapsáno do WIN-PAK",
+        RequestStatus.PushedToWinPak => "přístup aktivní",
         RequestStatus.ManuallyConfirmed when isSecurity => "realizováno",
-        RequestStatus.ManuallyConfirmed => "potvrzeno ručně",
+        RequestStatus.ManuallyConfirmed => "přístup aktivní (zadáno ručně)",
         RequestStatus.Issued => "vydáno",
         RequestStatus.Rejected => "zamítnuto",
         RequestStatus.Revoked => "odebráno",
