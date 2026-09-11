@@ -57,6 +57,53 @@
     }
 </div>
 
+<div class="card">
+    <h2 style="margin-top:0">Matice pro žádosti o kamery / EZS</h2>
+    <p class="muted" style="margin-top:0">
+        Žádosti o zřízení / rozšíření kamerového systému nebo EZS schvaluje tato matice; schválené jdou do
+        fronty realizace ICT. Bez nastavení se použije výchozí matice, bez ní rozhoduje administrátor.
+    </p>
+    <form method="post" asp-page-handler="SetSecurity" class="inline-form">
+        <select name="matrixId" style="max-width:320px;display:inline-block">
+            <option value="">— výchozí matice / administrátor —</option>
+            @foreach (var matrix in Model.Matrices.Where(m => m.IsActive && m.Levels.Count > 0))
+            {
+                <option value="@matrix.Id" selected="@(Model.SecurityMatrix?.Id == matrix.Id)">@matrix.Name</option>
+            }
+        </select>
+        <button class="btn btn-sm" type="submit">Nastavit</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">Založit matice podle schvalovací matice FN Motol</h2>
+    <p class="muted" style="margin-top:0">
+        Jedním klikem vznikne trojice matic podle dokumentu <em>Schvalovací matice – EKV, parkování, kamery, EZS</em>:
+    </p>
+    <ul class="muted" style="margin-top:0">
+        <li><strong>EKV – vstupní oprávnění</strong> (nastaví se jako výchozí): řadový / vedoucí → nadřízený; mimo vlastní úsek
+            navíc odpovědná osoba cílového úseku (jen řadový) a vedoucí OVBKŘ; přímo podřízený řediteli mimo svůj úsek → ředitel;
+            ředitel a náměstek ve svém úseku → bez schvalování, rovnou realizace.</li>
+        <li><strong>Parkování – vjezd</strong> (přiřadí se druhům povolení bez matice): řadový / vedoucí → nadřízený → úsek parkování;
+            náměstek / ředitel → přímo úsek parkování.</li>
+        <li><strong>Kamery / EZS</strong>: vedoucí OVBKŘ → realizace ICT; žádá-li vedoucí OVBKŘ sám, rozhoduje jeho nadřízený.</li>
+    </ul>
+    <p class="hint">
+        Předpoklady: zaměstnanci mají nadřízené (z AD), kategorie se odvodí z hierarchie, prostory mají úsek nebo
+        odpovědnou osobu (<a asp-page="/Catalog/OrgUnits/Index">Úseky</a>). Existující matice stejného názvu se nepřepisují.
+    </p>
+    <form method="post" asp-page-handler="CreateFnm" class="inline-form">
+        <select name="ovbkrUserId" style="max-width:320px;display:inline-block">
+            <option value="">— vedoucí OVBKŘ (doplnit později) —</option>
+            @foreach (var user in Model.Users)
+            {
+                <option value="@user.Id">@(user.DisplayName ?? user.UserName)</option>
+            }
+        </select>
+        <button class="btn btn-sm" type="submit">@(Model.FnmTemplateExists ? "Znovu použít / doplnit matice FN Motol" : "Založit matice FN Motol")</button>
+    </form>
+</div>
+
 @if (Model.ReadersWithoutMatrix > 0 && Model.DefaultMatrix is null)
 {
     <div class="alert alert-error">
@@ -81,6 +128,14 @@
                     @if (matrix.IsDefault)
                     {
                         <span class="badge badge-primary" title="Používá se pro položky bez vlastní matice">výchozí</span>
+                    }
+                    @if (Model.SecurityMatrix?.Id == matrix.Id)
+                    {
+                        <span class="badge badge-primary" title="Schvaluje žádosti o kamery / EZS">kamery / EZS</span>
+                    }
+                    @if (matrix.AutoApproveWhenNoLevels)
+                    {
+                        <span class="badge" title="Bez platné úrovně se položka schválí bez schvalovacího stupně">bez stupně</span>
                     }
                     <span class="muted">@matrix.Description</span>
                 </td>

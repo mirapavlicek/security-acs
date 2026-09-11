@@ -19,6 +19,8 @@ public class EditModel(AcsDbContext db, AuditService audit, ReaderCleanupService
     public List<AccessLevel> AccessLevels { get; private set; } = [];
     public List<Corridor> Corridors { get; private set; } = [];
     public List<ApprovalMatrix> Matrices { get; private set; } = [];
+    public List<OrgUnit> OrgUnits { get; private set; } = [];
+    public List<Employee> Employees { get; private set; } = [];
     public List<ReaderDependency> Dependencies { get; private set; } = [];
     public List<Reader> DependencyCandidates { get; private set; } = [];
 
@@ -71,6 +73,8 @@ public class EditModel(AcsDbContext db, AuditService audit, ReaderCleanupService
             existing.RoomId = Reader.RoomId;
             existing.CorridorId = Reader.CorridorId;
             existing.ApprovalMatrixId = Reader.ApprovalMatrixId;
+            existing.OrgUnitId = Reader.OrgUnitId;
+            existing.ResponsibleEmployeeId = Reader.ResponsibleEmployeeId;
             existing.IsActive = Reader.IsActive;
             await db.SaveChangesAsync();
             await audit.LogAsync(User.Identity?.Name, "reader-updated", "Reader", existing.Id.ToString(), existing.Name);
@@ -158,6 +162,8 @@ public class EditModel(AcsDbContext db, AuditService audit, ReaderCleanupService
             .ToListAsync();
 
         Matrices = await db.ApprovalMatrices.Where(m => m.IsActive).OrderBy(m => m.Name).ToListAsync();
+        OrgUnits = await db.OrgUnits.Where(u => u.IsActive).OrderBy(u => u.Name).ToListAsync();
+        Employees = await db.Employees.Where(e => e.IsActive).OrderBy(e => e.LastName).ThenBy(e => e.FirstName).ToListAsync();
 
         Corridors = await db.Corridors
             .Include(c => c.Floor).ThenInclude(f => f!.Building)

@@ -25,6 +25,22 @@
             <input type="checkbox" id="isActive" name="isActive" value="true" checked="@Model.Matrix.IsActive" />
             <label for="isActive">Aktivní</label>
         </div>
+        <div class="checkbox-row">
+            <input type="checkbox" id="autoApprove" name="autoApprove" value="true" checked="@Model.Matrix.AutoApproveWhenNoLevels" />
+            <label for="autoApprove">Bez platné úrovně schválit bez schvalovacího stupně (rovnou do fronty realizace)</label>
+        </div>
+        <p class="hint" style="margin-top:0">
+            Když podmínky kategorie / úseku vyloučí všechny úrovně (např. ředitel, náměstek ve vlastním úseku),
+            položka se schválí bez stupně. Nezaškrtnuto: takovou položku rozhoduje administrátor.
+        </p>
+        <div class="checkbox-row">
+            <input type="checkbox" id="unknownAsOutside" name="unknownAsOutside" value="true" checked="@Model.Matrix.TreatUnknownUnitAsOutside" />
+            <label for="unknownAsOutside">Prostor bez úseku a odpovědné osoby brát jako „mimo vlastní úsek“ (přísnější)</label>
+        </div>
+        <p class="hint" style="margin-top:0">
+            Nezaškrtnuto: prostor, u kterého ACS nezná úsek ani odpovědnou osobu, se bere jako vlastní úsek
+            zaměstnance (uplatní se jen úrovně bez podmínky a „jen vlastní úsek“).
+        </p>
         <button class="btn" type="submit">Uložit</button>
         <a class="btn btn-ghost" asp-page="Index">Zpět na seznam</a>
     </form>
@@ -37,6 +53,12 @@
     <div class="card" style="max-width:760px">
         <h3 style="margin-top:0">
             Úroveň @level.Order @(level.Name is null ? "" : $"— {level.Name}")
+            @if (level.IsConditional)
+            {
+                <span class="badge" title="Úroveň platí jen za podmínky">
+                    @level.AppliesToRanks.Label()@(level.Scope == LevelScope.Always ? "" : level.Scope == LevelScope.InsideOwnUnit ? " · jen vlastní úsek" : " · jen mimo vlastní úsek")
+                </span>
+            }
             <form method="post" asp-page-handler="RemoveLevel" class="inline-form" style="float:right">
                 <input type="hidden" name="levelId" value="@level.Id" />
                 <button class="btn btn-sm btn-danger" type="submit"
@@ -46,6 +68,8 @@
 
         <form method="post" asp-page-handler="UpdateLevel" class="inline-form">
             <input type="hidden" name="levelId" value="@level.Id" />
+            <label>Název úrovně</label>
+            <input type="text" name="name" value="@level.Name" placeholder="např. Nadřízený, Vedoucí OVBKŘ" style="max-width:320px" />
             <label>Režim schválení</label>
             <select name="mode">
                 <option value="Any" selected="@(level.Mode == ApprovalMode.Any)">Stačí kterýkoli schvalovatel</option>
@@ -54,6 +78,25 @@
             </select>
             <label>N (jen pro režim „alespoň N“)</label>
             <input type="number" name="requiredCount" value="@level.RequiredCount" min="1" style="max-width:100px" />
+            <label>Platí pro kategorie zaměstnance (nic zaškrtnuto = pro všechny)</label>
+            <div class="checkbox-row" style="flex-wrap:wrap;gap:0.8rem">
+                @foreach (var (flag, label) in new[] { (RankFlags.Staff, "řadový"), (RankFlags.Manager, "vedoucí"), (RankFlags.Executive, "přímo pod ředitelem"), (RankFlags.Director, "ředitel") })
+                {
+                    <label style="display:inline-flex;align-items:center;gap:0.3rem;margin:0">
+                        <input type="checkbox" name="ranks" value="@flag" checked="@(level.AppliesToRanks != RankFlags.None && level.AppliesToRanks.HasFlag(flag))" /> @label
+                    </label>
+                }
+            </div>
+            <label>Vztah k prostoru žádosti</label>
+            <select name="scope">
+                <option value="Always" selected="@(level.Scope == LevelScope.Always)">Vždy (bez podmínky)</option>
+                <option value="InsideOwnUnit" selected="@(level.Scope == LevelScope.InsideOwnUnit)">Jen vstup v rámci vlastního úseku</option>
+                <option value="OutsideOwnUnit" selected="@(level.Scope == LevelScope.OutsideOwnUnit)">Jen vstup mimo vlastní úsek</option>
+            </select>
+            <p class="hint">
+                Úroveň, která pro cílového zaměstnance a prostor neplatí, se přeskočí. Parkování a kamery / EZS
+                prostor nemají — úrovně s podmínkou úseku se u nich neuplatní.
+            </p>
             <button class="btn btn-sm" type="submit">Uložit úroveň</button>
         </form>
 
@@ -67,6 +110,11 @@
                         {
                             <span class="badge">@(approver.ManagerDepth >= 2 ? "Nadřízený nadřízeného" : "Nadřízený zaměstnance")</span>
                             <span class="muted">z AD (atribut manager) — vyhodnotí se u každé žádosti podle cílového zaměstnance</span>
+                        }
+                        else if (approver.Kind == ApproverKind.AreaOwner)
+                        {
+                            <span class="badge">Odpovědná osoba cílového úseku</span>
+                            <span class="muted">odpovědná osoba prostoru žádosti (čtečka → místnost → patro → budova, skupina), nebo vedoucí úseku, kterému prostor patří</span>
                         }
                         else if (approver.User is not null)
                         {
@@ -93,6 +141,7 @@
                 <option value="User">Konkrétní uživatel</option>
                 <option value="Manager1">Nadřízený zaměstnance (z AD)</option>
                 <option value="Manager2">Nadřízený nadřízeného</option>
+                <option value="AreaOwner">Odpovědná osoba cílového úseku (vlastník prostoru)</option>
             </select>
             <select name="userId" style="max-width:280px;display:inline-block" data-role="approver-user">
                 <option value="">— vyberte uživatele —</option>
@@ -105,6 +154,19 @@
         </form>
     </div>
 }
+
+<div class="card" style="max-width:760px">
+    <h3 style="margin-top:0">Podmíněné úrovně a odpovědná osoba úseku</h3>
+    <p class="muted" style="margin-bottom:0">
+        Každá úroveň může platit jen pro některé kategorie zaměstnance (řadový / vedoucí / přímo pod ředitelem /
+        ředitel — <a asp-page="/Catalog/Employees/Index">odvozují se z hierarchie</a>) a jen pro vstup v rámci
+        vlastního, nebo mimo vlastní úsek. Vlastní úsek = prostor patří úseku zaměstnance (nebo nadřazenému /
+        podřízenému), nebo je odpovědná osoba prostoru v linii jeho nadřízených (či naopak).
+        Úseky a vlastníci prostorů: <a asp-page="/Catalog/OrgUnits/Index">Úseky</a>, editace čtečky,
+        <a asp-page="/Catalog/Places">Budovy a místnosti</a>, skupiny čteček.
+        Konkrétní uživatel, který by schvaloval sám sobě (je cílovým zaměstnancem), se nahradí svým nadřízeným.
+    </p>
+</div>
 
 <div class="card" style="max-width:760px">
     <h3 style="margin-top:0">Schvalovatel „nadřízený zaměstnance“</h3>

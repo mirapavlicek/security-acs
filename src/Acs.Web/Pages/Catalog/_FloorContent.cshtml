@@ -2,6 +2,8 @@
 @{
     var floor = Model.Floor;
     var tableId = $"rooms-{floor.Id}";
+    var ownershipForm = new Acs.Web.Pages.Catalog.OwnershipForm(
+        "floor", floor.Id, $"Patro {floor.Name}", floor, Model.Ownership, FloorId: floor.Id);
 }
 
 <p>
@@ -18,7 +20,10 @@
     </form>
 </p>
 
-<h4 style="margin:0.4rem 0 0.2rem">Chodby (@Model.Corridors.Count)</h4>
+<h4 style="margin:0.4rem 0 0.2rem">Vlastník patra</h4>
+<partial name="_OwnershipForm" model="ownershipForm" />
+
+<h4 style="margin:0.8rem 0 0.2rem">Chodby (@Model.Corridors.Count)</h4>
 @if (Model.Corridors.Count > 0)
 {
     <table class="data" style="margin-bottom:0.4rem">
@@ -30,6 +35,10 @@
                     @(corridor.ParentCorridor is null ? "bez nadřazené" : $"→ {corridor.ParentCorridor.Name}")
                     · čteček: @Model.CorridorReaderCounts.GetValueOrDefault(corridor.Id)
                     · místností: @Model.Rooms.Count(r => r.CorridorId == corridor.Id)
+                    @if (Model.Ownership.Describe(corridor) is { } corridorOwner)
+                    {
+                        <span class="badge">@corridorOwner</span>
+                    }
                 </td>
                 <td style="width:1%">
                     <form method="post" asp-page="/Catalog/Places" asp-page-handler="DeleteCorridor" class="inline-form">
@@ -81,7 +90,13 @@
     {
         <tr>
             <td>@room.Name <span class="muted">@room.Description</span></td>
-            <td class="muted">@(room.Corridor is null ? "bez chodby" : room.Corridor.Name)</td>
+            <td class="muted">
+                @(room.Corridor is null ? "bez chodby" : room.Corridor.Name)
+                @if (Model.Ownership.Describe(room) is { } roomOwner)
+                {
+                    <span class="badge">@roomOwner</span>
+                }
+            </td>
             <td class="muted">čteček: @Model.RoomReaderCounts.GetValueOrDefault(room.Id)</td>
             <td style="width:1%">
                 <form method="post" asp-page="/Catalog/Places" asp-page-handler="DeleteRoom" class="inline-form">
@@ -132,5 +147,43 @@
             }
         </select>
         <button class="btn btn-sm" type="submit">Uložit zařazení</button>
+    </form>
+}
+
+@if (Model.Rooms.Count > 0 || Model.Corridors.Count > 0)
+{
+    <form method="post" asp-page="/Catalog/Places" asp-page-handler="SetOwnership" class="inline-form" style="display:block;margin-top:0.6rem">
+        <input type="hidden" name="floorId" value="@floor.Id" />
+        <span class="muted" title="Úsek a odpovědná osoba místnosti / chodby — prázdné dědí z patra a budovy.">Vlastník prostoru:</span>
+        <select name="target" required style="max-width:220px;display:inline-block" data-role="ownership-target">
+            @foreach (var corridor in Model.Corridors)
+            {
+                <option value="corridor:@corridor.Id">chodba @corridor.Name</option>
+            }
+            @foreach (var room in Model.Rooms)
+            {
+                <option value="room:@room.Id">místnost @room.Name</option>
+            }
+        </select>
+        <input type="hidden" name="kind" value="" />
+        <input type="hidden" name="id" value="" />
+        <select name="orgUnitId" style="max-width:220px;display:inline-block">
+            <option value="">— úsek: dědí —</option>
+            @foreach (var unit in Model.Ownership.Units)
+            {
+                <option value="@unit.Id">@unit.DisplayName</option>
+            }
+        </select>
+        <select name="responsibleEmployeeId" style="max-width:260px;display:inline-block">
+            <option value="">— odpovědná osoba: vedoucí úseku / dědí —</option>
+            @foreach (var employee in Model.Ownership.Employees)
+            {
+                <option value="@employee.Id">@employee.FullName @(employee.Department is null ? "" : $"({employee.Department})")</option>
+            }
+        </select>
+        <button class="btn btn-sm btn-ghost" type="submit"
+                onclick="var f=this.form, t=f.querySelector('[data-role=ownership-target]').value.split(':'); f.kind.value=t[0]; f.id.value=t[1];">
+            Uložit vlastníka
+        </button>
     </form>
 }

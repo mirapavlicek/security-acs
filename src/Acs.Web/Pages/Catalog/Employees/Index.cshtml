@@ -58,6 +58,16 @@
         <label style="display:inline-block;margin:0 0.5rem">
             <input type="checkbox" name="withoutManager" value="true" checked="@Model.WithoutManager" /> bez nadřízeného
         </label>
+        <label style="display:inline-block;margin:0 0.5rem">
+            <input type="checkbox" name="withoutUnit" value="true" checked="@Model.WithoutUnit" /> bez úseku
+        </label>
+        <select name="rank" style="max-width:220px;display:inline-block;margin:0 0.5rem 0 0">
+            <option value="">— všechny kategorie —</option>
+            <option value="@EmployeeRank.Staff" selected="@(Model.Rank == EmployeeRank.Staff)">řadový zaměstnanec</option>
+            <option value="@EmployeeRank.Manager" selected="@(Model.Rank == EmployeeRank.Manager)">vedoucí zaměstnanec</option>
+            <option value="@EmployeeRank.Executive" selected="@(Model.Rank == EmployeeRank.Executive)">přímo podřízený řediteli</option>
+            <option value="@EmployeeRank.Director" selected="@(Model.Rank == EmployeeRank.Director)">ředitel</option>
+        </select>
         <button class="btn btn-sm" type="submit">Hledat</button>
     </form>
     <form method="post" asp-page-handler="Sync" class="inline-form" style="float:right">
@@ -77,11 +87,12 @@
     <p class="muted" style="margin-top:0">
         Nalezeno @Model.TotalCount zaměstnanců@(Model.TotalCount > Model.Employees.Count ? $", zobrazeno prvních {Model.Employees.Count}" : "").
         Nadřízeného má @Model.WithManagerCount z @Model.ActiveCount aktivních
-        <span title="Nadřízený se načítá z AD atributu manager při importu; lze ho zadat i ručně. Používá se ve schvalovacích maticích.">ⓘ</span>
+        <span title="Nadřízený se načítá z AD atributu manager při importu; lze ho zadat i ručně. Používá se ve schvalovacích maticích.">ⓘ</span>,
+        úsek @Model.WithUnitCount (<a asp-page="/Catalog/OrgUnits/Index">úseky a mapování oddělení</a>).
     </p>
     <table class="data">
         <thead>
-        <tr><th>Jméno</th><th>Os. číslo</th><th>Oddělení</th><th>Nadřízený</th><th>AD účet</th><th>Identifikátory</th><th>Zdroj</th><th>Aktivní</th><th></th></tr>
+        <tr><th>Jméno</th><th>Os. číslo</th><th>Oddělení</th><th>Úsek</th><th>Kategorie</th><th>Nadřízený</th><th>AD účet</th><th>Identifikátory</th><th>Zdroj</th><th>Aktivní</th><th></th></tr>
         </thead>
         <tbody>
         @foreach (var employee in Model.Employees)
@@ -90,6 +101,27 @@
                 <td>@employee.FullName</td>
                 <td class="muted">@employee.PersonalNumber</td>
                 <td>@employee.Department</td>
+                <td>
+                    @if (employee.OrgUnit is { } unit)
+                    {
+                        <a asp-page="/Catalog/OrgUnits/Edit" asp-route-id="@unit.Id">@unit.DisplayName</a>
+                        @if (employee.OrgUnitManual)
+                        {
+                            <span class="badge" title="Zadáno ručně — přepočet z oddělení nepřepisuje">ručně</span>
+                        }
+                    }
+                    else
+                    {
+                        <span class="muted">—</span>
+                    }
+                </td>
+                <td>
+                    <span class="muted">@employee.EffectiveRank.Label()</span>
+                    @if (employee.RankManual)
+                    {
+                        <span class="badge" title="Zadáno ručně — odvození z hierarchie nepřepisuje">ručně</span>
+                    }
+                </td>
                 <td>
                     @if (employee.Manager is { } manager)
                     {

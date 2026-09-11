@@ -18,7 +18,16 @@
 
 <div class="card">
     <table class="data">
-        <tr><td>Pro zaměstnance</td><td>@Model.Request.TargetEmployee?.FullName (@Model.Request.TargetEmployee?.Department)</td></tr>
+        <tr>
+            <td>Pro zaměstnance</td>
+            <td>
+                @Model.Request.TargetEmployee?.FullName (@Model.Request.TargetEmployee?.Department)
+                @if (Model.Request.TargetEmployee is { } target)
+                {
+                    <span class="badge" title="Kategorie pro schvalovací matici">@target.EffectiveRank.Label()</span>
+                }
+            </td>
+        </tr>
         <tr><td>Podal</td><td>@(Model.Request.RequesterUser?.DisplayName ?? Model.Request.RequesterUser?.UserName)</td></tr>
         <tr><td>Podáno</td><td>@Model.Request.CreatedAt.ToString("yyyy-MM-dd HH:mm") UTC</td></tr>
         <tr><td>Zdůvodnění</td><td>@Model.Request.Justification</td></tr>
@@ -41,11 +50,31 @@
                 <span class="badge" title="Doplněno automaticky z řetězce čteček">řetězec</span>
             }
             <span class="badge badge-primary">@StatusText.Label(item)</span>
+            @if (item.AutoApproved)
+            {
+                <span class="badge" title="Pro položku neplatila žádná úroveň matice (kategorie / úsek) a matice dovoluje schválení bez stupně">bez schvalovacího stupně</span>
+            }
             @if (item.Status == RequestStatus.Pending)
             {
                 <span class="muted" style="font-size:0.85rem">— úroveň @item.CurrentLevelOrder</span>
             }
         </h2>
+
+        @if (Model.Contexts.TryGetValue(item.Id, out var context) && (context.Area is not null || item.AutoApproved))
+        {
+            <p class="muted" style="margin-top:0;font-size:0.9rem">
+                @if (context.Area is { } area)
+                {
+                    <span class="badge" title="@context.RelationReason">@context.RelationLabel</span>
+                    <text>úsek prostoru: @(area.OrgUnitName ?? "—"), odpovědná osoba: @(area.ResponsibleName ?? "—")</text>
+                    <span class="hint">(@area.Source)</span>
+                }
+                else
+                {
+                    <text>kategorie zaměstnance: @context.Rank.Label()</text>
+                }
+            </p>
+        }
 
         @if (item.Status == RequestStatus.Pending && Model.Resolutions.TryGetValue(item.Id, out var resolution))
         {
@@ -65,6 +94,14 @@
                             {
                                 <text>@(approver.ManagerDepth >= 2 ? "Nadřízený nadřízeného" : "Nadřízený"): </text>
                             }
+                            else if (approver.Origin == Acs.Infrastructure.Workflow.ApproverOrigin.AreaOwner)
+                            {
+                                <text>Odpovědná osoba úseku: </text>
+                            }
+                            else if (approver.Origin == Acs.Infrastructure.Workflow.ApproverOrigin.EscalatedManager)
+                            {
+                                <text>Nadřízený schvalovatele: </text>
+                            }
                             @approver.DisplayName
                         </span>
                     }
@@ -78,6 +115,23 @@
                     }
                 }
             </p>
+        }
+
+        @if (item.SecurityRequest is { } security)
+        {
+            <table class="data" style="margin-bottom:0.6rem">
+                <tr><td>Druh</td><td>@security.KindLabel</td></tr>
+                <tr><td>Popis</td><td style="white-space:pre-wrap">@security.Description</td></tr>
+                <tr><td>Umístění</td><td>@security.LocationPath()</td></tr>
+                @if (security.OrgUnit is not null)
+                {
+                    <tr><td>Úsek žadatele</td><td>@security.OrgUnit.DisplayName</td></tr>
+                }
+                @if (security.ImplementedAt is not null)
+                {
+                    <tr><td>Realizováno</td><td>@security.ImplementedAt?.ToString("d. M. yyyy HH:mm") @(security.ImplementedByUser?.DisplayName ?? security.ImplementedByUser?.UserName) <span class="muted">@security.ImplementationNote</span></td></tr>
+                }
+            </table>
         }
 
         @if (item.ParkingPermit is { } permit)

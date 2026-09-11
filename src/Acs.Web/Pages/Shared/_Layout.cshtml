@@ -15,7 +15,8 @@
         : (currentPage.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? "active" : "");
     var inCatalog = currentPage.StartsWith("/Catalog/", StringComparison.OrdinalIgnoreCase) || currentPage == "/Reports";
     var inAdmin = currentPage.StartsWith("/Admin/", StringComparison.OrdinalIgnoreCase)
-                  || currentPage == "/CardQueue" || currentPage == "/Parking/Queue";
+                  || currentPage == "/CardQueue" || currentPage == "/Parking/Queue" || currentPage == "/Security/Queue";
+    var isAuditorOnly = !HasRole("CatalogManager") && User.IsInRole("Auditor");
 }
 <!DOCTYPE html>
 <html lang="cs" data-theme="@theme">
@@ -64,6 +65,7 @@
                         <a asp-page="/Catalog/Parking/Spots">Parkovací místa</a>
                         <span class="navmenu-group">Lidé a schvalování</span>
                         <a asp-page="/Catalog/Employees/Index">Zaměstnanci</a>
+                        <a asp-page="/Catalog/OrgUnits/Index">Úseky</a>
                         <a asp-page="/Catalog/Matrices/Index">Schvalovací matice</a>
                         <a asp-page="/Catalog/AutoRules">Auto-zařazení</a>
                         <a asp-page="/Reports">Reporty</a>
@@ -71,9 +73,16 @@
                 </details>
             }
 
-            @if (HasRole("CardAdmin") || HasRole("ParkingAdmin"))
+            @if (isAuditorOnly)
             {
-                var queueTotal = (HasRole("CardAdmin") ? attention.CardQueue : 0) + (HasRole("ParkingAdmin") ? attention.ParkingQueue : 0);
+                <a asp-page="/Reports" class="@Active("/Reports")">Reporty</a>
+            }
+
+            @if (HasRole("CardAdmin") || HasRole("ParkingAdmin") || HasRole("IctAdmin"))
+            {
+                var queueTotal = (HasRole("CardAdmin") ? attention.CardQueue : 0)
+                                 + (HasRole("ParkingAdmin") ? attention.ParkingQueue : 0)
+                                 + (HasRole("IctAdmin") ? attention.SecurityQueue : 0);
                 <details class="navmenu @(inAdmin ? "active" : "")">
                     <summary>
                         Správa
@@ -101,6 +110,16 @@
                                 @if (attention.ParkingQueue > 0)
                                 {
                                     <span class="nav-badge">@attention.ParkingQueue</span>
+                                }
+                            </a>
+                        }
+                        @if (HasRole("IctAdmin"))
+                        {
+                            <a asp-page="/Security/Queue">
+                                Fronta kamer / EZS (ICT)
+                                @if (attention.SecurityQueue > 0)
+                                {
+                                    <span class="nav-badge">@attention.SecurityQueue</span>
                                 }
                             </a>
                         }

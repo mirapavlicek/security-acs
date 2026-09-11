@@ -11,12 +11,36 @@ namespace Acs.Web.Pages.Catalog;
 /// <summary>Souhrn budovy pro sbalený seznam (jen počty, žádná podřízená data).</summary>
 public record BuildingSummary(Building Building, int Sections, int Floors, int Corridors, int Rooms, int Readers);
 
+/// <summary>Nabídky pro vlastnictví prostorů (úsek, odpovědná osoba) ve formulářích stromu.</summary>
+public record OwnershipOptions(List<OrgUnit> Units, List<Employee> Employees)
+{
+    public string UnitName(int? id) => id is null ? "—" : Units.FirstOrDefault(u => u.Id == id)?.DisplayName ?? $"#{id}";
+    public string EmployeeName(int? id) => id is null ? "—" : Employees.FirstOrDefault(e => e.Id == id)?.FullName ?? $"#{id}";
+
+    /// <summary>„úsek X · odp. osoba Y“ nebo null, když prostor vlastníka nemá.</summary>
+    public string? Describe(IOwnedArea area)
+    {
+        if (area.OrgUnitId is null && area.ResponsibleEmployeeId is null)
+            return null;
+        var parts = new List<string>();
+        if (area.OrgUnitId is not null) parts.Add($"úsek {UnitName(area.OrgUnitId)}");
+        if (area.ResponsibleEmployeeId is not null) parts.Add($"odp. osoba {EmployeeName(area.ResponsibleEmployeeId)}");
+        return string.Join(" · ", parts);
+    }
+}
+
+/// <summary>Model formuláře vlastníka jednoho prostoru (částečné zobrazení <c>_OwnershipForm</c>).</summary>
+public record OwnershipForm(
+    string Kind, int Id, string Label, IOwnedArea Area, OwnershipOptions Options,
+    int? FloorId = null, int? BuildingId = null);
+
 /// <summary>Obsah jedné budovy — části a patra s počty (dotahuje se na rozbalení).</summary>
 public record BuildingContent(
     Building Building,
     List<BuildingSection> Sections,
     List<Floor> Floors,
-    Dictionary<int, (int Rooms, int Corridors, int Readers)> FloorCounts);
+    Dictionary<int, (int Rooms, int Corridors, int Readers)> FloorCounts,
+    OwnershipOptions Ownership);
 
 /// <summary>Obsah jednoho patra — chodby a místnosti (dotahuje se na rozbalení).</summary>
 public record FloorContent(
@@ -25,7 +49,8 @@ public record FloorContent(
     List<Room> Rooms,
     List<Corridor> AllCorridors,
     Dictionary<int, int> CorridorReaderCounts,
-    Dictionary<int, int> RoomReaderCounts);
+    Dictionary<int, int> RoomReaderCounts,
+    OwnershipOptions Ownership);
 
 public class PlacesModel(AcsDbContext db, AuditService audit, PlanGenerationService planGenerator) : PageModel
 {
@@ -98,7 +123,47 @@ public class PlacesModel(AcsDbContext db, AuditService audit, PlanGenerationServ
             Corridors: corridors.GetValueOrDefault(f.Id),
             Readers: readerCounts.GetValueOrDefault(f.Id)));
 
-        return Partial("_BuildingContent", new BuildingContent(building, sections, floors, counts));
+        return Partial("_BuildingContent", new BuildingContent(building, sections, floors, counts, await LoadOwnershipOptionsAsync()));
+    }
+
+    private async Task<OwnershipOptions> LoadOwnershipOptionsAsync()
+        => new(
+            await db.OrgUnits.Where(u => u.IsActive).OrderBy(u => u.Name).ToListAsync(),
+            await db.Employees.Where(e => e.IsActive).OrderBy(e => e.LastName).ThenBy(e => e.FirstName).ToListAsync());
+
+    /// <summary>
+    /// Nastaví úsek a odpovědnou osobu prostoru (budova / patro / chodba / místnost). Prázdné =
+    /// dědí z nadřazeného prostoru. Používá schvalovací matice pro rozlišení vlastní / cizí úsek.
+    /// </summary>
+    public async Task<IActionResult> OnPostSetOwnershipAsync(
+        string kind, int id, int? orgUnitId, int? responsibleEmployeeId, int? floorId, int? buildingId)
+    {
+        IOwnedArea? area = kind switch
+        {
+            "building" => await db.Buildings.FindAsync(id),
+            "floor" => await db.Floors.FindAsync(id),
+            "corridor" => await db.Corridors.FindAsync(id),
+            "room" => await db.Rooms.FindAsync(id),
+            _ => null,
+        };
+        if (area is null)
+            return NotFound();
+
+        if (orgUnitId is not null && !await db.OrgUnits.AnyAsync(u => u.Id == orgUnitId))
+            return NotFound();
+        if (responsibleEmployeeId is not null && !await db.Employees.AnyAsync(e => e.Id == responsibleEmployeeId))
+            return NotFound();
+
+        area.OrgUnitId = orgUnitId;
+        area.ResponsibleEmployeeId = responsibleEmployeeId;
+        await db.SaveChangesAsync();
+        await audit.LogAsync(User.Identity?.Name, "area-ownership-set", kind, id.ToString(),
+            $"úsek {orgUnitId?.ToString() ?? "—"}, odpovědná osoba {responsibleEmployeeId?.ToString() ?? "—"}");
+        Message = "Vlastník prostoru uložen.";
+
+        if (floorId is not null)
+            return await RedirectToFloorAsync(floorId.Value);
+        return RedirectToPage(new { open = buildingId is null ? null : $"building-{buildingId}" });
     }
 
     public async Task<IActionResult> OnGetFloorAsync(int id)
@@ -125,7 +190,7 @@ public class PlacesModel(AcsDbContext db, AuditService audit, PlanGenerationServ
             .OrderBy(c => c.Floor!.SortOrder).ThenBy(c => c.Name).ToListAsync();
 
         return Partial("_FloorContent",
-            new FloorContent(floor, corridors, rooms, allCorridors, corridorReaders, roomReaders));
+            new FloorContent(floor, corridors, rooms, allCorridors, corridorReaders, roomReaders, await LoadOwnershipOptionsAsync()));
     }
 
     /// <summary>Vrátí na seznam s rozbaleným patrem (a budovou nad ním).</summary>

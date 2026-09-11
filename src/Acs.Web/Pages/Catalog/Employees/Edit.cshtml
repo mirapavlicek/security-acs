@@ -50,6 +50,33 @@
             <input type="checkbox" asp-for="ManagerManual" />
             <label asp-for="ManagerManual">Nadřízený zadán ručně (import z AD ho nepřepíše)</label>
         </div>
+        <label>Úsek — pro rozlišení vstupu v rámci vlastního / mimo vlastní úsek</label>
+        <select asp-for="OrgUnitId">
+            <option value="">— bez úseku (odvodí se z oddělení podle mapování úseků) —</option>
+            @foreach (var unit in Model.OrgUnits)
+            {
+                <option value="@unit.Id" selected="@(unit.Id == Model.OrgUnitId)">@unit.DisplayName</option>
+            }
+        </select>
+        <div class="checkbox-row">
+            <input type="checkbox" asp-for="OrgUnitManual" />
+            <label asp-for="OrgUnitManual">Úsek zadán ručně (přepočet z oddělení ho nepřepíše)</label>
+        </div>
+        <label>Kategorie pro schvalovací matici</label>
+        <select asp-for="Rank">
+            <option value="@EmployeeRank.Auto" selected="@(Model.Rank == EmployeeRank.Auto)">
+                odvodit z hierarchie nadřízených (teď: @Model.Employee.EffectiveRank.Label())
+            </option>
+            @foreach (var rank in Acs.Web.Pages.Catalog.Employees.EditModel.Ranks)
+            {
+                <option value="@rank" selected="@(Model.Rank == rank)">@rank.Label() (ručně)</option>
+            }
+        </select>
+        <p class="hint">
+            Řadový = nikoho neřídí; vedoucí = má podřízené nebo vede úsek (primář, vrchní sestra, vedoucí odboru);
+            přímo podřízený řediteli = náměstek a vedoucí zaměstnanci přímo pod ředitelem; ředitel = vrchol hierarchie.
+            Podle kategorie se v matici přeskakují nebo přidávají schvalovací stupně.
+        </p>
         <label>WIN-PAK card holder id</label>
         <input asp-for="Employee.WinPakCardHolderId" />
         <label>Primární číslo karty (přehledové; úplný seznam níže)</label>

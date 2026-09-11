@@ -93,6 +93,9 @@ builder.Services.AddScoped<Acs.Infrastructure.Workflow.ReaderGroupService>();
 builder.Services.AddScoped<Acs.Infrastructure.Workflow.RequestWorkflowService>();
 builder.Services.AddScoped<Acs.Infrastructure.Workflow.CardAdminService>();
 builder.Services.AddScoped<Acs.Infrastructure.Workflow.ParkingAdminService>();
+builder.Services.AddScoped<Acs.Infrastructure.Workflow.SecurityAdminService>();
+builder.Services.AddScoped<Acs.Infrastructure.Workflow.MatrixTemplateService>();
+builder.Services.AddScoped<Acs.Infrastructure.Organization.OrgStructureService>();
 
 // Integrace parkovacího systému (GreenCenter): online autorizace u vjezdu, události, čtení
 // stavu (integrační API) a předání povolení konektoru (vzor A).
@@ -188,6 +191,12 @@ builder.Services.AddAuthorization(options =>
         p => p.RequireRole(nameof(AppRole.Admin), nameof(AppRole.CardAdmin)));
     options.AddPolicy("ParkingAdmin",
         p => p.RequireRole(nameof(AppRole.Admin), nameof(AppRole.ParkingAdmin)));
+    // Fronta realizace kamer / EZS.
+    options.AddPolicy("IctAdmin",
+        p => p.RequireRole(nameof(AppRole.Admin), nameof(AppRole.IctAdmin)));
+    // Kontrola (OBP): přehledy a číselníky jen ke čtení — vedle správce číselníků.
+    options.AddPolicy("Auditor",
+        p => p.RequireRole(nameof(AppRole.Admin), nameof(AppRole.Auditor), nameof(AppRole.CatalogManager)));
     // Ceduli A4 na parkovací místo tiskne správce parkování i správce číselníků (spravuje místa).
     options.AddPolicy("ParkingSignPrinter",
         p => p.RequireRole(nameof(AppRole.Admin), nameof(AppRole.ParkingAdmin), nameof(AppRole.CatalogManager)));

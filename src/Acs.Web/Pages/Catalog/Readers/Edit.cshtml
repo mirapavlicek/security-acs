@@ -65,6 +65,26 @@
                 <option value="@matrix.Id">@matrix.Name</option>
             }
         </select>
+        <label>Úsek, kterému čtečka patří (prázdné = dědí z místnosti / chodby / patra / budovy)</label>
+        <select asp-for="Reader.OrgUnitId">
+            <option value="">— dědí z nadřazeného prostoru —</option>
+            @foreach (var unit in Model.OrgUnits)
+            {
+                <option value="@unit.Id">@unit.DisplayName</option>
+            }
+        </select>
+        <label>Odpovědná osoba čtečky (prázdné = vedoucí úseku, nebo dědí z nadřazeného prostoru) — pište pro hledání</label>
+        <input type="text" id="owner-search" placeholder="Hledat jméno, oddělení, osobní číslo…" autocomplete="off" style="margin-bottom:0.3rem" />
+        <select asp-for="Reader.ResponsibleEmployeeId" id="owner-select" size="1">
+            <option value="">— vedoucí úseku / dědí —</option>
+            @foreach (var employee in Model.Employees)
+            {
+                <option value="@employee.Id" data-search="@($"{employee.FullName} {employee.Department} {employee.PersonalNumber} {employee.AdAccount}")">
+                    @employee.FullName @(employee.Department is null ? "" : $"({employee.Department})")
+                </option>
+            }
+        </select>
+        <p class="hint" id="owner-hint">Úsek a odpovědná osoba určují, zda jde o vstup v rámci vlastního úseku, a kdo je „odpovědná osoba cílového úseku“ v matici. <a asp-page="/Catalog/OrgUnits/Index">Úseky</a>.</p>
         <div class="checkbox-row">
             <input type="checkbox" asp-for="Reader.IsActive" />
             <label asp-for="Reader.IsActive">Aktivní</label>
@@ -119,4 +139,9 @@
             <button class="btn" type="submit">Přidat</button>
         </form>
     </div>
+}
+
+@section Scripts {
+<script src="~/js/employee-search.js" asp-append-version="true"></script>
+<script>window.acsEmployeeSearch('owner');</script>
 }

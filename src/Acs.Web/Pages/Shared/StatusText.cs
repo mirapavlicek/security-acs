@@ -5,13 +5,15 @@ namespace Acs.Web.Pages.Shared;
 /// <summary>Jednotné české popisky stavů a předmětů položek žádosti (přístupy i parkování).</summary>
 public static class StatusText
 {
-    public static string Label(RequestStatus status, bool isParking = false) => status switch
+    public static string Label(RequestStatus status, bool isParking = false, bool isSecurity = false) => status switch
     {
         RequestStatus.Draft => "rozpracováno",
         RequestStatus.Pending => "čeká na schválení",
         RequestStatus.Approved when isParking => "schváleno — u správce parkování",
+        RequestStatus.Approved when isSecurity => "schváleno — čeká na realizaci ICT",
         RequestStatus.Approved => "schváleno — u správce karet",
         RequestStatus.PushedToWinPak => "zapsáno do WIN-PAK",
+        RequestStatus.ManuallyConfirmed when isSecurity => "realizováno",
         RequestStatus.ManuallyConfirmed => "potvrzeno ručně",
         RequestStatus.Issued => "vydáno",
         RequestStatus.Rejected => "zamítnuto",
@@ -20,7 +22,7 @@ public static class StatusText
         _ => status.ToString(),
     };
 
-    public static string Label(AccessRequestItem item) => Label(item.Status, item.IsParking);
+    public static string Label(AccessRequestItem item) => Label(item.Status, item.IsParking, item.IsSecurity);
 
     /// <summary>CSS třída pro barevný „pill“ stavu.</summary>
     public static string PillClass(RequestStatus status) => status switch
@@ -34,6 +36,9 @@ public static class StatusText
     /// <summary>Nadpis položky: čtečka, skupina, nebo parkovací povolení (vyžaduje načtené navigace).</summary>
     public static string ItemTitle(AccessRequestItem item)
     {
+        if (item.SecurityRequest is { } security)
+            return $"Kamery / EZS: {security.Title} ({security.KindLabel})";
+
         if (item.ParkingPermit is { } permit)
         {
             var type = permit.PermitType?.Name ?? "parkovací povolení";

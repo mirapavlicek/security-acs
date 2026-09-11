@@ -26,6 +26,18 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
     /// <summary>Zadáno ručně — import z AD nadřízeného nepřepíše.</summary>
     [BindProperty] public bool ManagerManual { get; set; }
 
+    /// <summary>Úsek zvolený ve formuláři (prázdné = bez úseku).</summary>
+    [BindProperty] public int? OrgUnitId { get; set; }
+    [BindProperty] public bool OrgUnitManual { get; set; }
+
+    /// <summary>Kategorie zvolená ve formuláři (<see cref="EmployeeRank.Auto"/> = odvodit z hierarchie).</summary>
+    [BindProperty] public EmployeeRank Rank { get; set; }
+
+    public List<OrgUnit> OrgUnits { get; private set; } = [];
+
+    public static readonly EmployeeRank[] Ranks =
+        [EmployeeRank.Staff, EmployeeRank.Manager, EmployeeRank.Executive, EmployeeRank.Director];
+
     public IdentifierType[] Types { get; } =
         [IdentifierType.Card, IdentifierType.LicensePlate, IdentifierType.Pin,
          IdentifierType.Tag, IdentifierType.Biometric, IdentifierType.Other];
@@ -55,6 +67,9 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
         Employee = employee;
         ManagerId = employee.ManagerId;
         ManagerManual = employee.ManagerManual;
+        OrgUnitId = employee.OrgUnitId;
+        OrgUnitManual = employee.OrgUnitManual;
+        Rank = employee.RankManual ? employee.Rank : EmployeeRank.Auto;
         Subordinates = await db.Employees
             .Where(e => e.ManagerId == id.Value)
             .OrderBy(e => e.LastName).ThenBy(e => e.FirstName)
@@ -64,10 +79,13 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
     }
 
     private async Task LoadManagerCandidatesAsync(int? exceptId)
-        => ManagerCandidates = await db.Employees
+    {
+        ManagerCandidates = await db.Employees
             .Where(e => e.IsActive && (exceptId == null || e.Id != exceptId))
             .OrderBy(e => e.LastName).ThenBy(e => e.FirstName)
             .ToListAsync();
+        OrgUnits = await db.OrgUnits.Where(u => u.IsActive).OrderBy(u => u.Name).ToListAsync();
+    }
 
     /// <summary>
     /// Nadřízený nesmí být zaměstnanec sám ani nikdo z jeho podřízených (cyklus by
@@ -119,6 +137,10 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
             Employee.Source = RecordSource.Manual;
             Employee.ManagerId = ManagerId;
             Employee.ManagerManual = ManagerId is not null && ManagerManual;
+            Employee.OrgUnitId = OrgUnitId;
+            Employee.OrgUnitManual = OrgUnitId is not null && OrgUnitManual;
+            Employee.Rank = Rank;
+            Employee.RankManual = Rank != EmployeeRank.Auto;
             db.Employees.Add(Employee);
             await db.SaveChangesAsync();
             await audit.LogAsync(User.Identity?.Name, "employee-created", "Employee",
@@ -140,6 +162,25 @@ public class EditModel(AcsDbContext db, AuditService audit) : PageModel
             existing.ManagerId = ManagerId;
             // Bez nadřízeného nemá „ručně“ smysl — import by ho jinak nikdy nedoplnil.
             existing.ManagerManual = ManagerId is not null && ManagerManual;
+
+            if (existing.OrgUnitId != OrgUnitId || existing.OrgUnitManual != (OrgUnitId is not null && OrgUnitManual))
+            {
+                await audit.LogAsync(User.Identity?.Name, "employee-orgunit-changed", "Employee",
+                    existing.Id.ToString(), $"úsek {existing.OrgUnitId?.ToString() ?? "—"} → {OrgUnitId?.ToString() ?? "—"}");
+            }
+            existing.OrgUnitId = OrgUnitId;
+            existing.OrgUnitManual = OrgUnitId is not null && OrgUnitManual;
+
+            // Kategorie: „odvodit“ ponechá poslední odvozenou hodnotu a při příštím přepočtu se aktualizuje.
+            var rankManual = Rank != EmployeeRank.Auto;
+            if (existing.RankManual != rankManual || (rankManual && existing.Rank != Rank))
+            {
+                await audit.LogAsync(User.Identity?.Name, "employee-rank-changed", "Employee",
+                    existing.Id.ToString(), $"kategorie {existing.Rank} → {(rankManual ? Rank.ToString() : "odvodit")}");
+            }
+            existing.RankManual = rankManual;
+            if (rankManual)
+                existing.Rank = Rank;
 
             existing.FirstName = Employee.FirstName;
             existing.LastName = Employee.LastName;

@@ -10,6 +10,7 @@
 <div class="actions">
     <a class="btn" asp-page="New">+ Nová žádost o přístup</a>
     <a class="btn btn-ghost" asp-page="/Parking/New">+ Žádost o parkovací povolení</a>
+    <a class="btn btn-ghost" asp-page="/Security/New">+ Žádost o kamery / EZS</a>
 </div>
 
 @if (Model.PendingForMe.Count > 0)
@@ -31,6 +32,10 @@
                         @if (item.IsParking)
                         {
                             <span class="badge badge-primary">parkování</span> <span class="muted">@item.ParkingPermit!.SitesText()</span>
+                        }
+                        @if (item.IsSecurity)
+                        {
+                            <span class="badge badge-primary">kamery / EZS</span>
                         }
                         @if (item.AutoAdded)
                         {
@@ -78,3 +83,29 @@
         <p class="muted">Zatím žádné žádosti.</p>
     }
 </div>
+
+@if (Model.CanSeeAll)
+{
+    <h2>Všechny žádosti <span class="muted" style="font-size:0.9rem">(posledních @Model.AllRequests.Count — kontrola)</span></h2>
+    <div class="card">
+        <table class="data">
+            <thead>
+            <tr><th>#</th><th>Pro</th><th>Podal</th><th>Položek</th><th>Stav</th><th>Podáno</th><th></th></tr>
+            </thead>
+            <tbody>
+            @foreach (var request in Model.AllRequests)
+            {
+                <tr>
+                    <td>@request.Id</td>
+                    <td>@request.TargetEmployee?.FullName <span class="muted">@request.TargetEmployee?.Department</span></td>
+                    <td class="muted">@(request.RequesterUser?.DisplayName ?? request.RequesterUser?.UserName)</td>
+                    <td>@request.Items.Count</td>
+                    <td>@Model.Summarize(request)</td>
+                    <td class="muted">@request.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                    <td><a class="btn btn-sm btn-ghost" asp-page="Detail" asp-route-id="@request.Id">Detail</a></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}

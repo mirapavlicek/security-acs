@@ -17,7 +17,7 @@ public record ParkingReportRow(
     string? PermitNumber, string EmployeeName, string? Department, string TypeName,
     string Subject, string Sites, DateTime? ValidTo, DateTime? IssuedAt);
 
-[Authorize(Policy = "CatalogManager")]
+[Authorize(Policy = "Auditor")]
 public class ReportsModel(AcsDbContext db, Acs.Infrastructure.Workflow.ReaderGroupService groups) : PageModel
 {
     [BindProperty(SupportsGet = true)]

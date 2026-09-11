@@ -1,0 +1,127 @@
+@page
+@using Acs.Domain.Entities
+@model Acs.Web.Pages.Catalog.OrgUnits.IndexModel
+@{
+    ViewData["Title"] = "Úseky";
+}
+<h1>Úseky (organizační struktura)</h1>
+<p class="muted">
+    Úsek náměstka → odbor / klinika → oddělení. Každý úsek má vedoucího (odpovědnou osobu) a mapování
+    na oddělení zaměstnanců z HR/AD. Prostory (čtečky, místnosti, patra, budovy, skupiny) se k úseku
+    přiřazují, aby schvalovací matice rozlišila vstup <em>v rámci vlastního úseku</em> a <em>mimo vlastní
+    úsek</em> a našla odpovědnou osobu cílového úseku.
+</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-error">@Model.ErrorMessage</div>
+}
+
+<div class="card">
+    <h2 style="margin-top:0">Zaměstnanci</h2>
+    <p style="margin-top:0">
+        Úsek má <strong>@Model.EmployeesWithUnit z @Model.EmployeesActive</strong> aktivních zaměstnanců.
+        Kategorie: ředitel @Model.RankCounts.GetValueOrDefault(EmployeeRank.Director),
+        přímo pod ředitelem @Model.RankCounts.GetValueOrDefault(EmployeeRank.Executive),
+        vedoucí @Model.RankCounts.GetValueOrDefault(EmployeeRank.Manager),
+        řadový @Model.RankCounts.GetValueOrDefault(EmployeeRank.Staff),
+        neurčeno @Model.RankCounts.GetValueOrDefault(EmployeeRank.Auto)
+        (<a asp-page="/Catalog/Employees/Index">seznam zaměstnanců</a>).
+    </p>
+    <form method="post" asp-page-handler="Recalculate" class="inline-form">
+        <button class="btn btn-sm" type="submit">Přepočítat úseky a kategorie</button>
+        <span class="hint">
+            Úsek se odvodí z oddělení podle mapování níže, kategorie z hierarchie nadřízených (ředitel = vrchol
+            hierarchie, přímo pod ředitelem = jeho přímí podřízení, vedoucí = má podřízené nebo vede úsek).
+            Ručně zadané hodnoty se nepřepisují. Běží automaticky po každém importu zaměstnanců.
+        </span>
+    </form>
+</div>
+
+<div class="card">
+    <table class="data">
+        <thead>
+        <tr><th>Úsek</th><th>Kód</th><th>Vedoucí (odpovědná osoba)</th><th>Mapovaná oddělení</th><th>Zaměstnanců</th><th>Prostorů</th><th>Aktivní</th><th></th></tr>
+        </thead>
+        <tbody>
+        @foreach (var row in Model.Rows)
+        {
+            <tr>
+                <td style="padding-left:@(0.6 + row.Depth * 1.4)rem">
+                    @if (row.Depth > 0)
+                    {
+                        <span class="muted">└ </span>
+                    }
+                    <a asp-page="Edit" asp-route-id="@row.Unit.Id">@row.Unit.Name</a>
+                </td>
+                <td class="muted">@row.Unit.Code</td>
+                <td>
+                    @if (row.Unit.HeadEmployee is { } head)
+                    {
+                        <a asp-page="/Catalog/Employees/Edit" asp-route-id="@head.Id">@head.FullName</a>
+                    }
+                    else
+                    {
+                        <span class="muted">—</span>
+                    }
+                </td>
+                <td class="muted">@string.Join(", ", row.Unit.DepartmentPatternList())</td>
+                <td>@row.Employees</td>
+                <td>@row.Areas</td>
+                <td>@(row.Unit.IsActive ? "ano" : "ne")</td>
+                <td><a class="btn btn-sm btn-ghost" asp-page="Edit" asp-route-id="@row.Unit.Id">Upravit</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Rows.Count == 0)
+    {
+        <p class="muted">Zatím žádné úseky. Založte nejdřív úseky náměstků, pak odbory / kliniky a oddělení.</p>
+    }
+</div>
+
+<div class="settings-grid">
+<div class="card">
+    <h2 style="margin-top:0">Nový úsek</h2>
+    <form method="post" asp-page-handler="Create">
+        <label>Název</label>
+        <input type="text" name="name" placeholder="např. Chirurgická klinika" required />
+        <label>Kód (volitelné)</label>
+        <input type="text" name="code" placeholder="např. CHIR" />
+        <label>Nadřazený úsek</label>
+        <select name="parentId">
+            <option value="">— nejvyšší úroveň —</option>
+            @foreach (var row in Model.Rows)
+            {
+                <option value="@row.Unit.Id">@(new string('\u00a0', row.Depth * 3))@row.Unit.Name</option>
+            }
+        </select>
+        <button class="btn" type="submit">Založit úsek</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">Oddělení bez úseku (@Model.UnmatchedDepartments.Count)</h2>
+    <p class="muted" style="margin-top:0">
+        Textová oddělení zaměstnanců, která žádný úsek nemapuje. Doplňte je do mapování příslušného
+        úseku (přesný název, nebo předpona s „*“) a přepočítejte.
+    </p>
+    @if (Model.UnmatchedDepartments.Count == 0)
+    {
+        <p class="muted">Všechna oddělení zaměstnanců jsou namapovaná.</p>
+    }
+    else
+    {
+        <table class="data">
+            @foreach (var (department, count) in Model.UnmatchedDepartments)
+            {
+                <tr><td>@department</td><td class="muted">@count</td></tr>
+            }
+        </table>
+    }
+</div>
+</div>
