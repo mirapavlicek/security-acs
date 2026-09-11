@@ -114,12 +114,11 @@ public class LdapAuthenticator(SettingsService settings, DcLocator dcLocator, IL
         var server = await dcLocator.GetActiveServerAsync(ct);
         var useSsl = await settings.GetBoolAsync(SettingKeys.LdapUseSsl, true, ct);
         var port = await settings.GetIntAsync(SettingKeys.LdapPort, useSsl ? 636 : 389, ct);
-        var domain = await settings.GetAsync(SettingKeys.LdapDomain, ct);
+        var domain = await settings.GetLdapDomainAsync(ct);
 
-        // 1) bind jako přihlašovaný uživatel (ověření hesla)
-        var bindUser = domain is { Length: > 0 } && !userName.Contains('@') && !userName.Contains('\\')
-            ? $"{userName}@{domain}"
-            : userName;
+        // 1) bind jako přihlašovaný uživatel (ověření hesla) — k účtu bez domény se doplní
+        //    UPN sufix (nastavená doména, jinak z Base DN, jinak nnh.local), takže stačí zadat „jnovak“.
+        var bindUser = BindUserName(userName, domain);
 
         using var connection = CreateConnection(server, port, useSsl, bindUser, password);
 
@@ -136,6 +135,18 @@ public class LdapAuthenticator(SettingsService settings, DcLocator dcLocator, IL
         // 2) dohledání atributů uživatele
         var samAccount = userName.Contains('@') ? userName.Split('@')[0] : userName.Split('\\').Last();
         return await SearchUserAsync(connection, samAccount, ct);
+    }
+
+    /// <summary>
+    /// Účet pro LDAP bind: <c>jnovak</c> → <c>jnovak@doména</c>; UPN (<c>jnovak@nnh.local</c>) i tvar
+    /// <c>DOMENA\jnovak</c> zůstávají beze změny.
+    /// </summary>
+    public static string BindUserName(string userName, string? domain)
+    {
+        var account = userName.Trim();
+        if (string.IsNullOrWhiteSpace(domain) || account.Contains('@') || account.Contains('\\'))
+            return account;
+        return $"{account}@{domain.Trim().TrimStart('@')}";
     }
 
     private async Task<LdapUserInfo> SearchUserAsync(LdapConnection connection, string samAccount, CancellationToken ct)

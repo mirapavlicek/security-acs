@@ -88,7 +88,7 @@ public class DcLocator(
 
         if (await settings.GetBoolAsync(SettingKeys.LdapUseDcLocator, true, ct))
         {
-            var domain = await settings.GetAsync(SettingKeys.LdapDomain, ct);
+            var domain = await settings.GetLdapDomainAsync(ct);
             if (!string.IsNullOrWhiteSpace(domain))
             {
                 try

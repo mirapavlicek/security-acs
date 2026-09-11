@@ -30,6 +30,9 @@ public class LoginModel(UserAuthenticationService auth, AuditService audit, Sett
 
     public string? ReturnUrl { get; private set; }
 
+    /// <summary>Doména, která se k AD účtu doplní automaticky (nápověda ve formuláři).</summary>
+    public string LdapDomain { get; private set; } = SettingsService.DefaultLdapDomain;
+
     /// <param name="manual">Zobrazit formulář i při zapnutém automatickém přihlášení Windows (odhlášení, jiný účet, lokální admin).</param>
     /// <param name="sso">Kód výsledku přihlášení Windows, ze kterého se sem uživatel vrátil.</param>
     public async Task<IActionResult> OnGetAsync(string? returnUrl = null, string? manual = null, string? sso = null)
@@ -37,6 +40,7 @@ public class LoginModel(UserAuthenticationService auth, AuditService audit, Sett
         ReturnUrl = returnUrl;
         var showForm = manual is "1" or "true";
         WindowsLoginEnabled = await settings.GetBoolAsync(SettingKeys.SsoEnabled);
+        LdapDomain = await settings.GetLdapDomainAsync();
         var autoLogin = WindowsLoginEnabled && await settings.GetBoolAsync(SettingKeys.SsoAutoLogin);
 
         if (autoLogin && !showForm && sso is null)
@@ -60,6 +64,7 @@ public class LoginModel(UserAuthenticationService auth, AuditService audit, Sett
     {
         ReturnUrl = returnUrl;
         WindowsLoginEnabled = await settings.GetBoolAsync(SettingKeys.SsoEnabled);
+        LdapDomain = await settings.GetLdapDomainAsync();
 
         if (string.IsNullOrWhiteSpace(UserName) || string.IsNullOrWhiteSpace(Password))
         {

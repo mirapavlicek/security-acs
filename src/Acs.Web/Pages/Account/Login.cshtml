@@ -29,7 +29,9 @@
 
     <form method="post" asp-route-returnUrl="@Model.ReturnUrl">
         <label asp-for="UserName">Uživatelské jméno (AD účet nebo lokální)</label>
-        <input asp-for="UserName" type="text" autofocus="@(!Model.WindowsLoginEnabled)" autocomplete="username" />
+        <input asp-for="UserName" type="text" autofocus="@(!Model.WindowsLoginEnabled)" autocomplete="username"
+               placeholder="jnovak" />
+        <p class="hint" style="margin-top:-0.4rem">U AD účtu stačí přihlašovací jméno — <code>@@@Model.LdapDomain</code> se doplní automaticky.</p>
 
         <label asp-for="Password">Heslo</label>
         <input asp-for="Password" type="password" autocomplete="current-password" />
