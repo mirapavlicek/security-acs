@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Acs.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AcsDbContext))]
-    [Migration("20260911092816_ApprovalPolicy")]
+    [Migration("20260911093506_ApprovalPolicy")]
     partial class ApprovalPolicy
     {
         /// <inheritdoc />
@@ -710,8 +710,7 @@ namespace Acs.Infrastructure.Data.Migrations
 
                     b.HasIndex("ManagerId");
 
-                    b.HasIndex("OrgUnitId")
-                        .IsUnique();
+                    b.HasIndex("OrgUnitId");
 
                     b.ToTable("Employees");
                 });

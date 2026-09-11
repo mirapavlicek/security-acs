@@ -68,9 +68,11 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
             // Nadřízený: po smazání nadřízeného zůstává podřízený bez nadřízeného.
             e.HasOne(x => x.Manager).WithMany()
                 .HasForeignKey(x => x.ManagerId).OnDelete(DeleteBehavior.SetNull);
-            e.HasIndex(x => x.OrgUnitId);
+            // Úsek zaměstnance: N:1 (konvence by z dvojice Employee.OrgUnit ↔ OrgUnit.HeadEmployee
+            // udělala 1:1 s unikátním indexem — proto explicitně a index výslovně neunikátní).
             e.HasOne(x => x.OrgUnit).WithMany()
                 .HasForeignKey(x => x.OrgUnitId).OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(x => x.OrgUnitId).IsUnique(false);
             e.Ignore(x => x.EffectiveRank);
         });
 

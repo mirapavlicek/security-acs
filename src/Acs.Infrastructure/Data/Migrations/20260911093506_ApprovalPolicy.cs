@@ -291,8 +291,7 @@ namespace Acs.Infrastructure.Data.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_Employees_OrgUnitId",
                 table: "Employees",
-                column: "OrgUnitId",
-                unique: true);
+                column: "OrgUnitId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Corridors_OrgUnitId",

@@ -707,8 +707,7 @@ namespace Acs.Infrastructure.Data.Migrations
 
                     b.HasIndex("ManagerId");
 
-                    b.HasIndex("OrgUnitId")
-                        .IsUnique();
+                    b.HasIndex("OrgUnitId");
 
                     b.ToTable("Employees");
                 });
