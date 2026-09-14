@@ -1,3 +1,4 @@
+using Acs.Domain.Entities;
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Integration;
 using Acs.Infrastructure.Settings;
@@ -51,7 +52,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         SettingKeys.AutoReminderAfterDays, SettingKeys.AutoEscalationAfterDays, SettingKeys.AutoPushEnabled,
         SettingKeys.SmtpHost, SettingKeys.SmtpPort, SettingKeys.SmtpUser, SettingKeys.SmtpFrom,
         SettingKeys.SmtpUseTls,
-        SettingKeys.CardsSource, SettingKeys.CardsApiUrl, SettingKeys.CardsApiSubType, SettingKeys.CardsApiAuth, SettingKeys.CardsApiKeyHeader,
+        SettingKeys.CardsSource, SettingKeys.CardsApiUrl, SettingKeys.CardsApiSubType, SettingKeys.CardsApiPlateSubType, SettingKeys.CardsApiAuth, SettingKeys.CardsApiKeyHeader,
         SettingKeys.CardsApiTokenUrl, SettingKeys.CardsApiTokenBody, SettingKeys.CardsApiTokenField,
         SettingKeys.CardsApiUser, SettingKeys.CardsApiIgnoreTls,
         SettingKeys.ParkingSystemEnabled, SettingKeys.ParkingSystemAllowedIps, SettingKeys.ParkingSystemCacheTtlSeconds,
@@ -211,7 +212,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
 
     public async Task<IActionResult> OnPostCardsAsync(
         string? cardsSource, string? cardsMssqlConnectionString, string? cardsMssqlQuery,
-        string? cardsApiUrl, string? cardsApiSubType, string? cardsApiAuth, string? cardsApiKeyHeader, string? cardsApiKey,
+        string? cardsApiUrl, string? cardsApiSubType, string? cardsApiPlateSubType, string? cardsApiAuth, string? cardsApiKeyHeader, string? cardsApiKey,
         string? cardsApiUser, string? cardsApiPassword, string? cardsApiIgnoreTls,
         string? cardsApiBearerToken, string? cardsApiTokenUrl, string? cardsApiTokenBody, string? cardsApiTokenField,
         string? cardsSyncEnabled, string? cardsSyncIntervalMinutes)
@@ -220,7 +221,9 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         await settings.SetIfProvidedAsync(SettingKeys.CardsMssqlConnectionString, cardsMssqlConnectionString, UserName);
         await settings.SetAsync(SettingKeys.CardsMssqlQuery, cardsMssqlQuery, UserName);
         await settings.SetAsync(SettingKeys.CardsApiUrl, cardsApiUrl?.Trim(), UserName);
-        await settings.SetAsync(SettingKeys.CardsApiSubType, string.IsNullOrWhiteSpace(cardsApiSubType) ? "3" : cardsApiSubType.Trim(), UserName);
+        await settings.SetAsync(SettingKeys.CardsApiSubType, IdentifiersApiCardSource.ParseCardSubType(cardsApiSubType).ToString(), UserName);
+        // Prázdné pole = SPZ nestahovat; ukládá se jako "0", protože chybějící klíč znamená výchozí podtyp 4.
+        await settings.SetAsync(SettingKeys.CardsApiPlateSubType, string.IsNullOrWhiteSpace(cardsApiPlateSubType) ? "0" : cardsApiPlateSubType.Trim(), UserName);
         await settings.SetAsync(SettingKeys.CardsApiAuth,
             cardsApiAuth is CardApiAuth.ApiKey or CardApiAuth.Basic or CardApiAuth.Windows or CardApiAuth.Bearer or CardApiAuth.Token
                 ? cardsApiAuth : CardApiAuth.None, UserName);
@@ -251,18 +254,53 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         try
         {
             var source = await IdentifiersApiCardSource.CreateAsync(settings, httpClientFactory, HttpContext.RequestAborted);
-            var probe = await source.ProbeAsync(employeeNo.Trim(), HttpContext.RequestAborted);
-            var lines = new List<string>();
+            var lines = new List<string> { $"Přihlášení: {source.AuthDescription}" };
+            // Karty a (když jsou zapnuté) SPZ — každý podtyp je samostatný dotaz.
+            foreach (var (subType, type) in source.SubTypes)
+            {
+                lines.Add("");
+                lines.Add($"=== {(type == IdentifierType.LicensePlate ? "SPZ" : "Karty")} (idIdentifierSubType {subType}) ===");
+                lines.AddRange(DescribeProbe(await source.ProbeAsync(employeeNo.Trim(), subType, HttpContext.RequestAborted), source.Auth));
+            }
 
+            if (source.TokenStepDescription is { } tokenStep)
+            {
+                lines.Add("");
+                lines.Add(tokenStep);
+            }
+
+            CardsApiProbe = string.Join("\n", lines);
+        }
+        catch (Exception ex)
+        {
+            CardsApiProbe = $"Zkouška selhala: {ex.GetBaseException().Message}\n\nKdyž jde o spojení: adresa není dostupná z nodů ACS (DNS, firewall), nebo certifikát interní CA (zaškrtněte „Neověřovat certifikát TLS“ a uložte). Když jde o přihlášení tokenem: zkontrolujte adresu přihlašovacího endpointu a tvar těla podle Swaggeru služby.";
+        }
+
+        ActiveSection = "cards";
+        return RedirectToPage();
+    }
+
+    private static List<string> DescribeProbe(IdentifiersApiCardSource.ProbeResult probe, string auth)
+    {
+        var lines = new List<string>();
+        {
             if (!probe.Success)
             {
                 lines.Add($"Zkouška selhala: služba odpověděla {probe.StatusCode} {probe.ReasonPhrase}.");
+                if (probe.StatusCode == 404)
+                    lines.Add("404 může být i „tento zaměstnanec tento druh identifikátoru nemá“ — synchronizace ho tak bere.");
                 lines.Add(probe.StatusCode switch
                 {
                     404 when probe.ContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true || probe.Body.Trim().StartsWith('{')
                         => "404 s JSON tělem = služba adresu zná, ale tohoto zaměstnance/identifikátor nenašla — porovnejte formát osobního čísla s tím, co služba očekává (úvodní nuly, jiné číslo než AD employeenumber).",
                     404 => "404 bez JSON těla = nejspíš špatná cesta (adresa) nebo metoda; zkontrolujte adresu ve Swaggeru služby (…/swagger) — musí odpovídat přesně včetně /api/v0/Identifiers.",
-                    401 or 403 => "Služba přihlášení odmítla — zkuste jiný způsob přihlášení (Windows účet domény / API klíč) nebo jiný účet.",
+                    401 when probe.NtlmNotOffered
+                        => $"Služba nabízí přihlášení jen schématy {string.Join(", ", probe.OfferedAuthSchemes)} — ACS ověřuje účet domény přes NTLM, které služba nenabízí. Správce služby musí u Windows Authentication povolit poskytovatele NTLM, nebo zvolte jiný způsob přihlášení.",
+                    401 when probe.NoChallenge && auth == CardApiAuth.Windows
+                        => "Služba odmítla bez výzvy WWW-Authenticate — NTLM handshake tedy neproběhl (není na co odpovědět). Buď na službě není zapnutá Windows Authentication (IIS), nebo služba čeká token: zkuste „Token z přihlášení“ s přihlašovacím endpointem ze Swaggeru služby.",
+                    401 when probe.NoChallenge
+                        => "Služba odmítla bez výzvy WWW-Authenticate — čeká token v hlavičce Authorization (viz tělo odpovědi). Zvolte „Token z přihlášení“ (endpoint a tvar těla ze Swaggeru služby) nebo „Pevný token“.",
+                    401 or 403 => "Služba přihlášení odmítla — zkuste jiný způsob přihlášení (Windows účet domény přes NTLM / API klíč) nebo jiný účet.",
                     405 => "Služba metodu POST na této adrese nepřijímá — ověřte ve Swaggeru, zda není správně GET s parametrem.",
                     415 or 400 => "Služba nepřijala tělo požadavku — porovnejte s příkladem ve Swaggeru (názvy a typy polí).",
                     _ => "Podívejte se na tělo odpovědi níže.",
@@ -278,27 +316,15 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
                     $"{p.Value}{(p.ValidFrom is { } f ? $" od {f:d}" : "")}{(p.ValidTo is { } t ? $" do {t:d}" : "")}{(p.Active is { } a ? (a ? " (aktivní)" : " (neaktivní)") : "")}")));
             }
 
-            if (source.TokenStepDescription is { } tokenStep)
-            {
-                lines.Add("");
-                lines.Add(tokenStep);
-            }
-
-            lines.Add("");
             lines.Add($"Požadavek: POST {probe.Url}");
             lines.Add(probe.RequestBody);
-            lines.Add("");
             lines.Add($"Odpověď: {probe.StatusCode} {probe.ReasonPhrase} · Content-Type: {probe.ContentType ?? "(žádný)"}");
+            if (probe.OfferedAuthSchemes.Count > 0)
+                lines.Add($"WWW-Authenticate: {string.Join(", ", probe.OfferedAuthSchemes)}");
             lines.Add(string.IsNullOrWhiteSpace(probe.Body) ? "(prázdné tělo)" : probe.Body.Length > 4000 ? probe.Body[..4000] + "…" : probe.Body);
-            CardsApiProbe = string.Join("\n", lines);
-        }
-        catch (Exception ex)
-        {
-            CardsApiProbe = $"Zkouška selhala: {ex.GetBaseException().Message}\n\nKdyž jde o spojení: adresa není dostupná z nodů ACS (DNS, firewall), nebo certifikát interní CA (zaškrtněte „Neověřovat certifikát TLS“ a uložte). Když jde o přihlášení tokenem: zkontrolujte adresu přihlašovacího endpointu a tvar těla podle Swaggeru služby.";
         }
 
-        ActiveSection = "cards";
-        return RedirectToPage();
+        return lines;
     }
 
     public async Task<IActionResult> OnPostSmtpAsync(

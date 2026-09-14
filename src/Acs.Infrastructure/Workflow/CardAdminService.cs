@@ -17,10 +17,10 @@ public class CardAdminService(AcsDbContext db, WinPakClient winPak, AuditService
 {
     private ReaderGroupService Groups => groups ?? new ReaderGroupService(db);
 
-    /// <summary>Schválené položky čekající na zadání do WIN-PAK.</summary>
+    /// <summary>Schválené položky čekající na zadání do WIN-PAK (včetně karet zaměstnance — může jich mít víc).</summary>
     public Task<List<AccessRequestItem>> GetQueueAsync(CancellationToken ct = default)
         => db.AccessRequestItems
-            .Include(i => i.Request!).ThenInclude(r => r.TargetEmployee)
+            .Include(i => i.Request!).ThenInclude(r => r.TargetEmployee!).ThenInclude(e => e.Identifiers)
             .Include(i => i.Request!).ThenInclude(r => r.RequesterUser)
             .Include(i => i.Reader)
             .Include(i => i.ReaderGroup)
@@ -63,10 +63,12 @@ public class CardAdminService(AcsDbContext db, WinPakClient winPak, AuditService
 
         if (item.Request.Kind == RequestKind.Grant)
         {
+            // Oprávnění nese ve WIN-PAKu karta; konektor ho zapíše na všechny karty držitele.
             foreach (var al in accessLevels)
                 await winPak.AssignAccessLevelAsync(cardHolderId, al, ct);
             item.Status = RequestStatus.PushedToWinPak;
-            item.PushResult = $"API: přiřazeny access levely {string.Join(", ", accessLevels)}";
+            item.PushResult = $"API: přiřazeny access levely {string.Join(", ", accessLevels)}"
+                + await DescribeCardCoverageAsync(item.Request.TargetEmployeeId, cardHolderId, ct);
         }
         else
         {
@@ -107,6 +109,55 @@ public class CardAdminService(AcsDbContext db, WinPakClient winPak, AuditService
         await audit.LogAsync(userName, "item-confirmed-manually", "AccessRequestItem", item.Id.ToString(), null, ct);
         if (notifier is not null)
             await notifier.NotifyDecidedAsync(item.Id, ct);
+    }
+
+    /// <summary>
+    /// Člověk může mít víc karet a přístup má platit na všech. Po zápisu se proto u každé
+    /// platné karty z ACS ověří, že ji WIN-PAK zná a patří tomuto držiteli (jen na takové
+    /// konektor přístup zapsal); ostatní se vypíší, aby správce karet věděl, co dořešit.
+    /// Ověření je informativní — když konektor karty neumí vrátit, zápis tím neselže.
+    /// </summary>
+    private async Task<string> DescribeCardCoverageAsync(int employeeId, string cardHolderId, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        var cards = (await db.EmployeeIdentifiers
+                .Where(i => i.EmployeeId == employeeId && i.Type == IdentifierType.Card && i.IsActive)
+                .OrderBy(i => i.Id)
+                .ToListAsync(ct))
+            .Where(c => c.IsValidAt(now))
+            .Select(c => c.Value)
+            .Distinct()
+            .ToList();
+        if (cards.Count == 0)
+            return "";
+
+        List<string> covered = [], missing = [], foreign = [];
+        foreach (var card in cards)
+        {
+            try
+            {
+                var inWinPak = await winPak.GetCardAsync(card, ct);
+                if (inWinPak is null)
+                    missing.Add(card);
+                else if (inWinPak.CardHolderId is { Length: > 0 } owner && owner != cardHolderId)
+                    foreign.Add($"{card} (držitel {owner})");
+                else
+                    covered.Add(card);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException)
+            {
+                return $"; karty z ACS: {string.Join(", ", cards)} (ověření ve WIN-PAK se nezdařilo)";
+            }
+        }
+
+        var parts = new List<string>();
+        if (covered.Count > 0)
+            parts.Add($"přístup na kartách {string.Join(", ", covered)}");
+        if (missing.Count > 0)
+            parts.Add($"ve WIN-PAK chybí karty {string.Join(", ", missing)}");
+        if (foreign.Count > 0)
+            parts.Add($"jinému držiteli patří karty {string.Join(", ", foreign)}");
+        return "; " + string.Join("; ", parts);
     }
 
     private async Task<AccessRequestItem> LoadItemAsync(int itemId, CancellationToken ct)

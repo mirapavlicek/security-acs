@@ -111,7 +111,7 @@ public static class CardApiAuth
     public const string None = "None";
     public const string ApiKey = "ApiKey";
     public const string Basic = "Basic";
-    /// <summary>NTLM/Negotiate účtem domény — výchozí je servisní účet, kterým ACS čte AD.</summary>
+    /// <summary>NTLM účtem domény (ověření proti AD) — výchozí je servisní účet, kterým ACS čte AD.</summary>
     public const string Windows = "Windows";
     /// <summary>Pevný token v hlavičce <c>Authorization: Bearer</c>.</summary>
     public const string Bearer = "Bearer";
@@ -123,9 +123,9 @@ public static class CardApiAuth
 public record ApiIdentifier(string Value, DateTime? ValidFrom, DateTime? ValidTo, bool? Active, string? Note);
 
 /// <summary>
-/// Identifikační karty z integrační služby (<c>POST …/api/v0/Identifiers</c> s tělem
-/// <c>{ employeeNo, idIdentifierSubType }</c>; podtyp 3 = identifikační karta). Služba se
-/// ptá po zaměstnanci — jedno volání na osobní číslo, několik souběžně.
+/// Identifikátory z integrační služby (<c>POST …/api/v0/Identifiers</c> s tělem
+/// <c>{ employeeNo, idIdentifierSubType }</c>; podtyp 3 = identifikační karta, 4 = SPZ).
+/// Služba se ptá po zaměstnanci — jedno volání na osobní číslo a podtyp, několik souběžně.
 ///
 /// Podobu odpovědi dokumentace neuvádí; rozbor je proto tolerantní (pole nebo objekt
 /// s polem, hodnota pod různými názvy) a v Nastavení je zkouška, která ukáže surovou
@@ -133,9 +133,15 @@ public record ApiIdentifier(string Value, DateTime? ValidFrom, DateTime? ValidTo
 /// </summary>
 public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCardSource.Options options) : ICardSource
 {
+    /// <param name="SubType">Podtyp identifikační karty (3).</param>
+    /// <param name="PlateSubType">Podtyp SPZ (4); null = SPZ se z API nestahují.</param>
     public sealed record Options(
         string Url, int SubType, string? ApiKeyHeader, string? ApiKey, string? User, string? Password, string Auth = CardApiAuth.None,
-        string? BearerToken = null, string? TokenUrl = null, string? TokenBody = null, string? TokenField = null);
+        string? BearerToken = null, string? TokenUrl = null, string? TokenBody = null, string? TokenField = null,
+        int? PlateSubType = null);
+
+    public const int DefaultCardSubType = 3;
+    public const int DefaultPlateSubType = 4;
 
     public const string DefaultTokenBody = "{\"username\":\"{user}\",\"password\":\"{password}\"}";
 
@@ -145,15 +151,37 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
     /// <summary>Popis posledního získání tokenu pro zkoušku (stav, tělo) — bez tokenu samotného.</summary>
     public string? TokenStepDescription { get; private set; }
 
+    /// <summary>Jak se ACS ke službě hlásí (režim, účet, doména) — pro zkoušku v Nastavení, bez hesla.</summary>
+    public string AuthDescription { get; private set; } = DescribeAuth(options, null);
+
     private const int Parallelism = 4;
 
-    public string Description => $"integrační API {options.Url} (podtyp {options.SubType})";
+    public string Description => $"integrační API {options.Url} (podtyp {options.SubType}"
+        + (options.PlateSubType is { } plate ? $", SPZ podtyp {plate})" : ")");
+
+    /// <summary>Podtypy, na které se služba ptá, a typ identifikátoru, který z nich vznikne.</summary>
+    public IReadOnlyList<(int SubType, IdentifierType Type)> SubTypes => options.PlateSubType is { } plate
+        ? [(options.SubType, IdentifierType.Card), (plate, IdentifierType.LicensePlate)]
+        : [(options.SubType, IdentifierType.Card)];
+
+    /// <summary>Podtyp karet z nastavení: prázdné, nečíselné nebo nekladné (např. omylem uložená 0) = výchozí 3.</summary>
+    public static int ParseCardSubType(string? raw)
+        => int.TryParse(raw?.Trim(), out var value) && value > 0 ? value : DefaultCardSubType;
+
+    /// <summary>Podtyp SPZ z nastavení: prázdné = výchozí 4, <c>0</c> (nebo záporné) = nestahovat.</summary>
+    public static int? ParsePlateSubType(string? raw)
+        => string.IsNullOrWhiteSpace(raw) ? DefaultPlateSubType
+            : int.TryParse(raw.Trim(), out var value) && value > 0 ? value : null;
+
+    /// <summary>Zvolený způsob přihlášení (<see cref="CardApiAuth"/>) — pro rady ve zkoušce.</summary>
+    public string Auth => options.Auth;
 
     public static async Task<IdentifiersApiCardSource> CreateAsync(SettingsService settings, IHttpClientFactory httpClientFactory, CancellationToken ct)
     {
         var url = await settings.GetAsync(SettingKeys.CardsApiUrl, ct)
             ?? throw new InvalidOperationException("Není nastavena adresa integračního API pro karty (Nastavení → Karty).");
-        var subType = int.TryParse(await settings.GetAsync(SettingKeys.CardsApiSubType, ct), out var parsed) ? parsed : 3;
+        var subType = ParseCardSubType(await settings.GetAsync(SettingKeys.CardsApiSubType, ct));
+        var plateSubType = ParsePlateSubType(await settings.GetAsync(SettingKeys.CardsApiPlateSubType, ct));
         var auth = await settings.GetAsync(SettingKeys.CardsApiAuth, ct) ?? CardApiAuth.None;
         var user = await settings.GetAsync(SettingKeys.CardsApiUser, ct);
         var password = await settings.GetAsync(SettingKeys.CardsApiPassword, ct);
@@ -171,32 +199,66 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
             await settings.GetAsync(SettingKeys.CardsApiBearerToken, ct),
             await settings.GetAsync(SettingKeys.CardsApiTokenUrl, ct),
             await settings.GetAsync(SettingKeys.CardsApiTokenBody, ct),
-            await settings.GetAsync(SettingKeys.CardsApiTokenField, ct));
+            await settings.GetAsync(SettingKeys.CardsApiTokenField, ct),
+            plateSubType);
 
         // Interní služba často běží s certifikátem vlastní CA, kterou nody neznají.
         var ignoreTls = await settings.GetAsync(SettingKeys.CardsApiIgnoreTls, ct) == "true";
         if (auth == CardApiAuth.Windows || ignoreTls)
         {
-            // Windows (NTLM/Negotiate) vyžaduje vlastní handler s přihlašovacími údaji — na Linuxu
-            // ho .NET vyřídí spravovaným NTLM, případně přes GSSAPI (balík gssntlmssp).
-            var handler = new HttpClientHandler { PreAuthenticate = true };
+            // Windows účet vyžaduje vlastní handler s přihlašovacími údaji (viz NtlmCredentials).
+            var handler = new HttpClientHandler();
             if (ignoreTls)
                 handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
+            System.Net.NetworkCredential? credential = null;
             if (auth == CardApiAuth.Windows)
             {
                 if (string.IsNullOrWhiteSpace(user))
                     throw new InvalidOperationException("Přihlášení Windows účtem: není zadaný účet ani servisní účet pro AD (Nastavení → Active Directory).");
-                handler.Credentials = WindowsCredential(user, password ?? "", await settings.GetLdapDomainAsync(ct));
+                credential = WindowsCredential(user, password ?? "", await settings.GetLdapDomainAsync(ct));
+                handler.Credentials = NtlmCredentials(url, credential);
             }
 
-            return new IdentifiersApiCardSource(new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(2) }, options);
+            return new IdentifiersApiCardSource(new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(2) }, options)
+            {
+                AuthDescription = DescribeAuth(options, credential),
+            };
         }
 
         return new IdentifiersApiCardSource(httpClientFactory.CreateClient(CardSourceFactory.HttpClientName), options);
     }
 
+    private static string DescribeAuth(Options options, System.Net.NetworkCredential? credential) => options.Auth switch
+    {
+        CardApiAuth.Windows when credential is not null => $"Windows účet domény přes NTLM — uživatel „{credential.UserName}“, doména „{(string.IsNullOrEmpty(credential.Domain) ? "(žádná — UPN)" : credential.Domain)}“, pracovní stanice „{Environment.MachineName}“.",
+        CardApiAuth.Windows => $"Windows účet domény přes NTLM — účet „{options.User}“.",
+        CardApiAuth.Token => $"Token z přihlášení na {options.TokenUrl ?? "(endpoint nenastaven)"} účtem „{options.User}“.",
+        CardApiAuth.Bearer => "Pevný token (Authorization: Bearer).",
+        CardApiAuth.ApiKey => $"API klíč v hlavičce {(string.IsNullOrWhiteSpace(options.ApiKeyHeader) ? "X-Api-Key" : options.ApiKeyHeader)}.",
+        CardApiAuth.Basic => $"Basic účtem „{options.User}“.",
+        _ => "bez přihlášení.",
+    };
+
+    /// <summary>Schéma HTTP autentizace, kterým se účet domény ověřuje proti AD.</summary>
+    public const string NtlmScheme = "NTLM";
+
     /// <summary>
-    /// Účet pro NTLM/Negotiate z toho, jak je zapsaný v nastavení: <c>DOMÉNA\uživatel</c>,
+    /// Přihlašovací údaje zaregistrované jen pro schéma <c>NTLM</c> (pro celý server služby).
+    /// Služba s integrovaným přihlášením Windows nabízí zpravidla <c>Negotiate</c> i <c>NTLM</c>
+    /// a .NET by dal přednost Negotiate (SPNEGO → Kerberos), což na linuxových nodech bez
+    /// Kerberos ticketu a konfigurace krb5 skončí 401. Registrací pouze pod NTLM se výzva
+    /// Negotiate ignoruje a účet se ověří proti AD přes NTLM — spravovanou implementací .NET
+    /// (<c>System.Net.Security.UseManagedNtlm</c> v Acs.Web.csproj), tedy bez balíku gssntlmssp.
+    /// </summary>
+    public static System.Net.CredentialCache NtlmCredentials(string url, System.Net.NetworkCredential credential)
+    {
+        var cache = new System.Net.CredentialCache();
+        cache.Add(new Uri(new Uri(url).GetLeftPart(UriPartial.Authority)), NtlmScheme, credential);
+        return cache;
+    }
+
+    /// <summary>
+    /// Účet pro NTLM z toho, jak je zapsaný v nastavení: <c>DOMÉNA\uživatel</c>,
     /// UPN <c>uživatel@doména</c> (předá se celý), nebo prosté jméno + doména z nastavení AD.
     /// </summary>
     public static System.Net.NetworkCredential WindowsCredential(string account, string password, string? defaultDomain)
@@ -218,16 +280,18 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        foreach (var batch in numbers.Chunk(Parallelism))
+        // Jeden dotaz na osobní číslo a podtyp (karty, případně SPZ).
+        var queries = numbers.SelectMany(_ => SubTypes, (number, sub) => (number, sub.SubType, sub.Type));
+        foreach (var batch in queries.Chunk(Parallelism))
         {
-            var results = await Task.WhenAll(batch.Select(async number => (number, identifiers: await QueryAsync(number, ct))));
-            foreach (var (number, identifiers) in results)
+            var results = await Task.WhenAll(batch.Select(async q => (q.number, q.Type, identifiers: await QueryAsync(q.number, q.SubType, ct))));
+            foreach (var (number, type, identifiers) in results)
             {
                 foreach (var identifier in identifiers)
                 {
                     if (identifier.Active == false)
                         continue;
-                    yield return new CardRecord(null, number, identifier.Value, IdentifierType.Card,
+                    yield return new CardRecord(null, number, identifier.Value, type,
                         identifier.Note, identifier.ValidFrom, identifier.ValidTo);
                 }
             }
@@ -237,26 +301,38 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
     /// <summary>Výsledek zkoušky z Nastavení — všechno, co je třeba k rozlišení „špatná adresa“, „jiný formát čísla“ a „jiné schéma odpovědi“.</summary>
     public sealed record ProbeResult(
         string Url,
+        int SubType,
         string RequestBody,
         int StatusCode,
         string? ReasonPhrase,
         string? ContentType,
         string Body,
-        IReadOnlyList<ApiIdentifier> Parsed)
+        IReadOnlyList<ApiIdentifier> Parsed,
+        IReadOnlyList<string> OfferedAuthSchemes)
     {
         public bool Success => StatusCode is >= 200 and < 300;
+
+        /// <summary>Služba při 401 nabídla jen jiná schémata než NTLM (typicky samotné Negotiate) — přihlášení Windows účtem přes NTLM nemá jak proběhnout.</summary>
+        public bool NtlmNotOffered => StatusCode == 401 && OfferedAuthSchemes.Count > 0
+            && !OfferedAuthSchemes.Contains(NtlmScheme, StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Služba odmítla (401) bez jakékoli výzvy <c>WWW-Authenticate</c> — Windows účet nemá na co odpovědět; služba zřejmě čeká token.</summary>
+        public bool NoChallenge => StatusCode == 401 && OfferedAuthSchemes.Count == 0;
     }
 
     /// <summary>Zkouška z Nastavení: odeslaný požadavek, odpověď se stavem a hlavičkami a co z ní konektor přečte.</summary>
-    public async Task<ProbeResult> ProbeAsync(string employeeNo, CancellationToken ct = default)
+    /// <param name="subType">Podtyp identifikátoru; null = podtyp karet z nastavení.</param>
+    public async Task<ProbeResult> ProbeAsync(string employeeNo, int? subType = null, CancellationToken ct = default)
     {
-        var requestBody = JsonSerializer.Serialize(new { employeeNo, idIdentifierSubType = options.SubType });
-        using var request = await BuildRequestAsync(employeeNo, ct);
+        var effectiveSubType = subType ?? options.SubType;
+        var requestBody = JsonSerializer.Serialize(new { employeeNo, idIdentifierSubType = effectiveSubType });
+        using var request = await BuildRequestAsync(employeeNo, effectiveSubType, ct);
         using var response = await http.SendAsync(request, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
         var parsed = response.IsSuccessStatusCode ? SafeParse(body) : [];
-        return new ProbeResult(options.Url, requestBody, (int)response.StatusCode, response.ReasonPhrase,
-            response.Content.Headers.ContentType?.ToString(), body, parsed);
+        return new ProbeResult(options.Url, effectiveSubType, requestBody, (int)response.StatusCode, response.ReasonPhrase,
+            response.Content.Headers.ContentType?.ToString(), body, parsed,
+            response.Headers.WwwAuthenticate.Select(h => h.Scheme).ToList());
     }
 
     private static IReadOnlyList<ApiIdentifier> SafeParse(string body)
@@ -271,11 +347,11 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         }
     }
 
-    private async Task<IReadOnlyList<ApiIdentifier>> QueryAsync(string employeeNo, CancellationToken ct)
+    private async Task<IReadOnlyList<ApiIdentifier>> QueryAsync(string employeeNo, int subType, CancellationToken ct)
     {
         try
         {
-            return Parse(await PostAsync(employeeNo, ct));
+            return Parse(await PostAsync(employeeNo, subType, ct));
         }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
@@ -284,11 +360,11 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         }
     }
 
-    private async Task<HttpRequestMessage> BuildRequestAsync(string employeeNo, CancellationToken ct)
+    private async Task<HttpRequestMessage> BuildRequestAsync(string employeeNo, int subType, CancellationToken ct)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, options.Url)
         {
-            Content = JsonContent.Create(new { employeeNo, idIdentifierSubType = options.SubType }),
+            Content = JsonContent.Create(new { employeeNo, idIdentifierSubType = subType }),
         };
         request.Headers.Accept.ParseAdd("application/json");
         if (options.Auth == CardApiAuth.Bearer && !string.IsNullOrWhiteSpace(options.BearerToken))
@@ -300,7 +376,7 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         if (options.Auth == CardApiAuth.Basic && !string.IsNullOrWhiteSpace(options.User))
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic",
                 Convert.ToBase64String(Encoding.UTF8.GetBytes($"{options.User}:{options.Password}")));
-        // Windows (NTLM/Negotiate) vyřizuje handler klienta podle Credentials.
+        // Windows účet (NTLM) vyřizuje handler klienta podle Credentials — viz NtlmCredentials.
         return request;
     }
 
@@ -388,15 +464,15 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         return null;
     }
 
-    private async Task<string> PostAsync(string employeeNo, CancellationToken ct)
+    private async Task<string> PostAsync(string employeeNo, int subType, CancellationToken ct)
     {
-        using var request = await BuildRequestAsync(employeeNo, ct);
+        using var request = await BuildRequestAsync(employeeNo, subType, ct);
         using var response = await http.SendAsync(request, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
         {
             throw new HttpRequestException(
-                $"Integrační API odpovědělo {(int)response.StatusCode} pro zaměstnance {employeeNo}: {Truncate(body, 300)}",
+                $"Integrační API odpovědělo {(int)response.StatusCode} pro zaměstnance {employeeNo} (podtyp {subType}): {Truncate(body, 300)}",
                 null, response.StatusCode);
         }
 

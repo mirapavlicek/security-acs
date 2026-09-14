@@ -7,6 +7,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!--
+      NTLM klienta (integrační API karet přihlašované účtem domény) spravovanou implementací .NET.
+      Bez toho .NET na Linuxu volá GSSAPI a bez balíku gssntlmssp (nebo s jeho starší verzí)
+      NTLM selže. Serverové Negotiate (přihlášení uživatelů Kerberosem) tento přepínač neovlivní.
+    -->
+    <RuntimeHostConfigurationOption Include="System.Net.Security.UseManagedNtlm" Value="true" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Přihlášení účtem Windows (Negotiate: Kerberos / NTLM) přímo v Kestrelu. -->
     <PackageReference Include="Microsoft.AspNetCore.Authentication.Negotiate" Version="10.0.*" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.*">

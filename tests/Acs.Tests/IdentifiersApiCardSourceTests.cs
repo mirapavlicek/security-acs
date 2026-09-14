@@ -141,6 +141,145 @@ public sealed class IdentifiersApiCardSourceTests : IDisposable
         Assert.False((await _db.EmployeeIdentifiers.SingleAsync(i => i.Value == "OLD")).IsActive);
     }
 
+    private sealed class ListSource(params CardRecord[] records) : ICardSource
+    {
+        public string Description => "seznam";
+
+        public async IAsyncEnumerable<CardRecord> ReadAsync(IReadOnlyList<Employee> employees,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            foreach (var record in records)
+                yield return record;
+            await Task.CompletedTask;
+        }
+    }
+
+    [Fact]
+    public async Task Vice_karet_se_zalozi_vsechny_a_stejna_karta_u_tehoz_cloveka_jen_jednou()
+    {
+        _db.Employees.AddRange(
+            new Employee { FirstName = "Miroslav", LastName = "Pavlíček", PersonalNumber = "13483", IsActive = true },
+            new Employee { FirstName = "Jana", LastName = "Nová", PersonalNumber = "20001", IsActive = true });
+        await _db.SaveChangesAsync();
+
+        var source = new ListSource(
+            new CardRecord(null, "13483", "100234", IdentifierType.Card, ValidTo: new DateTime(2027, 1, 1)),
+            new CardRecord(null, "13483", "100235", IdentifierType.Card),
+            new CardRecord(null, "13483", "100 234", IdentifierType.Card, ValidTo: new DateTime(2030, 1, 1)), // duplicita (po normalizaci)
+            new CardRecord(null, "13483", "100234", IdentifierType.LicensePlate),                             // jiný typ = jiný identifikátor
+            new CardRecord(null, "20001", "100234", IdentifierType.Card));                                     // jiný člověk = jiný identifikátor
+
+        var result = await new CardSyncService(_db, new FixedSourceFactory(source), new AuditService(_db)).SyncAsync("test");
+
+        Assert.Equal((4, 1), (result.Added, result.Duplicates));
+        Assert.Contains("přeskočeno duplicit 1", result.ToString());
+        var pavlicek = await _db.EmployeeIdentifiers.Include(i => i.Employee)
+            .Where(i => i.Employee!.PersonalNumber == "13483" && i.Type == IdentifierType.Card)
+            .OrderBy(i => i.Id).ToListAsync();
+        Assert.Equal(["100234", "100235"], pavlicek.Select(i => i.Value));
+        // První záznam platí — platnost z duplicity se nepřepsala.
+        Assert.Equal(new DateTime(2027, 1, 1), pavlicek[0].ValidTo);
+        Assert.Equal(4, await _db.EmployeeIdentifiers.CountAsync());
+    }
+
+    [Fact]
+    public async Task Duplicity_uz_v_databazi_synchronizaci_neshodi_a_deaktivuji_se()
+    {
+        var employee = new Employee { FirstName = "Miroslav", LastName = "Pavlíček", PersonalNumber = "13483", IsActive = true };
+        _db.Employees.Add(employee);
+        await _db.SaveChangesAsync();
+        _db.EmployeeIdentifiers.AddRange(
+            new EmployeeIdentifier { EmployeeId = employee.Id, Type = IdentifierType.Card, Value = "100234", Source = RecordSource.Imported, IsActive = true },
+            new EmployeeIdentifier { EmployeeId = employee.Id, Type = IdentifierType.Card, Value = "100234", Source = RecordSource.Imported, IsActive = true });
+        await _db.SaveChangesAsync();
+
+        var source = new ListSource(new CardRecord(null, "13483", "100234", IdentifierType.Card));
+        var result = await new CardSyncService(_db, new FixedSourceFactory(source), new AuditService(_db)).SyncAsync("test");
+
+        Assert.Equal((0, 1), (result.Added, result.Deactivated));
+        var rows = await _db.EmployeeIdentifiers.OrderBy(i => i.Id).ToListAsync();
+        Assert.True(rows[0].IsActive);
+        Assert.False(rows[1].IsActive);
+    }
+
+    [Fact]
+    public async Task SPZ_se_stahuji_podtypem_4_a_zakladaji_jako_SPZ()
+    {
+        _db.Employees.Add(new Employee { FirstName = "Miroslav", LastName = "Pavlíček", PersonalNumber = "13483", IsActive = true });
+        await _db.SaveChangesAsync();
+
+        var stub = new Stub((_, body) => body.Contains("\"idIdentifierSubType\":3")
+            ? Json("""[{"identifier":"100234"}]""")
+            : body.Contains("\"idIdentifierSubType\":4")
+                ? Json("""[{"identifier":"1AB 2345"},{"identifier":"9ZZ 0000","active":false}]""")
+                : new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("") });
+        var source = new IdentifiersApiCardSource(new HttpClient(stub),
+            new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, null, null, null, null, PlateSubType: 4));
+
+        var result = await new CardSyncService(_db, new FixedSourceFactory(source), new AuditService(_db)).SyncAsync("test");
+
+        // Dva dotazy na jednoho zaměstnance: karty (3) a SPZ (4).
+        Assert.Equal([3, 4], stub.Requests.Select(r => r.Body.GetProperty("idIdentifierSubType").GetInt32()).Order());
+        Assert.Equal(2, result.Added);
+        var identifiers = await _db.EmployeeIdentifiers.OrderBy(i => i.Type).ToListAsync();
+        Assert.Equal(IdentifierType.Card, identifiers[0].Type);
+        Assert.Equal(IdentifierType.LicensePlate, identifiers[1].Type);
+        Assert.Equal(EmployeeIdentifier.Normalize("1AB 2345"), identifiers[1].Value);
+        Assert.Contains("SPZ podtyp 4", source.Description);
+    }
+
+    [Theory]
+    [InlineData(null, 4)]
+    [InlineData("", 4)]
+    [InlineData("0", null)]
+    [InlineData("-1", null)]
+    [InlineData("7", 7)]
+    [InlineData("x", null)]
+    public void Podtyp_SPZ_z_nastaveni(string? raw, int? expected)
+        => Assert.Equal(expected, IdentifiersApiCardSource.ParsePlateSubType(raw));
+
+    [Theory]
+    [InlineData(null, 3)]
+    [InlineData("", 3)]
+    [InlineData("0", 3)]   // omylem uložená nula nesmí jít do dotazu
+    [InlineData("-2", 3)]
+    [InlineData(" 5 ", 5)]
+    [InlineData("x", 3)]
+    public void Podtyp_karet_z_nastaveni_nikdy_neni_nula(string? raw, int expected)
+        => Assert.Equal(expected, IdentifiersApiCardSource.ParseCardSubType(raw));
+
+    [Fact]
+    public async Task Zkouska_pozna_401_bez_vyzvy_WWW_Authenticate()
+    {
+        var stub = new Stub((_, _) => new HttpResponseMessage(HttpStatusCode.Unauthorized)
+        {
+            Content = new StringContent("""{"conclusion":false,"errorDescription":{"errorType":"NotAuthorized","errorMessage":"No valid token available."}}""", Encoding.UTF8, "application/json"),
+        });
+        var source = new IdentifiersApiCardSource(new HttpClient(stub),
+            new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, null, null, "svc", "pwd", CardApiAuth.Windows));
+
+        var probe = await source.ProbeAsync("13483");
+
+        Assert.True(probe.NoChallenge);
+        Assert.False(probe.NtlmNotOffered);
+        Assert.Equal(CardApiAuth.Windows, source.Auth);
+    }
+
+    [Fact]
+    public async Task Zkouska_jde_poslat_na_zvoleny_podtyp()
+    {
+        var stub = new Stub((_, _) => Json("[]"));
+        var source = new IdentifiersApiCardSource(new HttpClient(stub),
+            new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, null, null, null, null, PlateSubType: 4));
+
+        var probe = await source.ProbeAsync("13483", 4);
+
+        Assert.Equal(4, probe.SubType);
+        Assert.Contains("\"idIdentifierSubType\":4", probe.RequestBody);
+        Assert.Equal(4, stub.Requests.Single().Body.GetProperty("idIdentifierSubType").GetInt32());
+        Assert.Equal([(3, IdentifierType.Card), (4, IdentifierType.LicensePlate)], source.SubTypes);
+    }
+
     [Theory]
     [InlineData("NNH\\svc-acs", null, "svc-acs", "NNH")]
     [InlineData("svc-acs@nnh.local", "nnh.local", "svc-acs@nnh.local", "")]
@@ -151,6 +290,61 @@ public sealed class IdentifiersApiCardSourceTests : IDisposable
         var credential = IdentifiersApiCardSource.WindowsCredential(account, "pwd", defaultDomain);
 
         Assert.Equal((user, domain, "pwd"), (credential.UserName, credential.Domain, credential.Password));
+    }
+
+    [Fact]
+    public void Windows_ucet_se_registruje_jen_pro_NTLM_a_pro_cely_server_sluzby()
+    {
+        var credential = new NetworkCredential("svc-acs", "pwd", "NNH");
+        var cache = IdentifiersApiCardSource.NtlmCredentials("https://ws-integrations.nnh.local/api/v0/Identifiers", credential);
+
+        var api = new Uri("https://ws-integrations.nnh.local/api/v0/Identifiers");
+        // Handler .NET dává přednost Negotiate (SPNEGO → Kerberos); pro něj nesmí být žádný účet, aby se použilo NTLM.
+        Assert.Null(cache.GetCredential(api, "Negotiate"));
+        Assert.Null(cache.GetCredential(api, "Basic"));
+        Assert.Same(credential, cache.GetCredential(api, "NTLM"));
+        Assert.Same(credential, cache.GetCredential(api, "ntlm"));
+        // Stejný server, jiná cesta (přesměrování, přihlašovací endpoint) — pořád NTLM stejným účtem.
+        Assert.Same(credential, cache.GetCredential(new Uri("https://ws-integrations.nnh.local/api/v0/Auth/Login"), "NTLM"));
+        Assert.Null(cache.GetCredential(new Uri("https://jiny-server.nnh.local/api/v0/Identifiers"), "NTLM"));
+    }
+
+    [Fact]
+    public async Task Zkouska_pozna_ze_sluzba_NTLM_nenabizi()
+    {
+        var stub = new Stub((_, _) =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.Unauthorized) { Content = new StringContent("") };
+            response.Headers.WwwAuthenticate.Add(new AuthenticationHeaderValue("Negotiate"));
+            return response;
+        });
+        var source = new IdentifiersApiCardSource(new HttpClient(stub),
+            new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, null, null, "svc", "pwd", CardApiAuth.Windows));
+
+        var probe = await source.ProbeAsync("1");
+
+        Assert.Equal(401, probe.StatusCode);
+        Assert.Equal(["Negotiate"], probe.OfferedAuthSchemes);
+        Assert.True(probe.NtlmNotOffered);
+    }
+
+    [Fact]
+    public async Task Zkouska_vypise_nabizena_schemata_a_NTLM_mezi_nimi_neni_chyba()
+    {
+        var stub = new Stub((_, _) =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.Unauthorized) { Content = new StringContent("") };
+            response.Headers.WwwAuthenticate.Add(new AuthenticationHeaderValue("Negotiate"));
+            response.Headers.WwwAuthenticate.Add(new AuthenticationHeaderValue("NTLM"));
+            return response;
+        });
+        var source = new IdentifiersApiCardSource(new HttpClient(stub),
+            new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, null, null, "svc", "pwd", CardApiAuth.Windows));
+
+        var probe = await source.ProbeAsync("1");
+
+        Assert.Equal(["Negotiate", "NTLM"], probe.OfferedAuthSchemes);
+        Assert.False(probe.NtlmNotOffered);
     }
 
     [Fact]

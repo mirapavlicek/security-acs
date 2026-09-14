@@ -30,7 +30,7 @@
 <div class="card">
     <table class="data">
         <thead>
-        <tr><th>Žádost</th><th>Typ</th><th>Zaměstnanec</th><th>Karta / holder</th><th>Čtečka</th><th>Access level</th><th>Schváleno</th><th></th></tr>
+        <tr><th>Žádost</th><th>Typ</th><th>Zaměstnanec</th><th>Karty / holder</th><th>Čtečka</th><th>Access level</th><th>Schváleno</th><th></th></tr>
         </thead>
         <tbody>
         @foreach (var item in Model.Queue)
@@ -39,7 +39,18 @@
                 <td><a asp-page="/Requests/Detail" asp-route-id="@item.RequestId">#@item.RequestId</a></td>
                 <td>@(item.Request?.Kind == RequestKind.Revoke ? Html.Raw("<span class=\"badge btn-danger\">odebrání</span>") : Html.Raw("<span class=\"badge\">udělení</span>"))</td>
                 <td>@item.Request?.TargetEmployee?.FullName</td>
-                <td class="muted">@(item.Request?.TargetEmployee?.CardNumber ?? "—") / @(item.Request?.TargetEmployee?.WinPakCardHolderId ?? "—")</td>
+                @{
+                    // Přístup se zapisuje na všechny platné karty zaměstnance, proto se ukazují všechny.
+                    var now = DateTime.UtcNow;
+                    var cards = (item.Request?.TargetEmployee?.Identifiers ?? [])
+                        .Where(i => i.Type == IdentifierType.Card && i.IsValidAt(now))
+                        .Select(i => i.Value)
+                        .Distinct()
+                        .ToList();
+                    if (cards.Count == 0 && item.Request?.TargetEmployee?.CardNumber is { } primary)
+                        cards.Add(primary);
+                }
+                <td class="muted" title="@(cards.Count > 1 ? $"{cards.Count} karty — přístup se zapíše na všechny" : null)">@(cards.Count > 0 ? string.Join(", ", cards) : "—") / @(item.Request?.TargetEmployee?.WinPakCardHolderId ?? "—")</td>
                 <td>@(item.Reader?.Name ?? $"Skupina: {item.ReaderGroup?.Name}")</td>
                 <td class="muted">@(item.Reader is null ? "dle čteček skupiny" : item.Reader.AccessLevelExternalId ?? "nenamapován")</td>
                 <td class="muted">@item.DecidedAt?.ToString("yyyy-MM-dd HH:mm")</td>

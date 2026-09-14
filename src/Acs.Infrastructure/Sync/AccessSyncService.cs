@@ -44,13 +44,21 @@ public class AccessSyncService(AcsDbContext db, WinPakClient winPak, AuditServic
         var holders = await winPak.GetCardHoldersAsync(ct);
         var holderById = holders.ToDictionary(h => h.Id);
         var holderByCard = holders
-            .SelectMany(h => h.Cards.Select(c => (c.CardNumber, Holder: h)))
+            .SelectMany(h => h.Cards.Select(c => (CardNumber: EmployeeIdentifier.Normalize(c.CardNumber), Holder: h)))
             .GroupBy(x => x.CardNumber)
             .ToDictionary(g => g.Key, g => g.First().Holder);
 
-        var employees = await db.Employees
-            .Where(e => e.WinPakCardHolderId != null || e.CardNumber != null)
-            .ToListAsync(ct);
+        // Všechny aktivní karty zaměstnanců — člověk může mít víc karet a držitel se
+        // dopáruje přes kteroukoli z nich, ne jen přes hlavní číslo karty.
+        var cardsByEmployee = (await db.EmployeeIdentifiers
+                .Where(i => i.Type == IdentifierType.Card && i.IsActive)
+                .ToListAsync(ct))
+            .GroupBy(i => i.EmployeeId)
+            .ToDictionary(g => g.Key, g => g.Select(i => i.Value).ToList());
+
+        var employees = (await db.Employees.ToListAsync(ct))
+            .Where(e => e.WinPakCardHolderId != null || e.CardNumber != null || cardsByEmployee.ContainsKey(e.Id))
+            .ToList();
 
         // Mapa access level → čtečky (jeden access level může otvírat více čteček).
         var readersByAccessLevel = (await db.Readers
@@ -67,11 +75,20 @@ public class AccessSyncService(AcsDbContext db, WinPakClient winPak, AuditServic
             WinPakCardHolder? holder = null;
             if (employee.WinPakCardHolderId is not null)
                 holderById.TryGetValue(employee.WinPakCardHolderId, out holder);
-            if (holder is null && employee.CardNumber is not null
-                && holderByCard.TryGetValue(employee.CardNumber, out var byCard))
+            if (holder is null)
             {
-                holder = byCard;
-                employee.WinPakCardHolderId ??= holder.Id; // dopárování
+                IEnumerable<string> candidates = employee.CardNumber is not null ? [employee.CardNumber] : [];
+                if (cardsByEmployee.TryGetValue(employee.Id, out var cards))
+                    candidates = candidates.Concat(cards);
+                foreach (var cardNumber in candidates)
+                {
+                    if (holderByCard.TryGetValue(EmployeeIdentifier.Normalize(cardNumber), out var byCard))
+                    {
+                        holder = byCard;
+                        employee.WinPakCardHolderId ??= holder.Id; // dopárování
+                        break;
+                    }
+                }
             }
 
             if (holder is null)

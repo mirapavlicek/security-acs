@@ -166,4 +166,22 @@ public sealed class AccessSyncTests : IDisposable
         await _db.Entry(_employee).ReloadAsync();
         Assert.Equal("CH-9", _employee.WinPakCardHolderId); // dopárováno
     }
+
+    [Fact]
+    public async Task Holder_MatchedByAnyOfEmployeeCards()
+    {
+        // Hlavní číslo karty WIN-PAK nezná, druhou (evidovanou v identifikátorech) ano.
+        _employee.WinPakCardHolderId = null;
+        _employee.CardNumber = "100234";
+        _db.EmployeeIdentifiers.AddRange(
+            new EmployeeIdentifier { EmployeeId = _employee.Id, Type = IdentifierType.Card, Value = "100234", IsActive = true },
+            new EmployeeIdentifier { EmployeeId = _employee.Id, Type = IdentifierType.Card, Value = "555777", IsActive = true });
+        await _db.SaveChangesAsync();
+
+        var result = await CreateService(Holder("CH-9", ["AL-01"], card: "555-777")).SyncAsync("test");
+
+        Assert.Equal(1, result.ExternallyGranted);
+        await _db.Entry(_employee).ReloadAsync();
+        Assert.Equal("CH-9", _employee.WinPakCardHolderId);
+    }
 }

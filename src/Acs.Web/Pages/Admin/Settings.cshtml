@@ -304,22 +304,25 @@
 
         <fieldset style="border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.9rem;margin:0.6rem 0">
             <legend class="muted">Integrační API</legend>
-            <p class="hint">Na adresu se pro každého zaměstnance pošle <span class="mono">POST { "employeeNo": "&lt;osobní číslo&gt;", "idIdentifierSubType": 3 }</span>; 3 = identifikační karta. Zaměstnanec bez karty smí vrátit 404.</p>
+            <p class="hint">Na adresu se pro každého zaměstnance pošle <span class="mono">POST { "employeeNo": "&lt;osobní číslo&gt;", "idIdentifierSubType": 3 }</span> — jednou pro karty (podtyp 3) a jednou pro SPZ (podtyp 4). Zaměstnanec bez karty či SPZ smí vrátit 404.</p>
             <label>Adresa</label>
             <input type="text" name="CardsApiUrl" value="@Model.Values[SettingKeys.CardsApiUrl]" placeholder="https://ws-integrations.nnh.local/api/v0/Identifiers" />
-            <label>Podtyp identifikátoru (idIdentifierSubType)</label>
-            <input type="number" name="CardsApiSubType" value="@(Model.Values[SettingKeys.CardsApiSubType] ?? "3")" style="width:8rem" />
+            <label>Podtyp karet (idIdentifierSubType)</label>
+            <input type="number" name="CardsApiSubType" min="1" value="@(Acs.Infrastructure.Sync.IdentifiersApiCardSource.ParseCardSubType(Model.Values[SettingKeys.CardsApiSubType]))" style="width:8rem" />
+            <label>Podtyp SPZ (idIdentifierSubType; prázdné = SPZ z API nestahovat)</label>
+            @{ var plateSubType = Acs.Infrastructure.Sync.IdentifiersApiCardSource.ParsePlateSubType(Model.Values[SettingKeys.CardsApiPlateSubType]); }
+            <input type="number" name="CardsApiPlateSubType" value="@(plateSubType?.ToString() ?? "")" placeholder="4" style="width:8rem" />
             <label>Přihlášení</label>
             @{ var cardsAuth = Model.Values[SettingKeys.CardsApiAuth] ?? "None"; }
             <select name="CardsApiAuth">
                 <option value="None" selected="@(cardsAuth == "None")">bez přihlášení</option>
                 <option value="Token" selected="@(cardsAuth == "Token")">Token z přihlášení (POST uživatel + heslo na endpoint služby, pak Bearer)</option>
                 <option value="Bearer" selected="@(cardsAuth == "Bearer")">Pevný token (Authorization: Bearer)</option>
-                <option value="Windows" selected="@(cardsAuth == "Windows")">Windows účet domény (NTLM/Negotiate)</option>
+                <option value="Windows" selected="@(cardsAuth == "Windows")">Windows účet domény (NTLM — ověření proti AD)</option>
                 <option value="ApiKey" selected="@(cardsAuth == "ApiKey")">API klíč v hlavičce</option>
                 <option value="Basic" selected="@(cardsAuth == "Basic")">Basic (uživatel a heslo)</option>
             </select>
-            <p class="hint">Služba Identifiers odpovídá „No valid token available“ — chce token. Buď ho vydává natrvalo (<em>Pevný token</em>), nebo se získává přihlášením (<em>Token z přihlášení</em>): adresu přihlašovacího endpointu a tvar těla najdete ve Swaggeru služby. U <em>Token</em> a <em>Windows</em> se bez vyplněného uživatele použije servisní účet pro bind do AD.</p>
+            <p class="hint">Služba Identifiers odpovídá „No valid token available“ — chce token. Buď ho vydává natrvalo (<em>Pevný token</em>), nebo se získává přihlášením (<em>Token z přihlášení</em>): adresu přihlašovacího endpointu a tvar těla najdete ve Swaggeru služby. U <em>Token</em> a <em>Windows</em> se bez vyplněného uživatele použije servisní účet pro bind do AD. <em>Windows účet domény</em> se ověřuje výhradně přes NTLM (ne Kerberos/Negotiate) — funguje z linuxových nodů bez keytabu; služba musí NTLM nabízet (<code>WWW-Authenticate: NTLM</code>, zkouška níže to ukáže).</p>
             <label>Pevný token (prázdné = ponechat)</label>
             <input type="password" name="CardsApiBearerToken" autocomplete="new-password" />
             <label>Přihlašovací endpoint (pro Token z přihlášení)</label>
@@ -361,7 +364,7 @@
         <button class="btn" type="submit">Uložit</button>
     </form>
     <form method="post" asp-page-handler="CardsApiTest" class="inline-form" style="margin-top:0.8rem">
-        <label>Zkouška integračního API — osobní číslo</label>
+        <label>Zkouška integračního API — osobní číslo (karty i SPZ, ukáže i účet a doménu pro NTLM)</label>
         <input type="text" name="employeeNo" placeholder="např. 13483" style="width:12rem" />
         <button class="btn btn-sm btn-ghost" type="submit">Vyzkoušet (uložené nastavení)</button>
     </form>

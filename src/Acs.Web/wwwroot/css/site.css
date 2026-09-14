@@ -284,6 +284,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); o
 .checkbox-row { display: flex; align-items: center; gap: 0.5rem; margin: 0.6rem 0; }
 .checkbox-row label { margin: 0; }
 
+/* Nápověda pod polem formuláře / k sekci nastavení. */
+.hint { margin: 0.3rem 0 0.6rem; font-size: 0.82rem; line-height: 1.4; color: var(--muted); }
+.hint code, .hint .mono { font-size: 0.8rem; }
+
 .btn {
   display: inline-block; border: 1px solid var(--primary);
   background: var(--primary); color: var(--primary-contrast);

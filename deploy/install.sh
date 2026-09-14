@@ -63,10 +63,11 @@ if ! dotnet --list-sdks 2>/dev/null | grep -q '^10\.'; then
           && $SUDO ln -sf /usr/lib/dotnet/dotnet /usr/bin/dotnet)
 fi
 $SUDO dnf install -y git curl policycoreutils-python-utils || true
-# Kerberos/NTLM (GSSAPI): přihlášení uživatelů účtem Windows (Negotiate, keytab v KRB5_KTNAME)
-# a interní služby přihlašované účtem domény (integrační API karet). krb5-workstation dává
-# klist/kinit pro kontrolu keytabu.
-$SUDO dnf install -y krb5-libs krb5-workstation gssntlmssp || true
+# Kerberos (GSSAPI): přihlášení uživatelů účtem Windows (Negotiate, keytab v KRB5_KTNAME).
+# krb5-workstation dává klist/kinit pro kontrolu keytabu. Integrační API karet se účtem
+# domény přihlašuje přes NTLM spravovanou implementací .NET — gssntlmssp k tomu není třeba
+# (docs/karty-z-integracniho-api.md).
+$SUDO dnf install -y krb5-libs krb5-workstation || true
 # Písmo s českou diakritikou pro generování PDF (kartičky parkovacích povolení, reporty).
 $SUDO dnf install -y dejavu-sans-fonts || true
 
