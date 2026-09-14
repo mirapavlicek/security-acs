@@ -94,9 +94,8 @@ public class LdapDiagnosticsService(
 
         var filter = BuildFilter(query, personalNumberAttributes);
 
-        using var connection = LdapAuthenticator.CreateConnection(server, port, useSsl, bindUser, bindPassword);
-        connection.SessionOptions.ReferralChasing = ReferralChasingOptions.None;
-        connection.Bind();
+        using var connection = await LdapAuthenticator.OpenAsync(server, port, useSsl, bindUser, bindPassword, TimeSpan.FromSeconds(15),
+            c => c.SessionOptions.ReferralChasing = ReferralChasingOptions.None, ct);
 
         // Bez seznamu atributů vrátí server všechny, které smí bind účet přečíst —
         // právě to je smysl výpisu: uvidí se i atributy, o kterých se neví.

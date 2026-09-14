@@ -1,4 +1,5 @@
 using Acs.Infrastructure.Audit;
+using Acs.Domain.Entities;
 using Acs.Infrastructure.Auth;
 using Acs.Infrastructure.Settings;
 using Microsoft.AspNetCore.Authentication;
@@ -12,7 +13,7 @@ namespace Acs.Web.Pages.Account;
 
 [AllowAnonymous]
 [EnableRateLimiting("login")]
-public class LoginModel(UserAuthenticationService auth, AuditService audit, SettingsService settings) : PageModel
+public class LoginModel(UserAuthenticationService auth, AuditService audit, SettingsService settings, ILogger<LoginModel> logger) : PageModel
 {
     [BindProperty]
     public string UserName { get; set; } = "";
@@ -72,7 +73,19 @@ public class LoginModel(UserAuthenticationService auth, AuditService audit, Sett
             return Page();
         }
 
-        var user = await auth.AuthenticateAsync(UserName, Password);
+        AppUser? user;
+        try
+        {
+            user = await auth.AuthenticateAsync(UserName, Password);
+        }
+        catch (LdapUnavailableException ex)
+        {
+            logger.LogError(ex, "Přihlášení {User}: Active Directory neodpovídá.", UserName);
+            await audit.LogAsync(UserName, "login-failed", details: "AD neodpovídá: " + ex.Message);
+            ErrorMessage = "Ověření účtem domény teď nelze provést — řadič Active Directory neodpovídá. Zkuste to za chvíli; lokální účet se přihlásí i tak.";
+            return Page();
+        }
+
         if (user is null)
         {
             await audit.LogAsync(UserName, "login-failed");

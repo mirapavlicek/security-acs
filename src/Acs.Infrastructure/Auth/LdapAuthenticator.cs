@@ -7,6 +7,9 @@ namespace Acs.Infrastructure.Auth;
 
 public record LdapUserInfo(string UserName, string? DisplayName, string? Email, IReadOnlyList<string> Groups);
 
+/// <summary>Active Directory teď není k dispozici (žádný řadič neodpovídá nebo nedokončí přihlášení v limitu) — není to špatné heslo.</summary>
+public sealed class LdapUnavailableException(string message, Exception? inner = null) : Exception(message, inner);
+
 /// <summary>
 /// Ověření uživatele proti Active Directory přes LDAP(S) —
 /// System.DirectoryServices.Protocols (funguje i na Linuxu).
@@ -16,7 +19,20 @@ public record LdapUserInfo(string UserName, string? DisplayName, string? Email, 
 /// </summary>
 public class LdapAuthenticator(SettingsService settings, DcLocator dcLocator, ILogger<LdapAuthenticator> logger)
 {
-    /// <summary>Ověří jméno+heslo bind-em do AD; při úspěchu vrátí info o uživateli.</summary>
+    /// <summary>
+    /// Nejdelší čekání na spojení + TLS + bind k jednomu řadiči při přihlášení. Dva pokusy
+    /// (řadič a náhradní) i s dohledáním uživatele se vejdou pod obvyklý limit reverzní proxy (60 s).
+    /// </summary>
+    public static readonly TimeSpan LoginBindTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>Kód libldap <c>LDAP_TIMEOUT</c> (klient se odpovědi nedočkal).</summary>
+    public const int LdapTimeoutErrorCode = 85;
+
+    /// <summary>
+    /// Ověří jméno+heslo bind-em do AD; při úspěchu vrátí info o uživateli, při špatném hesle
+    /// (nebo vypnutém LDAP) <c>null</c>. Když neodpovídá žádný řadič, vyhodí
+    /// <see cref="LdapUnavailableException"/> — přihlašovací stránka to má hlásit jinak než špatné heslo.
+    /// </summary>
     public virtual async Task<LdapUserInfo?> AuthenticateAsync(string userName, string password, CancellationToken ct = default)
     {
         if (!await settings.GetBoolAsync(SettingKeys.LdapEnabled, false, ct))
@@ -35,10 +51,10 @@ public class LdapAuthenticator(SettingsService settings, DcLocator dcLocator, IL
             {
                 return await AuthenticateOnceAsync(userName, password, ct);
             }
-            catch (Exception retryEx)
+            catch (Exception retryEx) when (retryEx is LdapException or InvalidOperationException)
             {
                 logger.LogError(retryEx, "LDAP ověření selhalo i proti náhradnímu řadiči.");
-                return null;
+                throw new LdapUnavailableException($"Řadič domény neodpovídá ({ex.Message}); náhradní: {retryEx.Message}", retryEx);
             }
         }
         catch (LdapException ex)
@@ -49,7 +65,7 @@ public class LdapAuthenticator(SettingsService settings, DcLocator dcLocator, IL
         catch (InvalidOperationException ex)
         {
             logger.LogError(ex, "LDAP ověření nelze provést (žádný dostupný řadič).");
-            return null;
+            throw new LdapUnavailableException(ex.Message, ex);
         }
     }
 
@@ -104,8 +120,7 @@ public class LdapAuthenticator(SettingsService settings, DcLocator dcLocator, IL
         var useSsl = await settings.GetBoolAsync(SettingKeys.LdapUseSsl, true, ct);
         var port = await settings.GetIntAsync(SettingKeys.LdapPort, useSsl ? 636 : 389, ct);
 
-        using var connection = CreateConnection(server, port, useSsl, bindUser, bindPassword);
-        connection.Bind();
+        using var connection = await OpenTimedAsync(server, port, useSsl, bindUser, bindPassword, ct);
         return await SearchUserAsync(connection, samAccount, ct);
     }
 
@@ -120,11 +135,10 @@ public class LdapAuthenticator(SettingsService settings, DcLocator dcLocator, IL
         //    UPN sufix (nastavená doména, jinak z Base DN, jinak nnh.local), takže stačí zadat „jnovak“.
         var bindUser = BindUserName(userName, domain);
 
-        using var connection = CreateConnection(server, port, useSsl, bindUser, password);
-
+        LdapConnection connection;
         try
         {
-            connection.Bind(); // vyhodí LdapException při špatném hesle
+            connection = await OpenTimedAsync(server, port, useSsl, bindUser, password, ct); // LdapException při špatném hesle
         }
         catch (LdapException ex) when (!IsConnectivityError(ex))
         {
@@ -133,8 +147,31 @@ public class LdapAuthenticator(SettingsService settings, DcLocator dcLocator, IL
         }
 
         // 2) dohledání atributů uživatele
-        var samAccount = userName.Contains('@') ? userName.Split('@')[0] : userName.Split('\\').Last();
-        return await SearchUserAsync(connection, samAccount, ct);
+        using (connection)
+        {
+            var samAccount = userName.Contains('@') ? userName.Split('@')[0] : userName.Split('\\').Last();
+            return await SearchUserAsync(connection, samAccount, ct);
+        }
+    }
+
+    /// <summary><see cref="OpenAsync"/> s limitem pro přihlášení a záznamem, jak dlouho bind trval (pomalý řadič se pozná v logu).</summary>
+    private async Task<LdapConnection> OpenTimedAsync(string server, int port, bool useSsl, string bindUser, string password, CancellationToken ct)
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            var connection = await OpenAsync(server, port, useSsl, bindUser, password, LoginBindTimeout, ct: ct);
+            if (watch.Elapsed > TimeSpan.FromSeconds(3))
+                logger.LogWarning("LDAP: bind na {Server}:{Port} trval {Ms} ms — řadič odpovídá pomalu.", server, port, watch.ElapsedMilliseconds);
+            else
+                logger.LogDebug("LDAP: bind na {Server}:{Port} za {Ms} ms.", server, port, watch.ElapsedMilliseconds);
+            return connection;
+        }
+        catch (LdapException ex) when (IsConnectivityError(ex))
+        {
+            logger.LogWarning("LDAP: řadič {Server}:{Port} po {Ms} ms — {Message}", server, port, watch.ElapsedMilliseconds, ex.Message);
+            throw;
+        }
     }
 
     /// <summary>
@@ -190,9 +227,50 @@ public class LdapAuthenticator(SettingsService settings, DcLocator dcLocator, IL
         return connection;
     }
 
-    /// <summary>Chyby spojení (server down/nedosažitelný) vs. chyby přihlášení.</summary>
+    /// <summary>
+    /// Otevře spojení a provede bind s časovým limitem. System.DirectoryServices.Protocols na Linuxu
+    /// <see cref="LdapConnection.Timeout"/> na bind nepoužije (volá synchronní <c>ldap_sasl_bind_s</c> bez
+    /// síťového timeoutu): řadič, který TCP spojení přijme, ale TLS handshake nebo bind nedokončí, by
+    /// požadavek držel do vypršení TCP (minuty) a přihlašovací stránka skončí 504 od reverzní proxy.
+    /// Po limitu se vyhodí <see cref="LdapException"/> s kódem <see cref="LdapTimeoutErrorCode"/>, kterou
+    /// volající bere jako výpadek řadiče (<see cref="IsConnectivityError"/>) a zkusí jiný.
+    /// Zablokované nativní volání nelze přerušit — spojení se uklidí, až doběhne.
+    /// </summary>
+    /// <param name="configure">Nastavení spojení před bind-em (např. referral chasing).</param>
+    public static async Task<LdapConnection> OpenAsync(string server, int port, bool useSsl, string bindUser, string password,
+        TimeSpan timeout, Action<LdapConnection>? configure = null, CancellationToken ct = default)
+    {
+        var connection = CreateConnection(server, port, useSsl, bindUser, password);
+        connection.Timeout = timeout; // platí pro SendRequest (ldap_result), bind hlídá WaitAsync níže
+        configure?.Invoke(connection);
+
+        var bind = Task.Run(() => connection.Bind(), CancellationToken.None);
+        try
+        {
+            await bind.WaitAsync(timeout, ct);
+            return connection;
+        }
+        catch (TimeoutException)
+        {
+            _ = bind.ContinueWith(_ => connection.Dispose(), TaskScheduler.Default);
+            throw new LdapException(LdapTimeoutErrorCode,
+                $"Řadič {server}:{port} nedokončil spojení a přihlášení do {timeout.TotalSeconds:0} s (TCP port odpovídá, ale TLS/LDAP ne).");
+        }
+        catch (OperationCanceledException)
+        {
+            _ = bind.ContinueWith(_ => connection.Dispose(), TaskScheduler.Default);
+            throw;
+        }
+        catch
+        {
+            connection.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>Chyby spojení (server down/nedosažitelný/timeout) vs. chyby přihlášení.</summary>
     public static bool IsConnectivityError(LdapException ex)
-        => ex.ErrorCode is 81 or 91 or 85 or 52; // ServerDown, ConnectError, TimeLimitExceeded, UnavailableCriticalExtension
+        => ex.ErrorCode is 81 or 91 or LdapTimeoutErrorCode or 52; // ServerDown, ConnectError, Timeout, UnavailableCriticalExtension
 
     private static string? GetAttr(SearchResultEntry entry, string name)
         => entry.Attributes[name] is { Count: > 0 } attr ? attr[0]?.ToString() : null;

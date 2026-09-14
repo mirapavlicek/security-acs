@@ -129,6 +129,7 @@ Prohlížeč pošle ticket jen webu, kterému věří:
 | Funguje na jednom nodu, na druhém ne | Keytab chybí / má jiná práva na druhém nodu (`sudo -u acs klist -k /etc/acs/acs.keytab`). |
 | Uživatel se přihlásí, ale nemá role | Sekce Active Directory: servisní účet pro bind + mapování skupin. Bez servisního účtu se skupiny nenačtou. |
 | „Účet Windows byl ověřen, ale v ACS ho nelze použít“ | Uživatel je v ACS neaktivní, účet je z nepovolené domény, nebo jméno patří lokálnímu účtu. |
+| Přihlášení AD účtem jménem a heslem skončí **504** od proxy, lokální účet funguje | LDAP bind k řadiči se nedokončil: řadič TCP spojení (636/389) přijme, ale TLS handshake nebo bind visí (přetížený DC, firewall propouštějící jen SYN, přesměrování portu). Knihovna na Linuxu na bind žádný timeout nemá, takže požadavek čekal do vypršení TCP. Od v1.12.37 má bind limit 10 s, zkusí se náhradní řadič a stránka vypíše „řadič Active Directory neodpovídá“ místo 504; v logu `journalctl -u acs-web` je `LDAP: řadič <host>:<port> po <ms> ms — …`. Ověření z nodu: `openssl s_client -connect <dc>:636 -brief` musí do pár sekund vypsat certifikát. |
 
 Audit: přihlášení přes Windows se zapisuje jako `login` s detailem `windows: FNMH\novak`,
 neúspěch jako `login-failed`.
