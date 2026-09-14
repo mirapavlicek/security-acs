@@ -262,7 +262,9 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
                     404 when probe.ContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true || probe.Body.Trim().StartsWith('{')
                         => "404 s JSON tělem = služba adresu zná, ale tohoto zaměstnance/identifikátor nenašla — porovnejte formát osobního čísla s tím, co služba očekává (úvodní nuly, jiné číslo než AD employeenumber).",
                     404 => "404 bez JSON těla = nejspíš špatná cesta (adresa) nebo metoda; zkontrolujte adresu ve Swaggeru služby (…/swagger) — musí odpovídat přesně včetně /api/v0/Identifiers.",
-                    401 or 403 => "Služba přihlášení odmítla — zkuste jiný způsob přihlášení (Windows účet domény / API klíč) nebo jiný účet.",
+                    401 when probe.NtlmNotOffered
+                        => $"Služba nabízí přihlášení jen schématy {string.Join(", ", probe.OfferedAuthSchemes)} — ACS ověřuje účet domény přes NTLM, které služba nenabízí. Správce služby musí u Windows Authentication povolit poskytovatele NTLM, nebo zvolte jiný způsob přihlášení.",
+                    401 or 403 => "Služba přihlášení odmítla — zkuste jiný způsob přihlášení (Windows účet domény přes NTLM / API klíč) nebo jiný účet.",
                     405 => "Služba metodu POST na této adrese nepřijímá — ověřte ve Swaggeru, zda není správně GET s parametrem.",
                     415 or 400 => "Služba nepřijala tělo požadavku — porovnejte s příkladem ve Swaggeru (názvy a typy polí).",
                     _ => "Podívejte se na tělo odpovědi níže.",
@@ -289,6 +291,8 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
             lines.Add(probe.RequestBody);
             lines.Add("");
             lines.Add($"Odpověď: {probe.StatusCode} {probe.ReasonPhrase} · Content-Type: {probe.ContentType ?? "(žádný)"}");
+            if (probe.OfferedAuthSchemes.Count > 0)
+                lines.Add($"WWW-Authenticate: {string.Join(", ", probe.OfferedAuthSchemes)}");
             lines.Add(string.IsNullOrWhiteSpace(probe.Body) ? "(prázdné tělo)" : probe.Body.Length > 4000 ? probe.Body[..4000] + "…" : probe.Body);
             CardsApiProbe = string.Join("\n", lines);
         }

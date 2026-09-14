@@ -28,11 +28,18 @@ chce **token** v hlavičce `Authorization: Bearer`.
   v `data`/`result`; nebo název pole zadejte) a posílá ho jako Bearer. Token drží
   50 minut. Adresu endpointu a tvar těla najdete ve Swaggeru služby.
 - **Pevný token** — vydaný správcem služby, vloží se do nastavení.
-- **Windows účet domény (NTLM/Negotiate)** — pro služby s integrovaným přihlášením:
+- **Windows účet domény (NTLM)** — pro služby s integrovaným přihlášením Windows:
   bez vyplněného uživatele se použije **servisní účet, kterým ACS čte AD**
   (Nastavení → Active Directory), jiný účet jde zadat jako `DOMÉNA\uživatel`
-  nebo `uživatel@doména`. Na Linuxu vyřídí NTLM .NET sám; pro Kerberos je na
-  nodech `krb5-libs` a `gssntlmssp` (instalační skript je přidává).
+  nebo `uživatel@doména`. Účet se ověřuje proti AD **výhradně přes NTLM** —
+  ACS registruje přihlašovací údaje jen pro schéma `NTLM`, takže výzvu
+  `Negotiate` (SPNEGO → Kerberos) ignoruje. Kerberos by z linuxových nodů
+  vyžadoval ticket a konfiguraci krb5 a bez nich končil 401; NTLM potřebuje jen
+  jméno, heslo a doménu. NTLM vyřizuje spravovaná implementace .NET
+  (`System.Net.Security.UseManagedNtlm` v `Acs.Web.csproj`), nody tedy nepotřebují
+  balík `gssntlmssp`. Služba musí NTLM nabízet (u IIS poskytovatel *NTLM* ve
+  Windows Authentication) — zkouška v Nastavení vypíše hlavičku `WWW-Authenticate`
+  a když NTLM chybí, řekne to.
 - API klíč v hlavičce (výchozí `X-Api-Key`), nebo Basic autentizace.
 - U interní CA, kterou nody neznají, jde dočasně vypnout ověření certifikátu
   (lepší je CA na nody nainstalovat).

@@ -111,7 +111,7 @@ public static class CardApiAuth
     public const string None = "None";
     public const string ApiKey = "ApiKey";
     public const string Basic = "Basic";
-    /// <summary>NTLM/Negotiate účtem domény — výchozí je servisní účet, kterým ACS čte AD.</summary>
+    /// <summary>NTLM účtem domény (ověření proti AD) — výchozí je servisní účet, kterým ACS čte AD.</summary>
     public const string Windows = "Windows";
     /// <summary>Pevný token v hlavičce <c>Authorization: Bearer</c>.</summary>
     public const string Bearer = "Bearer";
@@ -177,16 +177,15 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         var ignoreTls = await settings.GetAsync(SettingKeys.CardsApiIgnoreTls, ct) == "true";
         if (auth == CardApiAuth.Windows || ignoreTls)
         {
-            // Windows (NTLM/Negotiate) vyžaduje vlastní handler s přihlašovacími údaji — na Linuxu
-            // ho .NET vyřídí spravovaným NTLM, případně přes GSSAPI (balík gssntlmssp).
-            var handler = new HttpClientHandler { PreAuthenticate = true };
+            // Windows účet vyžaduje vlastní handler s přihlašovacími údaji (viz NtlmCredentials).
+            var handler = new HttpClientHandler();
             if (ignoreTls)
                 handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
             if (auth == CardApiAuth.Windows)
             {
                 if (string.IsNullOrWhiteSpace(user))
                     throw new InvalidOperationException("Přihlášení Windows účtem: není zadaný účet ani servisní účet pro AD (Nastavení → Active Directory).");
-                handler.Credentials = WindowsCredential(user, password ?? "", await settings.GetLdapDomainAsync(ct));
+                handler.Credentials = NtlmCredentials(url, WindowsCredential(user, password ?? "", await settings.GetLdapDomainAsync(ct)));
             }
 
             return new IdentifiersApiCardSource(new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(2) }, options);
@@ -195,8 +194,26 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         return new IdentifiersApiCardSource(httpClientFactory.CreateClient(CardSourceFactory.HttpClientName), options);
     }
 
+    /// <summary>Schéma HTTP autentizace, kterým se účet domény ověřuje proti AD.</summary>
+    public const string NtlmScheme = "NTLM";
+
     /// <summary>
-    /// Účet pro NTLM/Negotiate z toho, jak je zapsaný v nastavení: <c>DOMÉNA\uživatel</c>,
+    /// Přihlašovací údaje zaregistrované jen pro schéma <c>NTLM</c> (pro celý server služby).
+    /// Služba s integrovaným přihlášením Windows nabízí zpravidla <c>Negotiate</c> i <c>NTLM</c>
+    /// a .NET by dal přednost Negotiate (SPNEGO → Kerberos), což na linuxových nodech bez
+    /// Kerberos ticketu a konfigurace krb5 skončí 401. Registrací pouze pod NTLM se výzva
+    /// Negotiate ignoruje a účet se ověří proti AD přes NTLM — spravovanou implementací .NET
+    /// (<c>System.Net.Security.UseManagedNtlm</c> v Acs.Web.csproj), tedy bez balíku gssntlmssp.
+    /// </summary>
+    public static System.Net.CredentialCache NtlmCredentials(string url, System.Net.NetworkCredential credential)
+    {
+        var cache = new System.Net.CredentialCache();
+        cache.Add(new Uri(new Uri(url).GetLeftPart(UriPartial.Authority)), NtlmScheme, credential);
+        return cache;
+    }
+
+    /// <summary>
+    /// Účet pro NTLM z toho, jak je zapsaný v nastavení: <c>DOMÉNA\uživatel</c>,
     /// UPN <c>uživatel@doména</c> (předá se celý), nebo prosté jméno + doména z nastavení AD.
     /// </summary>
     public static System.Net.NetworkCredential WindowsCredential(string account, string password, string? defaultDomain)
@@ -242,9 +259,14 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         string? ReasonPhrase,
         string? ContentType,
         string Body,
-        IReadOnlyList<ApiIdentifier> Parsed)
+        IReadOnlyList<ApiIdentifier> Parsed,
+        IReadOnlyList<string> OfferedAuthSchemes)
     {
         public bool Success => StatusCode is >= 200 and < 300;
+
+        /// <summary>Služba při 401 nabídla jen jiná schémata než NTLM (typicky samotné Negotiate) — přihlášení Windows účtem přes NTLM nemá jak proběhnout.</summary>
+        public bool NtlmNotOffered => StatusCode == 401 && OfferedAuthSchemes.Count > 0
+            && !OfferedAuthSchemes.Contains(NtlmScheme, StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>Zkouška z Nastavení: odeslaný požadavek, odpověď se stavem a hlavičkami a co z ní konektor přečte.</summary>
@@ -256,7 +278,8 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         var body = await response.Content.ReadAsStringAsync(ct);
         var parsed = response.IsSuccessStatusCode ? SafeParse(body) : [];
         return new ProbeResult(options.Url, requestBody, (int)response.StatusCode, response.ReasonPhrase,
-            response.Content.Headers.ContentType?.ToString(), body, parsed);
+            response.Content.Headers.ContentType?.ToString(), body, parsed,
+            response.Headers.WwwAuthenticate.Select(h => h.Scheme).ToList());
     }
 
     private static IReadOnlyList<ApiIdentifier> SafeParse(string body)
@@ -300,7 +323,7 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         if (options.Auth == CardApiAuth.Basic && !string.IsNullOrWhiteSpace(options.User))
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic",
                 Convert.ToBase64String(Encoding.UTF8.GetBytes($"{options.User}:{options.Password}")));
-        // Windows (NTLM/Negotiate) vyřizuje handler klienta podle Credentials.
+        // Windows účet (NTLM) vyřizuje handler klienta podle Credentials — viz NtlmCredentials.
         return request;
     }
 

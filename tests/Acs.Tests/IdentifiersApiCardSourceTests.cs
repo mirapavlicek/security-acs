@@ -154,6 +154,61 @@ public sealed class IdentifiersApiCardSourceTests : IDisposable
     }
 
     [Fact]
+    public void Windows_ucet_se_registruje_jen_pro_NTLM_a_pro_cely_server_sluzby()
+    {
+        var credential = new NetworkCredential("svc-acs", "pwd", "NNH");
+        var cache = IdentifiersApiCardSource.NtlmCredentials("https://ws-integrations.nnh.local/api/v0/Identifiers", credential);
+
+        var api = new Uri("https://ws-integrations.nnh.local/api/v0/Identifiers");
+        // Handler .NET dává přednost Negotiate (SPNEGO → Kerberos); pro něj nesmí být žádný účet, aby se použilo NTLM.
+        Assert.Null(cache.GetCredential(api, "Negotiate"));
+        Assert.Null(cache.GetCredential(api, "Basic"));
+        Assert.Same(credential, cache.GetCredential(api, "NTLM"));
+        Assert.Same(credential, cache.GetCredential(api, "ntlm"));
+        // Stejný server, jiná cesta (přesměrování, přihlašovací endpoint) — pořád NTLM stejným účtem.
+        Assert.Same(credential, cache.GetCredential(new Uri("https://ws-integrations.nnh.local/api/v0/Auth/Login"), "NTLM"));
+        Assert.Null(cache.GetCredential(new Uri("https://jiny-server.nnh.local/api/v0/Identifiers"), "NTLM"));
+    }
+
+    [Fact]
+    public async Task Zkouska_pozna_ze_sluzba_NTLM_nenabizi()
+    {
+        var stub = new Stub((_, _) =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.Unauthorized) { Content = new StringContent("") };
+            response.Headers.WwwAuthenticate.Add(new AuthenticationHeaderValue("Negotiate"));
+            return response;
+        });
+        var source = new IdentifiersApiCardSource(new HttpClient(stub),
+            new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, null, null, "svc", "pwd", CardApiAuth.Windows));
+
+        var probe = await source.ProbeAsync("1");
+
+        Assert.Equal(401, probe.StatusCode);
+        Assert.Equal(["Negotiate"], probe.OfferedAuthSchemes);
+        Assert.True(probe.NtlmNotOffered);
+    }
+
+    [Fact]
+    public async Task Zkouska_vypise_nabizena_schemata_a_NTLM_mezi_nimi_neni_chyba()
+    {
+        var stub = new Stub((_, _) =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.Unauthorized) { Content = new StringContent("") };
+            response.Headers.WwwAuthenticate.Add(new AuthenticationHeaderValue("Negotiate"));
+            response.Headers.WwwAuthenticate.Add(new AuthenticationHeaderValue("NTLM"));
+            return response;
+        });
+        var source = new IdentifiersApiCardSource(new HttpClient(stub),
+            new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, null, null, "svc", "pwd", CardApiAuth.Windows));
+
+        var probe = await source.ProbeAsync("1");
+
+        Assert.Equal(["Negotiate", "NTLM"], probe.OfferedAuthSchemes);
+        Assert.False(probe.NtlmNotOffered);
+    }
+
+    [Fact]
     public async Task Basic_a_API_klic_se_posilaji_jen_ve_zvolenem_rezimu()
     {
         var stub = new Stub((_, _) => Json("[]"));
