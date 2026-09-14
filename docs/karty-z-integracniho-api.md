@@ -51,11 +51,25 @@ chce **token** v hlavičce `Authorization: Bearer`.
 
 ## Odpověď
 
-Schéma odpovědi dokumentace neuvádí, rozbor je proto tolerantní:
+Služba odpovídá obálkou:
 
-- pole záznamů, nebo objekt s polem (`identifiers`, `items`, `data`, … nebo
-  jediné pole v objektu), nebo jediný záznam,
-- hodnota karty pod `identifier`, `identifierNo`, `cardNumber`, `cardNo`,
+```json
+{"output":[{"employeeNo":"13483","initialCode":"4d-07782","idIdentifierSubType":3}, …],
+ "conclusion":true,"resultType":"Ok"}
+```
+
+Hodnota karty/SPZ je `initialCode`. Při chybě je `conclusion: false` a
+`errorDescription` (`errorType`, `errorMessage`) — takovou odpověď ACS bere jako
+chybu synchronizace, **ne** jako „zaměstnanec nic nemá“ (jinak by mu karty zrušil);
+zkouška v Nastavení ji vypíše. Služba tentýž identifikátor vrací opakovaně, ACS
+každou hodnotu bere jednou. U SPZ odstraní příponu země za pomlčkou
+(`1TN7287-CZE` → `1TN7287`), aby seděla na čtení kamer u brány.
+
+Rozbor zůstává tolerantní i k jiným tvarům:
+
+- pole záznamů, nebo objekt s polem (`output`, `identifiers`, `items`, `data`, …
+  nebo jediné pole v objektu), nebo jediný záznam,
+- hodnota pod `initialCode`, `identifier`, `identifierNo`, `cardNumber`, `cardNo`,
   `number`, `code`, `value`, `serialNumber`… (nebo prostý řetězec),
 - platnost `validFrom`/`validTo` (`dateFrom`/`dateTo`…), stav `active`/`isActive`
   nebo textový `state`/`status` („Aktivní“, „Blokovaná“…) — neaktivní se vynechají.

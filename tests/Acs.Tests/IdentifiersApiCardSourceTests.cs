@@ -50,6 +50,58 @@ public sealed class IdentifiersApiCardSourceTests : IDisposable
         => Assert.Equal(expected, IdentifiersApiCardSource.Parse(json).Select(i => i.Value));
 
     [Fact]
+    public void Rozbor_cte_skutecnou_obalku_sluzby_a_kazdou_kartu_jen_jednou()
+    {
+        var parsed = IdentifiersApiCardSource.Parse("""
+            {"output":[
+              {"employeeNo":"13483","initialCode":"4d-07782","idIdentifierSubType":3},
+              {"employeeNo":"13483","initialCode":"4d-07464","idIdentifierSubType":3},
+              {"employeeNo":"13483","initialCode":"4D-7782","idIdentifierSubType":3},
+              {"employeeNo":"13483","initialCode":"4d-07782","idIdentifierSubType":3},
+              {"employeeNo":"13483","initialCode":"4D-07464","idIdentifierSubType":3},
+              {"employeeNo":"13483","initialCode":"4D-7782","idIdentifierSubType":3}
+            ],"conclusion":true,"resultType":"Ok"}
+            """);
+
+        Assert.Equal(["4d-07782", "4d-07464", "4D-7782"], parsed.Select(i => i.Value));
+        Assert.Null(IdentifiersApiCardSource.ServiceError("""{"output":[],"conclusion":true,"resultType":"Ok"}"""));
+    }
+
+    [Fact]
+    public void Rozbor_spz_odstrani_priponu_zeme_a_duplicity()
+    {
+        var parsed = IdentifiersApiCardSource.Parse("""
+            {"output":[
+              {"employeeNo":"13483","initialCode":"2TB0574","idIdentifierSubType":4},
+              {"employeeNo":"13483","initialCode":"1TN7287-CZE","idIdentifierSubType":4},
+              {"employeeNo":"13483","initialCode":"EL285CJ","idIdentifierSubType":4},
+              {"employeeNo":"13483","initialCode":"1TN7287","idIdentifierSubType":4},
+              {"employeeNo":"13483","initialCode":"2TB0574","idIdentifierSubType":4}
+            ],"conclusion":true,"resultType":"Ok"}
+            """, IdentifierType.LicensePlate);
+
+        Assert.Equal(["2TB0574", "1TN7287", "EL285CJ"], parsed.Select(i => i.Value));
+    }
+
+    [Theory]
+    [InlineData("1TN7287-CZE", "1TN7287")]
+    [InlineData("EL285CJ-D", "EL285CJ")]
+    [InlineData("2TB0574", "2TB0574")]
+    [InlineData("4D-07782", "4D-07782")]
+    [InlineData("ABC-1234", "ABC-1234")]
+    public void Pripona_zeme_se_odstrani_jen_u_kratke_pismenne_pripony(string plate, string expected)
+        => Assert.Equal(expected, IdentifiersApiCardSource.StripPlateCountry(plate));
+
+    [Fact]
+    public void Chybova_obalka_se_pozna_a_neprojde_jako_prazdny_seznam()
+    {
+        const string body = """{"conclusion":false,"errorDescription":{"errorType":"NotAuthorized","errorMessage":"No valid token available.","guid":"aca9"}}""";
+
+        Assert.Empty(IdentifiersApiCardSource.Parse(body));
+        Assert.Equal("NotAuthorized: No valid token available.", IdentifiersApiCardSource.ServiceError(body));
+    }
+
+    [Fact]
     public void Rozbor_cte_platnost_a_stav()
     {
         var parsed = IdentifiersApiCardSource.Parse("""
@@ -226,6 +278,49 @@ public sealed class IdentifiersApiCardSourceTests : IDisposable
         Assert.Equal(IdentifierType.LicensePlate, identifiers[1].Type);
         Assert.Equal(EmployeeIdentifier.Normalize("1AB 2345"), identifiers[1].Value);
         Assert.Contains("SPZ podtyp 4", source.Description);
+    }
+
+    [Fact]
+    public async Task Synchronizace_ze_skutecne_obalky_zalozi_karty_i_SPZ_bez_duplicit()
+    {
+        _db.Employees.Add(new Employee { FirstName = "Miroslav", LastName = "Pavlíček", PersonalNumber = "13483", IsActive = true });
+        await _db.SaveChangesAsync();
+
+        var stub = new Stub((_, body) => body.Contains("\"idIdentifierSubType\":3")
+            ? Json("""{"output":[{"employeeNo":"13483","initialCode":"4d-07782","idIdentifierSubType":3},{"employeeNo":"13483","initialCode":"4d-07464","idIdentifierSubType":3},{"employeeNo":"13483","initialCode":"4d-07782","idIdentifierSubType":3}],"conclusion":true,"resultType":"Ok"}""")
+            : Json("""{"output":[{"employeeNo":"13483","initialCode":"1TN7287-CZE","idIdentifierSubType":4},{"employeeNo":"13483","initialCode":"EL285CJ","idIdentifierSubType":4},{"employeeNo":"13483","initialCode":"1TN7287-CZE","idIdentifierSubType":4}],"conclusion":true,"resultType":"Ok"}"""));
+        var source = new IdentifiersApiCardSource(new HttpClient(stub),
+            new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, null, null, null, null, PlateSubType: 4));
+
+        var result = await new CardSyncService(_db, new FixedSourceFactory(source), new AuditService(_db)).SyncAsync("test");
+
+        Assert.Equal(4, result.Added);
+        var identifiers = await _db.EmployeeIdentifiers.OrderBy(i => i.Type).ThenBy(i => i.Value).ToListAsync();
+        Assert.Equal(
+            [(IdentifierType.Card, "4D07464"), (IdentifierType.Card, "4D07782"), (IdentifierType.LicensePlate, "1TN7287"), (IdentifierType.LicensePlate, "EL285CJ")],
+            identifiers.Select(i => (i.Type, i.Value)));
+    }
+
+    [Fact]
+    public async Task Chybova_obalka_s_200_OK_synchronizaci_zastavi_misto_ruseni_karet()
+    {
+        _db.Employees.Add(new Employee { FirstName = "Miroslav", LastName = "Pavlíček", PersonalNumber = "13483", IsActive = true });
+        await _db.SaveChangesAsync();
+
+        var stub = new Stub((_, _) => Json("""{"conclusion":false,"errorDescription":{"errorType":"NotAuthorized","errorMessage":"No valid token available."}}"""));
+        var source = new IdentifiersApiCardSource(new HttpClient(stub),
+            new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, null, null, null, null));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var _ in source.ReadAsync(await _db.Employees.ToListAsync(), CancellationToken.None)) { }
+        });
+
+        Assert.Contains("NotAuthorized: No valid token available.", ex.Message);
+        var probe = await source.ProbeAsync("13483");
+        Assert.True(probe.Success);
+        Assert.Equal("NotAuthorized: No valid token available.", probe.ServiceError);
+        Assert.Empty(probe.Parsed);
     }
 
     [Theory]

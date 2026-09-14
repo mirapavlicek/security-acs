@@ -306,13 +306,17 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
                     _ => "Podívejte se na tělo odpovědi níže.",
                 });
             }
+            else if (probe.ServiceError is { } error)
+            {
+                lines.Add($"Služba odpověděla {probe.StatusCode}, ale v těle hlásí chybu: {error}. Synchronizace takovou odpověď bere jako chybu (ne jako „zaměstnanec nic nemá“).");
+            }
             else if (probe.Parsed.Count == 0)
             {
                 lines.Add("Služba odpověděla, ale konektor z odpovědi nepřečetl žádný identifikátor — pošlete tělo odpovědi níže vývoji, rozbor se doplní o skutečné názvy polí.");
             }
             else
             {
-                lines.Add("Přečteno: " + string.Join("; ", probe.Parsed.Select(p =>
+                lines.Add($"Přečteno ({probe.Parsed.Count}, každá hodnota jednou): " + string.Join("; ", probe.Parsed.Select(p =>
                     $"{p.Value}{(p.ValidFrom is { } f ? $" od {f:d}" : "")}{(p.ValidTo is { } t ? $" do {t:d}" : "")}{(p.Active is { } a ? (a ? " (aktivní)" : " (neaktivní)") : "")}")));
             }
 

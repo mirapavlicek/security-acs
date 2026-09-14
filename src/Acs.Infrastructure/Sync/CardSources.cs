@@ -127,9 +127,12 @@ public record ApiIdentifier(string Value, DateTime? ValidFrom, DateTime? ValidTo
 /// <c>{ employeeNo, idIdentifierSubType }</c>; podtyp 3 = identifikační karta, 4 = SPZ).
 /// Služba se ptá po zaměstnanci — jedno volání na osobní číslo a podtyp, několik souběžně.
 ///
-/// Podobu odpovědi dokumentace neuvádí; rozbor je proto tolerantní (pole nebo objekt
-/// s polem, hodnota pod různými názvy) a v Nastavení je zkouška, která ukáže surovou
-/// odpověď i to, co z ní konektor přečetl.
+/// Skutečná odpověď služby je obálka <c>{ output: [ { employeeNo, initialCode, idIdentifierSubType } ], conclusion, resultType }</c>
+/// (při chybě <c>conclusion: false</c> a <c>errorDescription</c>); hodnota identifikátoru je <c>initialCode</c>.
+/// Rozbor zůstává tolerantní i k jiným tvarům (pole nebo objekt s polem, hodnota pod různými
+/// názvy) a v Nastavení je zkouška, která ukáže surovou odpověď i to, co z ní konektor přečetl.
+/// Služba tentýž identifikátor vrací opakovaně — rozbor vrací každou hodnotu jednou (první výskyt);
+/// u SPZ se odstraní přípona země (<c>1TN7287-CZE</c> → <c>1TN7287</c>), aby seděla na čtení kamer.
 /// </summary>
 public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCardSource.Options options) : ICardSource
 {
@@ -284,7 +287,7 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         var queries = numbers.SelectMany(_ => SubTypes, (number, sub) => (number, sub.SubType, sub.Type));
         foreach (var batch in queries.Chunk(Parallelism))
         {
-            var results = await Task.WhenAll(batch.Select(async q => (q.number, q.Type, identifiers: await QueryAsync(q.number, q.SubType, ct))));
+            var results = await Task.WhenAll(batch.Select(async q => (q.number, q.Type, identifiers: await QueryAsync(q.number, q.SubType, q.Type, ct))));
             foreach (var (number, type, identifiers) in results)
             {
                 foreach (var identifier in identifiers)
@@ -308,7 +311,8 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         string? ContentType,
         string Body,
         IReadOnlyList<ApiIdentifier> Parsed,
-        IReadOnlyList<string> OfferedAuthSchemes)
+        IReadOnlyList<string> OfferedAuthSchemes,
+        string? ServiceError = null)
     {
         public bool Success => StatusCode is >= 200 and < 300;
 
@@ -325,21 +329,23 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
     public async Task<ProbeResult> ProbeAsync(string employeeNo, int? subType = null, CancellationToken ct = default)
     {
         var effectiveSubType = subType ?? options.SubType;
+        var type = effectiveSubType == options.PlateSubType ? IdentifierType.LicensePlate : IdentifierType.Card;
         var requestBody = JsonSerializer.Serialize(new { employeeNo, idIdentifierSubType = effectiveSubType });
         using var request = await BuildRequestAsync(employeeNo, effectiveSubType, ct);
         using var response = await http.SendAsync(request, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
-        var parsed = response.IsSuccessStatusCode ? SafeParse(body) : [];
+        var parsed = response.IsSuccessStatusCode ? SafeParse(body, type) : [];
         return new ProbeResult(options.Url, effectiveSubType, requestBody, (int)response.StatusCode, response.ReasonPhrase,
             response.Content.Headers.ContentType?.ToString(), body, parsed,
-            response.Headers.WwwAuthenticate.Select(h => h.Scheme).ToList());
+            response.Headers.WwwAuthenticate.Select(h => h.Scheme).ToList(),
+            response.IsSuccessStatusCode ? SafeServiceError(body) : null);
     }
 
-    private static IReadOnlyList<ApiIdentifier> SafeParse(string body)
+    private static IReadOnlyList<ApiIdentifier> SafeParse(string body, IdentifierType type)
     {
         try
         {
-            return Parse(body);
+            return Parse(body, type);
         }
         catch (JsonException)
         {
@@ -347,11 +353,27 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         }
     }
 
-    private async Task<IReadOnlyList<ApiIdentifier>> QueryAsync(string employeeNo, int subType, CancellationToken ct)
+    private static string? SafeServiceError(string body)
     {
         try
         {
-            return Parse(await PostAsync(employeeNo, subType, ct));
+            return ServiceError(body);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private async Task<IReadOnlyList<ApiIdentifier>> QueryAsync(string employeeNo, int subType, IdentifierType type, CancellationToken ct)
+    {
+        try
+        {
+            var body = await PostAsync(employeeNo, subType, ct);
+            // Chyba v obálce s 200 OK nesmí projít jako „zaměstnanec nic nemá“ — synchronizace by mu karty zrušila.
+            if (ServiceError(body) is { } error)
+                throw new InvalidOperationException($"Integrační API ohlásilo chybu pro zaměstnance {employeeNo} (podtyp {subType}): {error}");
+            return Parse(body, type);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
@@ -479,22 +501,28 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         return body;
     }
 
-    private static readonly string[] ListProperties = ["identifiers", "items", "data", "result", "results", "value", "cards", "records"];
-    private static readonly string[] ValueProperties = ["identifier", "identifierNo", "identifierNumber", "identifierValue", "cardNumber", "cardNo", "cardId", "number", "code", "value", "serialNumber", "serial", "chipNumber"];
+    private static readonly string[] ListProperties = ["output", "identifiers", "items", "data", "result", "results", "value", "cards", "records"];
+    private static readonly string[] ValueProperties = ["initialCode", "identifier", "identifierNo", "identifierNumber", "identifierValue", "cardNumber", "cardNo", "cardId", "number", "code", "value", "serialNumber", "serial", "chipNumber"];
     private static readonly string[] FromProperties = ["validFrom", "dateFrom", "from", "validityFrom", "startDate", "activeFrom"];
     private static readonly string[] ToProperties = ["validTo", "dateTo", "to", "validityTo", "endDate", "expiration", "expires", "activeTo"];
     private static readonly string[] ActiveProperties = ["active", "isActive", "enabled", "valid", "isValid"];
     private static readonly string[] StateProperties = ["state", "status", "stav"];
     private static readonly string[] NoteProperties = ["note", "description", "name", "type", "subTypeName", "identifierSubType"];
 
-    /// <summary>Rozbor odpovědi bez znalosti přesného schématu — viz popis třídy.</summary>
-    public static IReadOnlyList<ApiIdentifier> Parse(string json)
+    /// <summary>
+    /// Rozbor odpovědi — viz popis třídy. Každá hodnota jednou (služba je opakuje), u SPZ bez přípony země.
+    /// Chybová obálka (<c>conclusion: false</c>) dá prázdný seznam; chybu vrací <see cref="ServiceError"/>.
+    /// </summary>
+    public static IReadOnlyList<ApiIdentifier> Parse(string json, IdentifierType type = IdentifierType.Card)
     {
         if (string.IsNullOrWhiteSpace(json))
             return [];
 
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
+        if (root.ValueKind == JsonValueKind.Object && IsFailedEnvelope(root))
+            return [];
+
         var items = root.ValueKind switch
         {
             JsonValueKind.Array => root.EnumerateArray().ToList(),
@@ -503,31 +531,77 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         };
 
         var result = new List<ApiIdentifier>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        void Add(string raw, DateTime? from, DateTime? to, bool? active, string? note)
+        {
+            var value = type == IdentifierType.LicensePlate ? StripPlateCountry(raw.Trim()) : raw.Trim();
+            if (value.Length == 0 || !seen.Add(EmployeeIdentifier.Normalize(value)))
+                return;
+            result.Add(new ApiIdentifier(value, from, to, active, note));
+        }
+
         foreach (var item in items)
         {
             switch (item.ValueKind)
             {
                 case JsonValueKind.String when !string.IsNullOrWhiteSpace(item.GetString()):
-                    result.Add(new ApiIdentifier(item.GetString()!.Trim(), null, null, null, null));
+                    Add(item.GetString()!, null, null, null, null);
                     break;
                 case JsonValueKind.Number:
-                    result.Add(new ApiIdentifier(item.GetRawText(), null, null, null, null));
+                    Add(item.GetRawText(), null, null, null, null);
                     break;
                 case JsonValueKind.Object:
                     var value = First(item, ValueProperties);
                     if (string.IsNullOrWhiteSpace(value))
                         break;
-                    result.Add(new ApiIdentifier(value.Trim(),
+                    Add(value,
                         ParseDate(First(item, FromProperties)),
                         ParseDate(First(item, ToProperties)),
                         ParseActive(item),
-                        First(item, NoteProperties)));
+                        First(item, NoteProperties));
                     break;
             }
         }
 
         return result;
     }
+
+    /// <summary>
+    /// SPZ bez přípony země za pomlčkou (<c>1TN7287-CZE</c> → <c>1TN7287</c>, <c>EL285CJ-D</c> → <c>EL285CJ</c>):
+    /// kamery čtou jen značku a porovnání u brány jde přes normalizovanou hodnotu.
+    /// </summary>
+    public static string StripPlateCountry(string plate)
+    {
+        var dash = plate.LastIndexOf('-');
+        if (dash <= 0 || dash == plate.Length - 1)
+            return plate;
+        var suffix = plate[(dash + 1)..];
+        return suffix.Length <= 3 && suffix.All(char.IsLetter) ? plate[..dash].TrimEnd() : plate;
+    }
+
+    /// <summary>Chyba z obálky služby (<c>conclusion: false</c> + <c>errorDescription</c>), nebo null, když odpověď chybu nehlásí.</summary>
+    public static string? ServiceError(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object || !IsFailedEnvelope(root))
+            return null;
+
+        if (TryGet(root, "errorDescription", out var description) && description.ValueKind == JsonValueKind.Object)
+        {
+            var message = First(description, ["errorMessage", "message"]);
+            var errorType = First(description, ["errorType", "type"]);
+            if (message is not null)
+                return errorType is null ? message : $"{errorType}: {message}";
+        }
+
+        return First(root, ["errorMessage", "message", "resultType"]) ?? "conclusion: false";
+    }
+
+    private static bool IsFailedEnvelope(JsonElement root)
+        => TryGet(root, "conclusion", out var conclusion) && conclusion.ValueKind == JsonValueKind.False;
 
     private static JsonElement? FindList(JsonElement root)
     {
