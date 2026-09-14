@@ -19,6 +19,7 @@ namespace Acs.Tests;
 public sealed class LdapBindTimeoutTests : IDisposable
 {
     private readonly TcpListener _silentDc = new(IPAddress.Loopback, 0);
+    private readonly List<TcpClient> _accepted = []; // drží se, aby GC spojení nezavřel (to by vrátilo „server down“, ne timeout)
     private readonly SqliteConnection _connection = new("Data Source=:memory:");
     private readonly AcsDbContext _db;
     private readonly SettingsService _settings;
@@ -41,7 +42,11 @@ public sealed class LdapBindTimeoutTests : IDisposable
         try
         {
             while (true)
-                _ = await _silentDc.AcceptTcpClientAsync(); // spojení se drží otevřené, nic se nepošle
+            {
+                var client = await _silentDc.AcceptTcpClientAsync(); // spojení se drží otevřené, nic se nepošle
+                lock (_accepted)
+                    _accepted.Add(client);
+            }
         }
         catch (Exception)
         {
@@ -53,6 +58,8 @@ public sealed class LdapBindTimeoutTests : IDisposable
     {
         DcLocator.Invalidate();
         _silentDc.Stop();
+        lock (_accepted)
+            _accepted.ForEach(c => c.Dispose());
         _db.Dispose();
         _connection.Dispose();
     }
