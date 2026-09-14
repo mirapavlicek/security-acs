@@ -161,6 +161,54 @@ public class WebAppTests(AcsWebFactory factory) : IClassFixture<AcsWebFactory>
     }
 
     [Fact]
+    public async Task Login_AD_uctem_s_domenou_pri_nedostupnem_AD_ukaze_hlasku_ne_chybovou_stranku()
+    {
+        // Volný port bez posluchače = řadič nedostupný (spojení odmítnuto) — lokátor nenajde žádný DC.
+        var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        probe.Start();
+        var closedPort = ((System.Net.IPEndPoint)probe.LocalEndpoint).Port;
+        probe.Stop();
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var settings = scope.ServiceProvider.GetRequiredService<Acs.Infrastructure.Settings.SettingsService>();
+            await settings.SetAsync(Acs.Infrastructure.Settings.SettingKeys.LdapEnabled, "true");
+            await settings.SetAsync(Acs.Infrastructure.Settings.SettingKeys.LdapUseDcLocator, "false");
+            await settings.SetAsync(Acs.Infrastructure.Settings.SettingKeys.LdapUseSsl, "false");
+            await settings.SetAsync(Acs.Infrastructure.Settings.SettingKeys.LdapServer, "127.0.0.1");
+            await settings.SetAsync(Acs.Infrastructure.Settings.SettingKeys.LdapPort, closedPort.ToString());
+            await settings.SetAsync(Acs.Infrastructure.Settings.SettingKeys.LdapDomain, "nnh.local");
+        }
+        Acs.Infrastructure.Auth.DcLocator.Invalidate();
+
+        try
+        {
+            var client = CreateClientWithCookies(allowRedirects: true);
+            var token = ExtractAntiforgeryToken(await client.GetStringAsync("/Account/Login"));
+
+            var response = await client.PostAsync("/Account/Login", new FormUrlEncodedContent(
+                new Dictionary<string, string>
+                {
+                    ["UserName"] = "jnovak@nnh.local",
+                    ["Password"] = "heslo",
+                    ["__RequestVerificationToken"] = token,
+                }));
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var body = await response.Content.ReadAsStringAsync();
+            Assert.Contains("Ověření účtem domény teď nelze provést", body);
+            Assert.Contains("Lokální účet se přihlásí i tak", body);
+        }
+        finally
+        {
+            using var scope = factory.Services.CreateScope();
+            var settings = scope.ServiceProvider.GetRequiredService<Acs.Infrastructure.Settings.SettingsService>();
+            await settings.SetAsync(Acs.Infrastructure.Settings.SettingKeys.LdapEnabled, "false");
+            Acs.Infrastructure.Auth.DcLocator.Invalidate();
+        }
+    }
+
+    [Fact]
     public async Task Zastupy_Jsou_V_Menu_Uzivatele_A_Ne_V_Hlavni_Navigaci()
     {
         const string knownPassword = "Znam3Heslo!Menu";
