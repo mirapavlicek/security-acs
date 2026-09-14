@@ -72,6 +72,19 @@ Stejný jako u MSSQL: identifikátory typu *karta* a *SPZ* u zaměstnance
 identifikátory, které ze zdroje zmizely, se deaktivují. Karty pak používá
 fronta karet a zápis přístupů do WIN-PAKu, SPZ parkovací systém.
 
+Člověk může mít **víc karet** — evidují se všechny. **Stejný identifikátor u
+téhož člověka se bere jen jednou**: když ho zdroj vrátí opakovaně (třeba víc
+záznamů k jedné kartě), platí první a další se přeskočí (počet je ve výsledku
+synchronizace jako „přeskočeno duplicit“). Stejné číslo u jiného člověka nebo
+jiného typu (karta vs. SPZ) je samostatný identifikátor.
+
+Přístup do WIN-PAKu se uděluje držiteli a konektor ho zapíše **na všechny jeho
+karty**. Fronta správce karet proto u zaměstnance ukazuje všechny platné karty
+a po předání do systému se u položky vypíše, na kterých kartách přístup je a
+které karty z ACS WIN-PAK nezná nebo je má u jiného držitele — ty musí správce
+karet dořešit ve WIN-PAKu. Držitel se k zaměstnanci dopáruje přes kteroukoli
+z jeho karet.
+
 ## Když to v Postmanu jde a v ACS ne
 
 - Na nody se nasazují jen **release tagy** (`ACS_UPDATE_MODE=tag`, viz

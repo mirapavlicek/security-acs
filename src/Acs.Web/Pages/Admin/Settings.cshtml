@@ -308,7 +308,7 @@
             <label>Adresa</label>
             <input type="text" name="CardsApiUrl" value="@Model.Values[SettingKeys.CardsApiUrl]" placeholder="https://ws-integrations.nnh.local/api/v0/Identifiers" />
             <label>Podtyp karet (idIdentifierSubType)</label>
-            <input type="number" name="CardsApiSubType" value="@(Model.Values[SettingKeys.CardsApiSubType] ?? "3")" style="width:8rem" />
+            <input type="number" name="CardsApiSubType" min="1" value="@(Acs.Infrastructure.Sync.IdentifiersApiCardSource.ParseCardSubType(Model.Values[SettingKeys.CardsApiSubType]))" style="width:8rem" />
             <label>Podtyp SPZ (idIdentifierSubType; prázdné = SPZ z API nestahovat)</label>
             @{ var plateSubType = Acs.Infrastructure.Sync.IdentifiersApiCardSource.ParsePlateSubType(Model.Values[SettingKeys.CardsApiPlateSubType]); }
             <input type="number" name="CardsApiPlateSubType" value="@(plateSubType?.ToString() ?? "")" placeholder="4" style="width:8rem" />

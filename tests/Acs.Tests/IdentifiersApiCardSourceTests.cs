@@ -238,6 +238,33 @@ public sealed class IdentifiersApiCardSourceTests : IDisposable
     public void Podtyp_SPZ_z_nastaveni(string? raw, int? expected)
         => Assert.Equal(expected, IdentifiersApiCardSource.ParsePlateSubType(raw));
 
+    [Theory]
+    [InlineData(null, 3)]
+    [InlineData("", 3)]
+    [InlineData("0", 3)]   // omylem uložená nula nesmí jít do dotazu
+    [InlineData("-2", 3)]
+    [InlineData(" 5 ", 5)]
+    [InlineData("x", 3)]
+    public void Podtyp_karet_z_nastaveni_nikdy_neni_nula(string? raw, int expected)
+        => Assert.Equal(expected, IdentifiersApiCardSource.ParseCardSubType(raw));
+
+    [Fact]
+    public async Task Zkouska_pozna_401_bez_vyzvy_WWW_Authenticate()
+    {
+        var stub = new Stub((_, _) => new HttpResponseMessage(HttpStatusCode.Unauthorized)
+        {
+            Content = new StringContent("""{"conclusion":false,"errorDescription":{"errorType":"NotAuthorized","errorMessage":"No valid token available."}}""", Encoding.UTF8, "application/json"),
+        });
+        var source = new IdentifiersApiCardSource(new HttpClient(stub),
+            new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, null, null, "svc", "pwd", CardApiAuth.Windows));
+
+        var probe = await source.ProbeAsync("13483");
+
+        Assert.True(probe.NoChallenge);
+        Assert.False(probe.NtlmNotOffered);
+        Assert.Equal(CardApiAuth.Windows, source.Auth);
+    }
+
     [Fact]
     public async Task Zkouska_jde_poslat_na_zvoleny_podtyp()
     {

@@ -164,16 +164,23 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         ? [(options.SubType, IdentifierType.Card), (plate, IdentifierType.LicensePlate)]
         : [(options.SubType, IdentifierType.Card)];
 
+    /// <summary>Podtyp karet z nastavení: prázdné, nečíselné nebo nekladné (např. omylem uložená 0) = výchozí 3.</summary>
+    public static int ParseCardSubType(string? raw)
+        => int.TryParse(raw?.Trim(), out var value) && value > 0 ? value : DefaultCardSubType;
+
     /// <summary>Podtyp SPZ z nastavení: prázdné = výchozí 4, <c>0</c> (nebo záporné) = nestahovat.</summary>
     public static int? ParsePlateSubType(string? raw)
         => string.IsNullOrWhiteSpace(raw) ? DefaultPlateSubType
             : int.TryParse(raw.Trim(), out var value) && value > 0 ? value : null;
 
+    /// <summary>Zvolený způsob přihlášení (<see cref="CardApiAuth"/>) — pro rady ve zkoušce.</summary>
+    public string Auth => options.Auth;
+
     public static async Task<IdentifiersApiCardSource> CreateAsync(SettingsService settings, IHttpClientFactory httpClientFactory, CancellationToken ct)
     {
         var url = await settings.GetAsync(SettingKeys.CardsApiUrl, ct)
             ?? throw new InvalidOperationException("Není nastavena adresa integračního API pro karty (Nastavení → Karty).");
-        var subType = int.TryParse(await settings.GetAsync(SettingKeys.CardsApiSubType, ct), out var parsed) ? parsed : DefaultCardSubType;
+        var subType = ParseCardSubType(await settings.GetAsync(SettingKeys.CardsApiSubType, ct));
         var plateSubType = ParsePlateSubType(await settings.GetAsync(SettingKeys.CardsApiPlateSubType, ct));
         var auth = await settings.GetAsync(SettingKeys.CardsApiAuth, ct) ?? CardApiAuth.None;
         var user = await settings.GetAsync(SettingKeys.CardsApiUser, ct);
@@ -308,6 +315,9 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         /// <summary>Služba při 401 nabídla jen jiná schémata než NTLM (typicky samotné Negotiate) — přihlášení Windows účtem přes NTLM nemá jak proběhnout.</summary>
         public bool NtlmNotOffered => StatusCode == 401 && OfferedAuthSchemes.Count > 0
             && !OfferedAuthSchemes.Contains(NtlmScheme, StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Služba odmítla (401) bez jakékoli výzvy <c>WWW-Authenticate</c> — Windows účet nemá na co odpovědět; služba zřejmě čeká token.</summary>
+        public bool NoChallenge => StatusCode == 401 && OfferedAuthSchemes.Count == 0;
     }
 
     /// <summary>Zkouška z Nastavení: odeslaný požadavek, odpověď se stavem a hlavičkami a co z ní konektor přečte.</summary>

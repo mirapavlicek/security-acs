@@ -221,7 +221,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         await settings.SetIfProvidedAsync(SettingKeys.CardsMssqlConnectionString, cardsMssqlConnectionString, UserName);
         await settings.SetAsync(SettingKeys.CardsMssqlQuery, cardsMssqlQuery, UserName);
         await settings.SetAsync(SettingKeys.CardsApiUrl, cardsApiUrl?.Trim(), UserName);
-        await settings.SetAsync(SettingKeys.CardsApiSubType, string.IsNullOrWhiteSpace(cardsApiSubType) ? "3" : cardsApiSubType.Trim(), UserName);
+        await settings.SetAsync(SettingKeys.CardsApiSubType, IdentifiersApiCardSource.ParseCardSubType(cardsApiSubType).ToString(), UserName);
         // Prázdné pole = SPZ nestahovat; ukládá se jako "0", protože chybějící klíč znamená výchozí podtyp 4.
         await settings.SetAsync(SettingKeys.CardsApiPlateSubType, string.IsNullOrWhiteSpace(cardsApiPlateSubType) ? "0" : cardsApiPlateSubType.Trim(), UserName);
         await settings.SetAsync(SettingKeys.CardsApiAuth,
@@ -260,7 +260,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
             {
                 lines.Add("");
                 lines.Add($"=== {(type == IdentifierType.LicensePlate ? "SPZ" : "Karty")} (idIdentifierSubType {subType}) ===");
-                lines.AddRange(DescribeProbe(await source.ProbeAsync(employeeNo.Trim(), subType, HttpContext.RequestAborted)));
+                lines.AddRange(DescribeProbe(await source.ProbeAsync(employeeNo.Trim(), subType, HttpContext.RequestAborted), source.Auth));
             }
 
             if (source.TokenStepDescription is { } tokenStep)
@@ -280,7 +280,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         return RedirectToPage();
     }
 
-    private static List<string> DescribeProbe(IdentifiersApiCardSource.ProbeResult probe)
+    private static List<string> DescribeProbe(IdentifiersApiCardSource.ProbeResult probe, string auth)
     {
         var lines = new List<string>();
         {
@@ -296,6 +296,10 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
                     404 => "404 bez JSON těla = nejspíš špatná cesta (adresa) nebo metoda; zkontrolujte adresu ve Swaggeru služby (…/swagger) — musí odpovídat přesně včetně /api/v0/Identifiers.",
                     401 when probe.NtlmNotOffered
                         => $"Služba nabízí přihlášení jen schématy {string.Join(", ", probe.OfferedAuthSchemes)} — ACS ověřuje účet domény přes NTLM, které služba nenabízí. Správce služby musí u Windows Authentication povolit poskytovatele NTLM, nebo zvolte jiný způsob přihlášení.",
+                    401 when probe.NoChallenge && auth == CardApiAuth.Windows
+                        => "Služba odmítla bez výzvy WWW-Authenticate — NTLM handshake tedy neproběhl (není na co odpovědět). Buď na službě není zapnutá Windows Authentication (IIS), nebo služba čeká token: zkuste „Token z přihlášení“ s přihlašovacím endpointem ze Swaggeru služby.",
+                    401 when probe.NoChallenge
+                        => "Služba odmítla bez výzvy WWW-Authenticate — čeká token v hlavičce Authorization (viz tělo odpovědi). Zvolte „Token z přihlášení“ (endpoint a tvar těla ze Swaggeru služby) nebo „Pevný token“.",
                     401 or 403 => "Služba přihlášení odmítla — zkuste jiný způsob přihlášení (Windows účet domény přes NTLM / API klíč) nebo jiný účet.",
                     405 => "Služba metodu POST na této adrese nepřijímá — ověřte ve Swaggeru, zda není správně GET s parametrem.",
                     415 or 400 => "Služba nepřijala tělo požadavku — porovnejte s příkladem ve Swaggeru (názvy a typy polí).",
