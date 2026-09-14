@@ -77,6 +77,8 @@ public static class SettingKeys
     public const string CardsSource = "Cards:Source";
     public const string CardsApiUrl = "Cards:ApiUrl";
     public const string CardsApiSubType = "Cards:ApiSubType";
+    /// <summary>Podtyp identifikátoru pro SPZ (výchozí 4); <c>0</c> = SPZ z API nestahovat.</summary>
+    public const string CardsApiPlateSubType = "Cards:ApiPlateSubType";
     /// <summary>None | ApiKey | Basic | Windows | Bearer (pevný token) | Token (přihlášení na endpoint služby)</summary>
     public const string CardsApiAuth = "Cards:ApiAuth";
     public const string CardsApiBearerToken = "Cards:ApiBearerToken";     // secret

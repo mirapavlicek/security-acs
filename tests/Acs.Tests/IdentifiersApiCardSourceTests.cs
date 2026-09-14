@@ -141,6 +141,57 @@ public sealed class IdentifiersApiCardSourceTests : IDisposable
         Assert.False((await _db.EmployeeIdentifiers.SingleAsync(i => i.Value == "OLD")).IsActive);
     }
 
+    [Fact]
+    public async Task SPZ_se_stahuji_podtypem_4_a_zakladaji_jako_SPZ()
+    {
+        _db.Employees.Add(new Employee { FirstName = "Miroslav", LastName = "Pavlíček", PersonalNumber = "13483", IsActive = true });
+        await _db.SaveChangesAsync();
+
+        var stub = new Stub((_, body) => body.Contains("\"idIdentifierSubType\":3")
+            ? Json("""[{"identifier":"100234"}]""")
+            : body.Contains("\"idIdentifierSubType\":4")
+                ? Json("""[{"identifier":"1AB 2345"},{"identifier":"9ZZ 0000","active":false}]""")
+                : new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("") });
+        var source = new IdentifiersApiCardSource(new HttpClient(stub),
+            new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, null, null, null, null, PlateSubType: 4));
+
+        var result = await new CardSyncService(_db, new FixedSourceFactory(source), new AuditService(_db)).SyncAsync("test");
+
+        // Dva dotazy na jednoho zaměstnance: karty (3) a SPZ (4).
+        Assert.Equal([3, 4], stub.Requests.Select(r => r.Body.GetProperty("idIdentifierSubType").GetInt32()).Order());
+        Assert.Equal(2, result.Added);
+        var identifiers = await _db.EmployeeIdentifiers.OrderBy(i => i.Type).ToListAsync();
+        Assert.Equal(IdentifierType.Card, identifiers[0].Type);
+        Assert.Equal(IdentifierType.LicensePlate, identifiers[1].Type);
+        Assert.Equal(EmployeeIdentifier.Normalize("1AB 2345"), identifiers[1].Value);
+        Assert.Contains("SPZ podtyp 4", source.Description);
+    }
+
+    [Theory]
+    [InlineData(null, 4)]
+    [InlineData("", 4)]
+    [InlineData("0", null)]
+    [InlineData("-1", null)]
+    [InlineData("7", 7)]
+    [InlineData("x", null)]
+    public void Podtyp_SPZ_z_nastaveni(string? raw, int? expected)
+        => Assert.Equal(expected, IdentifiersApiCardSource.ParsePlateSubType(raw));
+
+    [Fact]
+    public async Task Zkouska_jde_poslat_na_zvoleny_podtyp()
+    {
+        var stub = new Stub((_, _) => Json("[]"));
+        var source = new IdentifiersApiCardSource(new HttpClient(stub),
+            new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, null, null, null, null, PlateSubType: 4));
+
+        var probe = await source.ProbeAsync("13483", 4);
+
+        Assert.Equal(4, probe.SubType);
+        Assert.Contains("\"idIdentifierSubType\":4", probe.RequestBody);
+        Assert.Equal(4, stub.Requests.Single().Body.GetProperty("idIdentifierSubType").GetInt32());
+        Assert.Equal([(3, IdentifierType.Card), (4, IdentifierType.LicensePlate)], source.SubTypes);
+    }
+
     [Theory]
     [InlineData("NNH\\svc-acs", null, "svc-acs", "NNH")]
     [InlineData("svc-acs@nnh.local", "nnh.local", "svc-acs@nnh.local", "")]

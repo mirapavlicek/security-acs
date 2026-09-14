@@ -304,11 +304,14 @@
 
         <fieldset style="border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.9rem;margin:0.6rem 0">
             <legend class="muted">Integrační API</legend>
-            <p class="hint">Na adresu se pro každého zaměstnance pošle <span class="mono">POST { "employeeNo": "&lt;osobní číslo&gt;", "idIdentifierSubType": 3 }</span>; 3 = identifikační karta. Zaměstnanec bez karty smí vrátit 404.</p>
+            <p class="hint">Na adresu se pro každého zaměstnance pošle <span class="mono">POST { "employeeNo": "&lt;osobní číslo&gt;", "idIdentifierSubType": 3 }</span> — jednou pro karty (podtyp 3) a jednou pro SPZ (podtyp 4). Zaměstnanec bez karty či SPZ smí vrátit 404.</p>
             <label>Adresa</label>
             <input type="text" name="CardsApiUrl" value="@Model.Values[SettingKeys.CardsApiUrl]" placeholder="https://ws-integrations.nnh.local/api/v0/Identifiers" />
-            <label>Podtyp identifikátoru (idIdentifierSubType)</label>
+            <label>Podtyp karet (idIdentifierSubType)</label>
             <input type="number" name="CardsApiSubType" value="@(Model.Values[SettingKeys.CardsApiSubType] ?? "3")" style="width:8rem" />
+            <label>Podtyp SPZ (idIdentifierSubType; prázdné = SPZ z API nestahovat)</label>
+            @{ var plateSubType = Acs.Infrastructure.Sync.IdentifiersApiCardSource.ParsePlateSubType(Model.Values[SettingKeys.CardsApiPlateSubType]); }
+            <input type="number" name="CardsApiPlateSubType" value="@(plateSubType?.ToString() ?? "")" placeholder="4" style="width:8rem" />
             <label>Přihlášení</label>
             @{ var cardsAuth = Model.Values[SettingKeys.CardsApiAuth] ?? "None"; }
             <select name="CardsApiAuth">
@@ -361,7 +364,7 @@
         <button class="btn" type="submit">Uložit</button>
     </form>
     <form method="post" asp-page-handler="CardsApiTest" class="inline-form" style="margin-top:0.8rem">
-        <label>Zkouška integračního API — osobní číslo</label>
+        <label>Zkouška integračního API — osobní číslo (karty i SPZ, ukáže i účet a doménu pro NTLM)</label>
         <input type="text" name="employeeNo" placeholder="např. 13483" style="width:12rem" />
         <button class="btn btn-sm btn-ghost" type="submit">Vyzkoušet (uložené nastavení)</button>
     </form>

@@ -123,9 +123,9 @@ public static class CardApiAuth
 public record ApiIdentifier(string Value, DateTime? ValidFrom, DateTime? ValidTo, bool? Active, string? Note);
 
 /// <summary>
-/// Identifikační karty z integrační služby (<c>POST …/api/v0/Identifiers</c> s tělem
-/// <c>{ employeeNo, idIdentifierSubType }</c>; podtyp 3 = identifikační karta). Služba se
-/// ptá po zaměstnanci — jedno volání na osobní číslo, několik souběžně.
+/// Identifikátory z integrační služby (<c>POST …/api/v0/Identifiers</c> s tělem
+/// <c>{ employeeNo, idIdentifierSubType }</c>; podtyp 3 = identifikační karta, 4 = SPZ).
+/// Služba se ptá po zaměstnanci — jedno volání na osobní číslo a podtyp, několik souběžně.
 ///
 /// Podobu odpovědi dokumentace neuvádí; rozbor je proto tolerantní (pole nebo objekt
 /// s polem, hodnota pod různými názvy) a v Nastavení je zkouška, která ukáže surovou
@@ -133,9 +133,15 @@ public record ApiIdentifier(string Value, DateTime? ValidFrom, DateTime? ValidTo
 /// </summary>
 public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCardSource.Options options) : ICardSource
 {
+    /// <param name="SubType">Podtyp identifikační karty (3).</param>
+    /// <param name="PlateSubType">Podtyp SPZ (4); null = SPZ se z API nestahují.</param>
     public sealed record Options(
         string Url, int SubType, string? ApiKeyHeader, string? ApiKey, string? User, string? Password, string Auth = CardApiAuth.None,
-        string? BearerToken = null, string? TokenUrl = null, string? TokenBody = null, string? TokenField = null);
+        string? BearerToken = null, string? TokenUrl = null, string? TokenBody = null, string? TokenField = null,
+        int? PlateSubType = null);
+
+    public const int DefaultCardSubType = 3;
+    public const int DefaultPlateSubType = 4;
 
     public const string DefaultTokenBody = "{\"username\":\"{user}\",\"password\":\"{password}\"}";
 
@@ -145,15 +151,30 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
     /// <summary>Popis posledního získání tokenu pro zkoušku (stav, tělo) — bez tokenu samotného.</summary>
     public string? TokenStepDescription { get; private set; }
 
+    /// <summary>Jak se ACS ke službě hlásí (režim, účet, doména) — pro zkoušku v Nastavení, bez hesla.</summary>
+    public string AuthDescription { get; private set; } = DescribeAuth(options, null);
+
     private const int Parallelism = 4;
 
-    public string Description => $"integrační API {options.Url} (podtyp {options.SubType})";
+    public string Description => $"integrační API {options.Url} (podtyp {options.SubType}"
+        + (options.PlateSubType is { } plate ? $", SPZ podtyp {plate})" : ")");
+
+    /// <summary>Podtypy, na které se služba ptá, a typ identifikátoru, který z nich vznikne.</summary>
+    public IReadOnlyList<(int SubType, IdentifierType Type)> SubTypes => options.PlateSubType is { } plate
+        ? [(options.SubType, IdentifierType.Card), (plate, IdentifierType.LicensePlate)]
+        : [(options.SubType, IdentifierType.Card)];
+
+    /// <summary>Podtyp SPZ z nastavení: prázdné = výchozí 4, <c>0</c> (nebo záporné) = nestahovat.</summary>
+    public static int? ParsePlateSubType(string? raw)
+        => string.IsNullOrWhiteSpace(raw) ? DefaultPlateSubType
+            : int.TryParse(raw.Trim(), out var value) && value > 0 ? value : null;
 
     public static async Task<IdentifiersApiCardSource> CreateAsync(SettingsService settings, IHttpClientFactory httpClientFactory, CancellationToken ct)
     {
         var url = await settings.GetAsync(SettingKeys.CardsApiUrl, ct)
             ?? throw new InvalidOperationException("Není nastavena adresa integračního API pro karty (Nastavení → Karty).");
-        var subType = int.TryParse(await settings.GetAsync(SettingKeys.CardsApiSubType, ct), out var parsed) ? parsed : 3;
+        var subType = int.TryParse(await settings.GetAsync(SettingKeys.CardsApiSubType, ct), out var parsed) ? parsed : DefaultCardSubType;
+        var plateSubType = ParsePlateSubType(await settings.GetAsync(SettingKeys.CardsApiPlateSubType, ct));
         var auth = await settings.GetAsync(SettingKeys.CardsApiAuth, ct) ?? CardApiAuth.None;
         var user = await settings.GetAsync(SettingKeys.CardsApiUser, ct);
         var password = await settings.GetAsync(SettingKeys.CardsApiPassword, ct);
@@ -171,7 +192,8 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
             await settings.GetAsync(SettingKeys.CardsApiBearerToken, ct),
             await settings.GetAsync(SettingKeys.CardsApiTokenUrl, ct),
             await settings.GetAsync(SettingKeys.CardsApiTokenBody, ct),
-            await settings.GetAsync(SettingKeys.CardsApiTokenField, ct));
+            await settings.GetAsync(SettingKeys.CardsApiTokenField, ct),
+            plateSubType);
 
         // Interní služba často běží s certifikátem vlastní CA, kterou nody neznají.
         var ignoreTls = await settings.GetAsync(SettingKeys.CardsApiIgnoreTls, ct) == "true";
@@ -181,18 +203,34 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
             var handler = new HttpClientHandler();
             if (ignoreTls)
                 handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
+            System.Net.NetworkCredential? credential = null;
             if (auth == CardApiAuth.Windows)
             {
                 if (string.IsNullOrWhiteSpace(user))
                     throw new InvalidOperationException("Přihlášení Windows účtem: není zadaný účet ani servisní účet pro AD (Nastavení → Active Directory).");
-                handler.Credentials = NtlmCredentials(url, WindowsCredential(user, password ?? "", await settings.GetLdapDomainAsync(ct)));
+                credential = WindowsCredential(user, password ?? "", await settings.GetLdapDomainAsync(ct));
+                handler.Credentials = NtlmCredentials(url, credential);
             }
 
-            return new IdentifiersApiCardSource(new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(2) }, options);
+            return new IdentifiersApiCardSource(new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(2) }, options)
+            {
+                AuthDescription = DescribeAuth(options, credential),
+            };
         }
 
         return new IdentifiersApiCardSource(httpClientFactory.CreateClient(CardSourceFactory.HttpClientName), options);
     }
+
+    private static string DescribeAuth(Options options, System.Net.NetworkCredential? credential) => options.Auth switch
+    {
+        CardApiAuth.Windows when credential is not null => $"Windows účet domény přes NTLM — uživatel „{credential.UserName}“, doména „{(string.IsNullOrEmpty(credential.Domain) ? "(žádná — UPN)" : credential.Domain)}“, pracovní stanice „{Environment.MachineName}“.",
+        CardApiAuth.Windows => $"Windows účet domény přes NTLM — účet „{options.User}“.",
+        CardApiAuth.Token => $"Token z přihlášení na {options.TokenUrl ?? "(endpoint nenastaven)"} účtem „{options.User}“.",
+        CardApiAuth.Bearer => "Pevný token (Authorization: Bearer).",
+        CardApiAuth.ApiKey => $"API klíč v hlavičce {(string.IsNullOrWhiteSpace(options.ApiKeyHeader) ? "X-Api-Key" : options.ApiKeyHeader)}.",
+        CardApiAuth.Basic => $"Basic účtem „{options.User}“.",
+        _ => "bez přihlášení.",
+    };
 
     /// <summary>Schéma HTTP autentizace, kterým se účet domény ověřuje proti AD.</summary>
     public const string NtlmScheme = "NTLM";
@@ -235,16 +273,18 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        foreach (var batch in numbers.Chunk(Parallelism))
+        // Jeden dotaz na osobní číslo a podtyp (karty, případně SPZ).
+        var queries = numbers.SelectMany(_ => SubTypes, (number, sub) => (number, sub.SubType, sub.Type));
+        foreach (var batch in queries.Chunk(Parallelism))
         {
-            var results = await Task.WhenAll(batch.Select(async number => (number, identifiers: await QueryAsync(number, ct))));
-            foreach (var (number, identifiers) in results)
+            var results = await Task.WhenAll(batch.Select(async q => (q.number, q.Type, identifiers: await QueryAsync(q.number, q.SubType, ct))));
+            foreach (var (number, type, identifiers) in results)
             {
                 foreach (var identifier in identifiers)
                 {
                     if (identifier.Active == false)
                         continue;
-                    yield return new CardRecord(null, number, identifier.Value, IdentifierType.Card,
+                    yield return new CardRecord(null, number, identifier.Value, type,
                         identifier.Note, identifier.ValidFrom, identifier.ValidTo);
                 }
             }
@@ -254,6 +294,7 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
     /// <summary>Výsledek zkoušky z Nastavení — všechno, co je třeba k rozlišení „špatná adresa“, „jiný formát čísla“ a „jiné schéma odpovědi“.</summary>
     public sealed record ProbeResult(
         string Url,
+        int SubType,
         string RequestBody,
         int StatusCode,
         string? ReasonPhrase,
@@ -270,14 +311,16 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
     }
 
     /// <summary>Zkouška z Nastavení: odeslaný požadavek, odpověď se stavem a hlavičkami a co z ní konektor přečte.</summary>
-    public async Task<ProbeResult> ProbeAsync(string employeeNo, CancellationToken ct = default)
+    /// <param name="subType">Podtyp identifikátoru; null = podtyp karet z nastavení.</param>
+    public async Task<ProbeResult> ProbeAsync(string employeeNo, int? subType = null, CancellationToken ct = default)
     {
-        var requestBody = JsonSerializer.Serialize(new { employeeNo, idIdentifierSubType = options.SubType });
-        using var request = await BuildRequestAsync(employeeNo, ct);
+        var effectiveSubType = subType ?? options.SubType;
+        var requestBody = JsonSerializer.Serialize(new { employeeNo, idIdentifierSubType = effectiveSubType });
+        using var request = await BuildRequestAsync(employeeNo, effectiveSubType, ct);
         using var response = await http.SendAsync(request, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
         var parsed = response.IsSuccessStatusCode ? SafeParse(body) : [];
-        return new ProbeResult(options.Url, requestBody, (int)response.StatusCode, response.ReasonPhrase,
+        return new ProbeResult(options.Url, effectiveSubType, requestBody, (int)response.StatusCode, response.ReasonPhrase,
             response.Content.Headers.ContentType?.ToString(), body, parsed,
             response.Headers.WwwAuthenticate.Select(h => h.Scheme).ToList());
     }
@@ -294,11 +337,11 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         }
     }
 
-    private async Task<IReadOnlyList<ApiIdentifier>> QueryAsync(string employeeNo, CancellationToken ct)
+    private async Task<IReadOnlyList<ApiIdentifier>> QueryAsync(string employeeNo, int subType, CancellationToken ct)
     {
         try
         {
-            return Parse(await PostAsync(employeeNo, ct));
+            return Parse(await PostAsync(employeeNo, subType, ct));
         }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
@@ -307,11 +350,11 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         }
     }
 
-    private async Task<HttpRequestMessage> BuildRequestAsync(string employeeNo, CancellationToken ct)
+    private async Task<HttpRequestMessage> BuildRequestAsync(string employeeNo, int subType, CancellationToken ct)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, options.Url)
         {
-            Content = JsonContent.Create(new { employeeNo, idIdentifierSubType = options.SubType }),
+            Content = JsonContent.Create(new { employeeNo, idIdentifierSubType = subType }),
         };
         request.Headers.Accept.ParseAdd("application/json");
         if (options.Auth == CardApiAuth.Bearer && !string.IsNullOrWhiteSpace(options.BearerToken))
@@ -411,15 +454,15 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         return null;
     }
 
-    private async Task<string> PostAsync(string employeeNo, CancellationToken ct)
+    private async Task<string> PostAsync(string employeeNo, int subType, CancellationToken ct)
     {
-        using var request = await BuildRequestAsync(employeeNo, ct);
+        using var request = await BuildRequestAsync(employeeNo, subType, ct);
         using var response = await http.SendAsync(request, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
         {
             throw new HttpRequestException(
-                $"Integrační API odpovědělo {(int)response.StatusCode} pro zaměstnance {employeeNo}: {Truncate(body, 300)}",
+                $"Integrační API odpovědělo {(int)response.StatusCode} pro zaměstnance {employeeNo} (podtyp {subType}): {Truncate(body, 300)}",
                 null, response.StatusCode);
         }
 

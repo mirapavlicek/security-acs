@@ -13,8 +13,11 @@ POST https://ws-integrations.nnh.local/api/v0/Identifiers
 { "employeeNo": "<osobní číslo>", "idIdentifierSubType": 3 }
 ```
 
-Podtyp `3` = identifikační karta (nastavitelné). Volání jdou po čtyřech
-souběžně; zaměstnanec bez karty smí dostat `404` — to není chyba.
+a totéž s `"idIdentifierSubType": 4`. Podtyp `3` = identifikační karta,
+podtyp `4` = SPZ vozidla (oba nastavitelné; prázdný podtyp SPZ = SPZ z API
+nestahovat). Z podtypu 3 vznikají identifikátory typu *karta*, z podtypu 4
+typu *SPZ*. Volání jdou po čtyřech souběžně; zaměstnanec bez karty či SPZ smí
+dostat `404` — to není chyba.
 
 ## Přihlášení
 
@@ -39,7 +42,9 @@ chce **token** v hlavičce `Authorization: Bearer`.
   (`System.Net.Security.UseManagedNtlm` v `Acs.Web.csproj`), nody tedy nepotřebují
   balík `gssntlmssp`. Služba musí NTLM nabízet (u IIS poskytovatel *NTLM* ve
   Windows Authentication) — zkouška v Nastavení vypíše hlavičku `WWW-Authenticate`
-  a když NTLM chybí, řekne to.
+  a když NTLM chybí, řekne to. Zkouška také vypíše, jakým **uživatelem a doménou**
+  se ACS hlásí — má to odpovídat tomu, co funguje v Postmanu (typ *NTLM
+  Authentication*: Username, Password, Domain, např. `nnh.local`).
 - API klíč v hlavičce (výchozí `X-Api-Key`), nebo Basic autentizace.
 - U interní CA, kterou nody neznají, jde dočasně vypnout ověření certifikátu
   (lepší je CA na nody nainstalovat).
@@ -56,13 +61,27 @@ Schéma odpovědi dokumentace neuvádí, rozbor je proto tolerantní:
   nebo textový `state`/`status` („Aktivní“, „Blokovaná“…) — neaktivní se vynechají.
 
 **Než zapnete automatickou synchronizaci, vyzkoušejte to na jednom osobním
-čísle** tlačítkem *Vyzkoušet* v Nastavení: ukáže surovou odpověď a to, co z ní
-ACS přečetl. Když nepřečte nic, pošlete surovou odpověď vývoji — rozbor se
-doplní o skutečné názvy polí.
+čísle** tlačítkem *Vyzkoušet* v Nastavení: pro karty i SPZ ukáže surovou
+odpověď a to, co z ní ACS přečetl. Když nepřečte nic, pošlete surovou odpověď
+vývoji — rozbor se doplní o skutečné názvy polí.
 
 ## Výsledek
 
-Stejný jako u MSSQL: identifikátory typu *karta* u zaměstnance (`Katalog →
-Zaměstnanci`), první platná karta jako hlavní číslo karty, karty, které ze
-zdroje zmizely, se deaktivují. Karty pak používá fronta karet a zápis přístupů
-do WIN-PAKu.
+Stejný jako u MSSQL: identifikátory typu *karta* a *SPZ* u zaměstnance
+(`Katalog → Zaměstnanci`), první platná karta jako hlavní číslo karty,
+identifikátory, které ze zdroje zmizely, se deaktivují. Karty pak používá
+fronta karet a zápis přístupů do WIN-PAKu, SPZ parkovací systém.
+
+## Když to v Postmanu jde a v ACS ne
+
+- Na nody se nasazují jen **release tagy** (`ACS_UPDATE_MODE=tag`, viz
+  `deploy/README.md`) — změna v `main` bez tagu na nodech neběží. Verze
+  aplikace je v patičce.
+- Porovnejte řádek *Přihlášení:* ve výstupu zkoušky s Postmanem: stejný
+  uživatel (v Nastavení → Karty pole *Uživatel*, jinak servisní účet pro AD) a
+  stejná doména (z `DOMÉNA\uživatel`, jinak doména z Nastavení → Active
+  Directory). UPN `uživatel@doména` se posílá bez domény — když s ním služba
+  odpoví 401, zadejte účet jako `DOMÉNA\uživatel`.
+- Řádek *WWW-Authenticate:* musí obsahovat `NTLM`.
+- Tělo požadavku musí být stejné jako v Postmanu:
+  `{"employeeNo":"13483","idIdentifierSubType":3}` — zkouška ho vypíše.
