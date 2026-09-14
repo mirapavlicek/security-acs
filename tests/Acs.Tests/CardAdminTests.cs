@@ -19,6 +19,7 @@ public sealed class CardAdminTests : IDisposable
     private readonly AcsDbContext _db;
     private readonly CardAdminService _cardAdmin;
     private readonly List<(HttpMethod Method, string Path)> _connectorCalls = [];
+    private Func<string, (HttpStatusCode, string)>? _cardResponder;
 
     private readonly Employee _employee;
     private readonly Reader _reader;
@@ -35,7 +36,7 @@ public sealed class CardAdminTests : IDisposable
         settings.SetAsync(SettingKeys.WinPakBaseUrl, "http://connector").GetAwaiter().GetResult();
         settings.SetAsync(SettingKeys.WinPakApiKey, "k").GetAwaiter().GetResult();
 
-        var http = new HttpClient(new RecordingHandler(_connectorCalls));
+        var http = new HttpClient(new RecordingHandler(_connectorCalls, path => _cardResponder?.Invoke(path)));
         _cardAdmin = new CardAdminService(_db, new WinPakClient(http, settings), new AuditService(_db));
 
         _employee = new Employee { FirstName = "Jan", LastName = "Novák", WinPakCardHolderId = "CH-1001" };
@@ -52,14 +53,16 @@ public sealed class CardAdminTests : IDisposable
         _connection.Dispose();
     }
 
-    private sealed class RecordingHandler(List<(HttpMethod, string)> calls) : HttpMessageHandler
+    private sealed class RecordingHandler(List<(HttpMethod, string)> calls, Func<string, (HttpStatusCode, string)?> responder) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
-            calls.Add((request.Method, request.RequestUri!.AbsolutePath));
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent)
+            var path = request.RequestUri!.AbsolutePath;
+            calls.Add((request.Method, path));
+            var (status, body) = responder(path) ?? (HttpStatusCode.NoContent, "");
+            return Task.FromResult(new HttpResponseMessage(status)
             {
-                Content = new StringContent("", Encoding.UTF8, "application/json"),
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
             });
         }
     }
@@ -92,6 +95,37 @@ public sealed class CardAdminTests : IDisposable
         await _db.Entry(item).ReloadAsync();
         Assert.Equal(RequestStatus.PushedToWinPak, item.Status);
         Assert.NotNull(item.PushedAt);
+    }
+
+    [Fact]
+    public async Task Push_Grant_ReportsAllEmployeeCards_InWinPak()
+    {
+        // Zaměstnanec má tři platné karty: dvě u svého držitele, jednu WIN-PAK nezná; čtvrtá je neplatná.
+        _db.EmployeeIdentifiers.AddRange(
+            new EmployeeIdentifier { EmployeeId = _employee.Id, Type = IdentifierType.Card, Value = "100234", IsActive = true },
+            new EmployeeIdentifier { EmployeeId = _employee.Id, Type = IdentifierType.Card, Value = "100235", IsActive = true },
+            new EmployeeIdentifier { EmployeeId = _employee.Id, Type = IdentifierType.Card, Value = "777", IsActive = true },
+            new EmployeeIdentifier { EmployeeId = _employee.Id, Type = IdentifierType.Card, Value = "OLD", IsActive = false });
+        await _db.SaveChangesAsync();
+        _cardResponder = path => path switch
+        {
+            "/api/v1/cards/100234" or "/api/v1/cards/100235" => (HttpStatusCode.OK,
+                $$"""{"cardNumber":"{{path[14..]}}","recordId":"1","cardHolderId":"CH-1001","status":1,"issue":0,"accessLevelIds":["AL-03"]}"""),
+            "/api/v1/cards/777" => (HttpStatusCode.NotFound, "{}"),
+            _ => (HttpStatusCode.NoContent, ""),
+        };
+        var item = CreateApprovedItem();
+
+        await _cardAdmin.PushAsync(item.Id, "spravce");
+
+        // Access level jde na držitele (konektor ho zapíše na všechny jeho karty); pak se ověří každá karta z ACS.
+        Assert.Equal((HttpMethod.Post, "/api/v1/cardholders/CH-1001/access-levels"), _connectorCalls[0]);
+        Assert.Equal(["/api/v1/cards/100234", "/api/v1/cards/100235", "/api/v1/cards/777"],
+            _connectorCalls.Skip(1).Select(c => c.Path));
+        await _db.Entry(item).ReloadAsync();
+        Assert.Equal(RequestStatus.PushedToWinPak, item.Status);
+        Assert.Contains("přístup na kartách 100234, 100235", item.PushResult);
+        Assert.Contains("ve WIN-PAK chybí karty 777", item.PushResult);
     }
 
     [Fact]

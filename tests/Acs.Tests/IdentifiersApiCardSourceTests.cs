@@ -141,6 +141,67 @@ public sealed class IdentifiersApiCardSourceTests : IDisposable
         Assert.False((await _db.EmployeeIdentifiers.SingleAsync(i => i.Value == "OLD")).IsActive);
     }
 
+    private sealed class ListSource(params CardRecord[] records) : ICardSource
+    {
+        public string Description => "seznam";
+
+        public async IAsyncEnumerable<CardRecord> ReadAsync(IReadOnlyList<Employee> employees,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            foreach (var record in records)
+                yield return record;
+            await Task.CompletedTask;
+        }
+    }
+
+    [Fact]
+    public async Task Vice_karet_se_zalozi_vsechny_a_stejna_karta_u_tehoz_cloveka_jen_jednou()
+    {
+        _db.Employees.AddRange(
+            new Employee { FirstName = "Miroslav", LastName = "Pavlíček", PersonalNumber = "13483", IsActive = true },
+            new Employee { FirstName = "Jana", LastName = "Nová", PersonalNumber = "20001", IsActive = true });
+        await _db.SaveChangesAsync();
+
+        var source = new ListSource(
+            new CardRecord(null, "13483", "100234", IdentifierType.Card, ValidTo: new DateTime(2027, 1, 1)),
+            new CardRecord(null, "13483", "100235", IdentifierType.Card),
+            new CardRecord(null, "13483", "100 234", IdentifierType.Card, ValidTo: new DateTime(2030, 1, 1)), // duplicita (po normalizaci)
+            new CardRecord(null, "13483", "100234", IdentifierType.LicensePlate),                             // jiný typ = jiný identifikátor
+            new CardRecord(null, "20001", "100234", IdentifierType.Card));                                     // jiný člověk = jiný identifikátor
+
+        var result = await new CardSyncService(_db, new FixedSourceFactory(source), new AuditService(_db)).SyncAsync("test");
+
+        Assert.Equal((4, 1), (result.Added, result.Duplicates));
+        Assert.Contains("přeskočeno duplicit 1", result.ToString());
+        var pavlicek = await _db.EmployeeIdentifiers.Include(i => i.Employee)
+            .Where(i => i.Employee!.PersonalNumber == "13483" && i.Type == IdentifierType.Card)
+            .OrderBy(i => i.Id).ToListAsync();
+        Assert.Equal(["100234", "100235"], pavlicek.Select(i => i.Value));
+        // První záznam platí — platnost z duplicity se nepřepsala.
+        Assert.Equal(new DateTime(2027, 1, 1), pavlicek[0].ValidTo);
+        Assert.Equal(4, await _db.EmployeeIdentifiers.CountAsync());
+    }
+
+    [Fact]
+    public async Task Duplicity_uz_v_databazi_synchronizaci_neshodi_a_deaktivuji_se()
+    {
+        var employee = new Employee { FirstName = "Miroslav", LastName = "Pavlíček", PersonalNumber = "13483", IsActive = true };
+        _db.Employees.Add(employee);
+        await _db.SaveChangesAsync();
+        _db.EmployeeIdentifiers.AddRange(
+            new EmployeeIdentifier { EmployeeId = employee.Id, Type = IdentifierType.Card, Value = "100234", Source = RecordSource.Imported, IsActive = true },
+            new EmployeeIdentifier { EmployeeId = employee.Id, Type = IdentifierType.Card, Value = "100234", Source = RecordSource.Imported, IsActive = true });
+        await _db.SaveChangesAsync();
+
+        var source = new ListSource(new CardRecord(null, "13483", "100234", IdentifierType.Card));
+        var result = await new CardSyncService(_db, new FixedSourceFactory(source), new AuditService(_db)).SyncAsync("test");
+
+        Assert.Equal((0, 1), (result.Added, result.Deactivated));
+        var rows = await _db.EmployeeIdentifiers.OrderBy(i => i.Id).ToListAsync();
+        Assert.True(rows[0].IsActive);
+        Assert.False(rows[1].IsActive);
+    }
+
     [Fact]
     public async Task SPZ_se_stahuji_podtypem_4_a_zakladaji_jako_SPZ()
     {

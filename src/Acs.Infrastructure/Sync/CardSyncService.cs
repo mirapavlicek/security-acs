@@ -6,16 +6,20 @@ using Microsoft.Extensions.Logging;
 
 namespace Acs.Infrastructure.Sync;
 
-public record CardSyncResult(int Added, int Updated, int Deactivated, int Unmatched)
+/// <param name="Duplicates">Záznamy ze zdroje, které u téhož člověka opakovaly už načtený identifikátor (přeskočeny).</param>
+public record CardSyncResult(int Added, int Updated, int Deactivated, int Unmatched, int Duplicates = 0)
 {
     public override string ToString()
-        => $"přidáno {Added}, aktualizováno {Updated}, deaktivováno {Deactivated}, nespárováno {Unmatched}";
+        => $"přidáno {Added}, aktualizováno {Updated}, deaktivováno {Deactivated}, nespárováno {Unmatched}"
+           + (Duplicates > 0 ? $", přeskočeno duplicit {Duplicates}" : "");
 }
 
 /// <summary>
 /// Synchronizace identifikátorů zaměstnanců (karty, SPZ…) ze zvoleného zdroje
 /// (<see cref="ICardSource"/>: MSSQL dotaz, nebo integrační API po zaměstnancích).
-/// Jeden člověk jich může mít libovolný počet, zdroj vrací <b>záznam na identifikátor</b>.
+/// Jeden člověk jich může mít libovolný počet (víc karet, víc SPZ) a všechny se
+/// evidují; zdroj vrací <b>záznam na identifikátor</b>. Stejný identifikátor u
+/// téhož člověka se bere jen jednou — první záznam platí, další se přeskočí.
 /// Identifikátory, které ze zdroje zmizely, se deaktivují (nemažou — kvůli historii).
 /// </summary>
 public class CardSyncService(
@@ -32,10 +36,22 @@ public class CardSyncService(
         var byPersonal = employees.Where(e => e.PersonalNumber != null)
             .GroupBy(e => e.PersonalNumber!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
-        var existing = (await db.EmployeeIdentifiers.ToListAsync(ct))
-            .ToDictionary(i => (i.EmployeeId, i.Type, i.Value));
+        // Stejný identifikátor u téhož člověka smí být v databázi jen jednou; kdyby tam
+        // z dřívějška duplicity byly, platí nejstarší záznam a ostatní se deaktivují.
+        var existing = new Dictionary<(int, IdentifierType, string), EmployeeIdentifier>();
+        var deactivated = 0;
+        foreach (var identifier in await db.EmployeeIdentifiers.OrderBy(i => i.Id).ToListAsync(ct))
+        {
+            if (existing.TryAdd((identifier.EmployeeId, identifier.Type, identifier.Value), identifier))
+                continue;
+            if (identifier.IsActive)
+            {
+                identifier.IsActive = false;
+                deactivated++;
+            }
+        }
 
-        int added = 0, updated = 0, unmatched = 0;
+        int added = 0, updated = 0, unmatched = 0, duplicates = 0;
         var seen = new HashSet<(int, IdentifierType, string)>();
 
         await foreach (var record in source.ReadAsync(employees, ct))
@@ -56,7 +72,12 @@ public class CardSyncService(
             var type = record.Type;
             var value = EmployeeIdentifier.Normalize(record.Value);
             var key = (employee.Id, type, value);
-            seen.Add(key);
+            if (!seen.Add(key))
+            {
+                // Zdroj vrátil tentýž identifikátor u téhož člověka znovu — první záznam platí.
+                duplicates++;
+                continue;
+            }
 
             if (existing.TryGetValue(key, out var identifier))
             {
@@ -96,7 +117,6 @@ public class CardSyncService(
 
 
         // Co ze zdroje zmizelo, jen deaktivujeme (ruční záznamy se nedotýkáme).
-        var deactivated = 0;
         foreach (var (key, identifier) in existing)
         {
             if (identifier.Source == RecordSource.Imported && identifier.IsActive && !seen.Contains(key))
@@ -109,7 +129,7 @@ public class CardSyncService(
         await db.SaveChangesAsync(ct);
         await SyncPrimaryCardsAsync(ct);
 
-        var result = new CardSyncResult(added, updated, deactivated, unmatched);
+        var result = new CardSyncResult(added, updated, deactivated, unmatched, duplicates);
         logger?.LogInformation("Synchronizace karet ({Source}): {Result}", source.Description, result);
         await audit.LogAsync(userName, "cards-synced", "EmployeeIdentifier", null, result.ToString(), ct);
         return result;
