@@ -450,8 +450,15 @@
                    checked="@(Model.Values[SettingKeys.SmtpIgnoreTlsErrors] == "true")" />
             <label for="SmtpIgnoreTlsErrors">Neověřovat certifikát SMTP serveru (relay se self-signed certifikátem nebo certifikátem na jiné jméno — spojení zůstává šifrované; raději nechte vydat certifikát z interní CA na jméno serveru)</label>
         </div>
+        <label>Zkušební e-mail komu (prázdné = odesílateli)</label>
+        <input type="email" name="SmtpTestTo" placeholder="spravce@fnmh.hospital" />
         <button class="btn" type="submit">Uložit</button>
+        <button class="btn btn-ghost" type="submit" asp-page-handler="SmtpTest">Uložit a odeslat zkušební e-mail</button>
     </form>
+    @if (Model.SmtpTestResult is not null)
+    {
+        <p class="muted">Zkušební e-mail: @Model.SmtpTestResult</p>
+    }
 </div>
 </div>
 </div>

@@ -86,8 +86,9 @@ builder.Services.AddSingleton<Acs.Infrastructure.Sync.SyncJobRunner>();
 builder.Services.AddHostedService<Acs.Infrastructure.Sync.SyncScheduler>();
 
 // Schvalovací workflow, fronta správce karet a e-mailové notifikace.
-builder.Services.AddScoped<Acs.Infrastructure.Notifications.INotificationService,
-    Acs.Infrastructure.Notifications.EmailNotificationService>();
+builder.Services.AddScoped<Acs.Infrastructure.Notifications.EmailNotificationService>();
+builder.Services.AddScoped<Acs.Infrastructure.Notifications.INotificationService>(
+    sp => sp.GetRequiredService<Acs.Infrastructure.Notifications.EmailNotificationService>());
 builder.Services.AddScoped<Acs.Infrastructure.Notifications.AttentionService>();
 builder.Services.AddScoped<Acs.Infrastructure.Workflow.ReaderGroupService>();
 builder.Services.AddScoped<Acs.Infrastructure.Workflow.RequestWorkflowService>();

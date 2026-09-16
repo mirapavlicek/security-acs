@@ -263,6 +263,30 @@ public class EmailNotificationService(
             .AsNoTracking()
             .FirstOrDefaultAsync(i => i.Id == itemId, ct);
 
+    /// <summary>
+    /// Zkušební e-mail z Nastavení: projde celou cestou (STARTTLS, přihlášení, odesílatel), takže
+    /// správce vidí konkrétní chybu SMTP místo hádání z logu. Vrací popis výsledku.
+    /// </summary>
+    public async Task<string> SendTestAsync(string to, CancellationToken ct = default)
+    {
+        var host = await settings.GetAsync(SettingKeys.SmtpHost, ct);
+        if (string.IsNullOrWhiteSpace(host))
+            return "SMTP server není vyplněný — notifikace se neodesílají.";
+        try
+        {
+            await SendAsync([to], "ACS — zkušební e-mail",
+                $"Toto je zkušební zpráva z ACS ({Environment.MachineName}, {DateTime.Now:d. M. yyyy H:mm}). Pokud ji čtete, odesílání notifikací funguje.", ct);
+            return $"OK — zpráva předána serveru {host} pro {to}.";
+        }
+        catch (Exception ex)
+        {
+            var reason = ex.GetBaseException().Message;
+            if (reason.Contains("RemoteCertificate", StringComparison.OrdinalIgnoreCase))
+                reason += " — certifikát SMTP serveru neodpovídá jménu nebo mu nody nedůvěřují; buď nechte vydat certifikát z interní CA na jméno serveru, nebo zaškrtněte „Neověřovat certifikát SMTP serveru“.";
+            return $"Selhalo: {reason}";
+        }
+    }
+
     private async Task SendAsync(IReadOnlyList<string> to, string subject, string body, CancellationToken ct)
     {
         var host = await settings.GetAsync(SettingKeys.SmtpHost, ct);

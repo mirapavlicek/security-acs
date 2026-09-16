@@ -12,8 +12,11 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace Acs.Web.Pages.Admin;
 
 public class SettingsModel(SettingsService settings, AuditService audit, WinPakClient winPak,
-    IHttpClientFactory httpClientFactory, ParkingConnectorClient parkingConnector) : PageModel
+    IHttpClientFactory httpClientFactory, ParkingConnectorClient parkingConnector,
+    Acs.Infrastructure.Notifications.EmailNotificationService email) : PageModel
 {
+    [TempData] public string? SmtpTestResult { get; set; }
+
     public Dictionary<string, string?> Values { get; } = new();
 
     [TempData] public string? SavedSection { get; set; }
@@ -342,6 +345,27 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         await settings.SetAsync(SettingKeys.SmtpUseTls, smtpUseTls == "true" ? "true" : "false", UserName);
         await settings.SetAsync(SettingKeys.SmtpIgnoreTlsErrors, smtpIgnoreTlsErrors == "true" ? "true" : "false", UserName);
         return await SavedAsync("SMTP");
+    }
+
+    /// <summary>Uloží SMTP nastavení a pošle zkušební e-mail na zadanou adresu (výchozí: adresa odesílatele).</summary>
+    public async Task<IActionResult> OnPostSmtpTestAsync(
+        string? smtpHost, string? smtpPort, string? smtpUser, string? smtpPassword, string? smtpFrom,
+        string? smtpUseTls, string? smtpIgnoreTlsErrors, string? smtpTestTo)
+    {
+        await OnPostSmtpAsync(smtpHost, smtpPort, smtpUser, smtpPassword, smtpFrom, smtpUseTls, smtpIgnoreTlsErrors);
+        var to = string.IsNullOrWhiteSpace(smtpTestTo) ? smtpFrom?.Trim() : smtpTestTo.Trim();
+        if (string.IsNullOrWhiteSpace(to))
+        {
+            SmtpTestResult = "Zadejte adresu příjemce zkušebního e-mailu (nebo vyplňte odesílatele).";
+        }
+        else
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            SmtpTestResult = await email.SendTestAsync(to, cts.Token);
+        }
+
+        ActiveSection = "smtp";
+        return RedirectToPage();
     }
 
     public async Task<IActionResult> OnPostParkingSystemAsync(
