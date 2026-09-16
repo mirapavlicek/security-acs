@@ -14,8 +14,9 @@ public class Building : IOwnedArea
     public int Id { get; set; }
     public required string Name { get; set; }
     public string? Description { get; set; }
-    public byte[]? SchemaImage { get; set; }
-    public string? SchemaContentType { get; set; }
+
+    /// <summary>Obrázek schématu budovy — načítá se jen s <c>Include(b =&gt; b.Schema)</c>, viz <see cref="BuildingSchema"/>.</summary>
+    public BuildingSchema? Schema { get; set; }
 
     /// <summary>Úsek, kterému prostor patří (null = dědí z nadřazeného prostoru).</summary>
     public int? OrgUnitId { get; set; }
@@ -59,10 +60,34 @@ public class Floor : IOwnedArea
 
     public required string Name { get; set; }
     public int SortOrder { get; set; }
-    public byte[]? SchemaImage { get; set; }
-    public string? SchemaContentType { get; set; }
+
+    /// <summary>Podklad plánu patra — načítá se jen s <c>Include(f =&gt; f.Schema)</c>, viz <see cref="FloorSchema"/>.</summary>
+    public FloorSchema? Schema { get; set; }
     public List<Corridor> Corridors { get; set; } = [];
     public List<Room> Rooms { get; set; } = [];
+}
+
+/// <summary>
+/// Obrázek schématu patra (až 5 MB). Leží ve stejném řádku tabulky <c>Floors</c> jako patro
+/// (sloupce <c>SchemaImage</c>, <c>SchemaContentType</c>), ale je to samostatná entita: EF Core
+/// ho načte jen tam, kde je vyžádán. Dokud byl obrázek přímo vlastností patra, každý dotaz
+/// s <c>Include(Floor)</c> — výpis 1 600 čteček, moje přístupy, nová žádost — tahal z databáze
+/// podklady všech dotčených pater znovu a znovu (u výpisu čteček za každý řádek), což
+/// znamenalo gigabajty alokací na jedno zobrazení stránky a růst paměti procesu až k OOM.
+/// </summary>
+public class FloorSchema
+{
+    public int FloorId { get; set; }
+    public byte[]? SchemaImage { get; set; }
+    public string? SchemaContentType { get; set; }
+}
+
+/// <summary>Obrázek schématu budovy — totéž oddělení jako <see cref="FloorSchema"/> (tabulka <c>Buildings</c>).</summary>
+public class BuildingSchema
+{
+    public int BuildingId { get; set; }
+    public byte[]? SchemaImage { get; set; }
+    public string? SchemaContentType { get; set; }
 }
 
 /// <summary>

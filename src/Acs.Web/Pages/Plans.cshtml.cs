@@ -22,7 +22,7 @@ public class PlansModel(AcsDbContext db, Acs.Infrastructure.Workflow.ReaderGroup
         FloorsWithSchema = await db.Floors
             .Include(f => f.Building)
             .Include(f => f.Section)
-            .Where(f => f.SchemaImage != null
+            .Where(f => f.Schema!.SchemaImage != null
                         || f.Rooms.Any(r => r.PlanX != null)
                         || f.Corridors.Any(c => c.Readers.Any(r => r.SchemaX != null))
                         || f.Rooms.Any(r => r.Readers.Any(x => x.SchemaX != null)))
@@ -34,7 +34,8 @@ public class PlansModel(AcsDbContext db, Acs.Infrastructure.Workflow.ReaderGroup
         if (SelectedFloor is null)
             return;
 
-        HasUnderlay = SelectedFloor.SchemaImage is not null;
+        // Jen příznak — obrázek samotný si prohlížeč stáhne z /floors/{id}/schema.
+        HasUnderlay = await db.Floors.AnyAsync(f => f.Id == SelectedFloor.Id && f.Schema!.SchemaImage != null);
 
         var rooms = await db.Rooms
             .Where(r => r.FloorId == SelectedFloor.Id && r.PlanX != null)

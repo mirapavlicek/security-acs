@@ -499,10 +499,10 @@ app.MapPost("/set-theme", async (HttpContext context, AcsDbContext db) =>
 // Schéma patra (obrázek uložený v DB — dostupný z obou HA nodů).
 app.MapGet("/floors/{id:int}/schema", async (int id, AcsDbContext db) =>
 {
-    var floor = await db.Floors.AsNoTracking().FirstOrDefaultAsync(f => f.Id == id);
-    return floor?.SchemaImage is null
+    var schema = await db.Set<FloorSchema>().AsNoTracking().FirstOrDefaultAsync(s => s.FloorId == id);
+    return schema?.SchemaImage is null
         ? Results.NotFound()
-        : Results.File(floor.SchemaImage, floor.SchemaContentType ?? "image/png");
+        : Results.File(schema.SchemaImage, schema.SchemaContentType ?? "image/png");
 });
 
 // Integrační API pro parkovací systém (X-Api-Key, viz docs/integrace/greencenter.md).

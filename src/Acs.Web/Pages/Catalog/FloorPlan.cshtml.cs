@@ -37,7 +37,7 @@ public class FloorPlanModel(AcsDbContext db, AuditService audit, PlanGenerationS
             return NotFound();
 
         Floor = floor;
-        HasUnderlay = floor.SchemaImage is not null;
+        HasUnderlay = await db.Floors.AnyAsync(f => f.Id == id && f.Schema!.SchemaImage != null);
         LayoutJson = JsonSerializer.Serialize(await LoadLayoutAsync(id), JsonOpts);
 
         HasDrawingSource = await db.Rooms.AnyAsync(r => r.FloorId == id && r.SourceX != null)

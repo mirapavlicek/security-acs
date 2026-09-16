@@ -47,6 +47,14 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
     public DbSet<Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey> DataProtectionKeys
         => Set<Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey>();
 
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        // FloorSchema / BuildingSchema mají jen nullable sloupce: když jsou všechny NULL, EF
+        // instanci nevytvoří (Schema == null) — to je zamýšlené, varování je tedy zbytečné.
+        optionsBuilder.ConfigureWarnings(w =>
+            w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.OptionalDependentWithoutIdentifyingPropertyWarning));
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AppUser>(e =>
@@ -163,6 +171,24 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
         {
             e.HasOne(x => x.Section).WithMany(s => s.Floors)
                 .HasForeignKey(x => x.SectionId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // Obrázky schémat sdílejí řádek s patrem / budovou (table splitting), takže se schéma
+        // DB nemění, ale longblob se načte jen s explicitním Include(x => x.Schema).
+        modelBuilder.Entity<FloorSchema>(e =>
+        {
+            e.ToTable("Floors");
+            e.HasKey(x => x.FloorId);
+            e.Property(x => x.FloorId).HasColumnName("Id");
+            e.HasOne<Floor>().WithOne(f => f.Schema).HasForeignKey<FloorSchema>(x => x.FloorId);
+        });
+
+        modelBuilder.Entity<BuildingSchema>(e =>
+        {
+            e.ToTable("Buildings");
+            e.HasKey(x => x.BuildingId);
+            e.Property(x => x.BuildingId).HasColumnName("Id");
+            e.HasOne<Building>().WithOne(b => b.Schema).HasForeignKey<BuildingSchema>(x => x.BuildingId);
         });
 
         modelBuilder.Entity<Corridor>(e =>
