@@ -274,6 +274,8 @@ public class EmailNotificationService(
         var user = await settings.GetAsync(SettingKeys.SmtpUser, ct);
         var password = await settings.GetAsync(SettingKeys.SmtpPassword, ct);
         var useTls = await settings.GetBoolAsync(SettingKeys.SmtpUseTls, false, ct);
+        // Interní relay se self-signed certifikátem nebo certifikátem na jiné jméno — viz SmtpCertificateTrust.
+        SmtpCertificateTrust.SetRelaxed(host, useTls && await settings.GetBoolAsync(SettingKeys.SmtpIgnoreTlsErrors, false, ct));
 
         using var client = new SmtpClient(host, port) { EnableSsl = useTls };
         if (!string.IsNullOrEmpty(user))

@@ -1,6 +1,7 @@
 using Acs.Domain.Entities;
 using Acs.Infrastructure.Audit;
 using Acs.Infrastructure.Integration;
+using Acs.Infrastructure.Auth;
 using Acs.Infrastructure.Settings;
 using Acs.Infrastructure.Sync;
 using Acs.Infrastructure.WinPak;
@@ -51,7 +52,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         SettingKeys.AutoDepartmentChangeEnabled, SettingKeys.AutoExpirationEnabled, SettingKeys.AutoRemindersEnabled,
         SettingKeys.AutoReminderAfterDays, SettingKeys.AutoEscalationAfterDays, SettingKeys.AutoPushEnabled,
         SettingKeys.SmtpHost, SettingKeys.SmtpPort, SettingKeys.SmtpUser, SettingKeys.SmtpFrom,
-        SettingKeys.SmtpUseTls,
+        SettingKeys.SmtpUseTls, SettingKeys.SmtpIgnoreTlsErrors,
         SettingKeys.CardsSource, SettingKeys.CardsApiUrl, SettingKeys.CardsApiSubType, SettingKeys.CardsApiPlateSubType, SettingKeys.CardsApiAuth, SettingKeys.CardsApiKeyHeader,
         SettingKeys.CardsApiTokenUrl, SettingKeys.CardsApiTokenBody, SettingKeys.CardsApiTokenField,
         SettingKeys.CardsApiUser, SettingKeys.CardsApiIgnoreTls,
@@ -88,10 +89,8 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
             Values[key] = await settings.GetAsync(key);
         ParkingApiKeySet = !string.IsNullOrEmpty(await settings.GetAsync(SettingKeys.ParkingSystemApiKey));
 
-        SsoKeytabPath = Environment.GetEnvironmentVariable("KRB5_KTNAME") is { Length: > 0 } keytab
-            ? keytab.StartsWith("FILE:", StringComparison.OrdinalIgnoreCase) ? keytab[5..] : keytab
-            : null;
-        SsoKeytabExists = SsoKeytabPath is not null && System.IO.File.Exists(SsoKeytabPath);
+        SsoKeytabPath = KerberosKeytab.IsConfigured ? KerberosKeytab.Path : null;
+        SsoKeytabExists = KerberosKeytab.IsAvailable;
 
         WinPakAdminUrl = Values[SettingKeys.WinPakBaseUrl] is { Length: > 0 } baseUrl
                          && Uri.TryCreate(baseUrl.TrimEnd('/') + "/ui", UriKind.Absolute, out var uri)
@@ -333,7 +332,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
 
     public async Task<IActionResult> OnPostSmtpAsync(
         string? smtpHost, string? smtpPort, string? smtpUser, string? smtpPassword, string? smtpFrom,
-        string? smtpUseTls)
+        string? smtpUseTls, string? smtpIgnoreTlsErrors)
     {
         await settings.SetAsync(SettingKeys.SmtpHost, smtpHost, UserName);
         await settings.SetAsync(SettingKeys.SmtpPort, smtpPort, UserName);
@@ -341,6 +340,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         await settings.SetIfProvidedAsync(SettingKeys.SmtpPassword, smtpPassword, UserName);
         await settings.SetAsync(SettingKeys.SmtpFrom, smtpFrom, UserName);
         await settings.SetAsync(SettingKeys.SmtpUseTls, smtpUseTls == "true" ? "true" : "false", UserName);
+        await settings.SetAsync(SettingKeys.SmtpIgnoreTlsErrors, smtpIgnoreTlsErrors == "true" ? "true" : "false", UserName);
         return await SavedAsync("SMTP");
     }
 

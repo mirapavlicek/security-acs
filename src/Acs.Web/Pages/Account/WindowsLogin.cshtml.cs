@@ -34,6 +34,10 @@ public class WindowsLoginModel(UserAuthenticationService auth, AuditService audi
         if (!await settings.GetBoolAsync(SettingKeys.SsoEnabled))
             return Fail("disabled", isTest);
 
+        // Bez keytabu by GSSAPI každý ticket odmítl (UnknownCredentials) — nevyzývat, rovnou formulář.
+        if (!KerberosKeytab.IsAvailable)
+            return Fail("nokeytab", isTest);
+
         var result = await HttpContext.AuthenticateAsync(NegotiateDefaults.AuthenticationScheme);
         var identity = result.Succeeded ? result.Principal?.Identity : null;
         if (identity?.Name is not { Length: > 0 } identityName)
@@ -78,6 +82,7 @@ public class WindowsLoginModel(UserAuthenticationService auth, AuditService audi
             TempData["SsoTestResult"] = code switch
             {
                 "disabled" => "Přihlášení Windows není zapnuté — uložte sekci se zaškrtnutým „Povolit“.",
+                "nokeytab" => $"Nelze ověřovat Kerberos tickety: {KerberosKeytab.Problem}. Nahrajte keytab se SPN HTTP/{Request.Host.Host} a nastavte KRB5_KTNAME v acs.env (viz níže).",
                 _ => "Selhalo — prohlížeč neposlal platný token nebo ho server neověřil (viz log acs-web: journalctl -u acs-web).",
             };
             TempData["ActiveSection"] = "sso";

@@ -112,6 +112,15 @@
     {
         <p class="muted">Test přihlášení Windows: @ssoTest</p>
     }
+    @if (Model.Values[SettingKeys.SsoEnabled] == "true" && !Model.SsoKeytabExists)
+    {
+        <p class="hint" style="color:var(--danger, #b42318)">
+            Přihlášení Windows je zapnuté, ale na tomto nodu chybí keytab — tickety nejde ověřit, každý pokus by
+            skončil chybou (<code>UnknownCredentials</code>). Aplikace proto tlačítko ani automatickou výzvu
+            <strong>nenabízí</strong> a uživatelé dostávají rovnou formulář; jakmile keytab nahrajete a nastavíte
+            <code>KRB5_KTNAME</code>, začne přihlášení Windows fungovat bez dalšího zásahu.
+        </p>
+    }
 
     <h3>Stav na tomto nodu</h3>
     <table class="data">
@@ -435,6 +444,11 @@
             <input type="checkbox" id="SmtpUseTls" name="SmtpUseTls" value="true"
                    checked="@(Model.Values[SettingKeys.SmtpUseTls] == "true")" />
             <label for="SmtpUseTls">TLS</label>
+        </div>
+        <div class="checkbox-row">
+            <input type="checkbox" id="SmtpIgnoreTlsErrors" name="SmtpIgnoreTlsErrors" value="true"
+                   checked="@(Model.Values[SettingKeys.SmtpIgnoreTlsErrors] == "true")" />
+            <label for="SmtpIgnoreTlsErrors">Neověřovat certifikát SMTP serveru (relay se self-signed certifikátem nebo certifikátem na jiné jméno — spojení zůstává šifrované; raději nechte vydat certifikát z interní CA na jméno serveru)</label>
         </div>
         <button class="btn" type="submit">Uložit</button>
     </form>
