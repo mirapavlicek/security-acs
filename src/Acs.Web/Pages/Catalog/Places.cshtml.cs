@@ -327,7 +327,7 @@ public class PlacesModel(AcsDbContext db, AuditService audit, PlanGenerationServ
 
     public async Task<IActionResult> OnPostUploadSchemaAsync(int floorId, IFormFile? file)
     {
-        var floor = await db.Floors.FindAsync(floorId);
+        var floor = await db.Floors.Include(f => f.Schema).FirstOrDefaultAsync(f => f.Id == floorId);
         if (floor is null)
             return NotFound();
 
@@ -345,8 +345,9 @@ public class PlacesModel(AcsDbContext db, AuditService audit, PlanGenerationServ
 
         using var stream = new MemoryStream();
         await file.CopyToAsync(stream);
-        floor.SchemaImage = stream.ToArray();
-        floor.SchemaContentType = file.ContentType;
+        floor.Schema ??= new FloorSchema { FloorId = floor.Id };
+        floor.Schema.SchemaImage = stream.ToArray();
+        floor.Schema.SchemaContentType = file.ContentType;
         await db.SaveChangesAsync();
         await audit.LogAsync(User.Identity?.Name, "floor-schema-uploaded", "Floor", floorId.ToString(), file.FileName);
         Message = $"Schéma patra {floor.Name} nahráno.";

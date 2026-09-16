@@ -4,7 +4,24 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!--
+      Garbage collector: workstation (souběžný) místo výchozího serverového. Aplikace má desítky
+      uživatelů a sdílí 8-jádrový node s dalšími službami — serverový GC si na něm drží samostatný
+      heap na každé jádro a paměť vrací až při nedostatku volné RAM celého stroje, takže proces
+      narostl na gigabajty dřív, než začal uklízet. Workstation GC uklízí průběžně a drží proces
+      v řádu stovek MB; strop pak drží MemoryMax v deploy/systemd/acs-web.service.
+    -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Šetrnější GC: vyšší hodnota (0–9) znamená častější zhušťování heapu včetně velkých objektů
+      (podklady plánů, PDF, balík konektoru), aby po nich nezůstávaly díry — držené stránky paměti.
+    -->
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
+  </ItemGroup>
 
   <ItemGroup>
     <!--

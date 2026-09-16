@@ -52,7 +52,7 @@ public class EditModel(AcsDbContext db, AccessLevelAdminService admin) : PageMod
     {
         if (id is { } levelId)
         {
-            var level = await db.AccessLevels.Include(a => a.Entries).FirstOrDefaultAsync(a => a.Id == levelId);
+            var level = await db.AccessLevels.Include(a => a.Entries).Include(a => a.Tree).FirstOrDefaultAsync(a => a.Id == levelId);
             if (level is null)
                 return NotFound();
 
@@ -60,9 +60,9 @@ public class EditModel(AcsDbContext db, AccessLevelAdminService admin) : PageMod
             Name = level.Name;
             Description = level.Description;
             IsActive = level.IsActive;
-            AccessTree = level.AccessTree;
-            TreeUnreadable = AccessTreeParser.Parse(level.AccessTree) is null && !string.IsNullOrWhiteSpace(level.AccessTree);
-            Outline = AccessTreeOutline.Parse(level.AccessTree);
+            AccessTree = level.Tree?.AccessTree;
+            TreeUnreadable = AccessTreeParser.Parse(AccessTree) is null && !string.IsNullOrWhiteSpace(AccessTree);
+            Outline = AccessTreeOutline.Parse(AccessTree);
 
             await LoadChoicesAsync(level);
             return Page();

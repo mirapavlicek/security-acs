@@ -65,7 +65,9 @@ public class AccessLevelSyncService(AcsDbContext db, WinPakClient winPak, AuditS
     {
         progress?.Invoke("načítám seznam úrovní z WIN-PAKu…");
         var remote = await winPak.GetAccessLevelsAsync(ct);
-        var existing = await db.AccessLevels.Include(a => a.Entries).ToDictionaryAsync(a => a.ExternalId, ct);
+        // Bez Include(Entries): 217 úrovní × 785 položek je 170 tisíc řádků — položky se
+        // dotahují až u úrovně, jejíž složení se skutečně obnovuje (RefreshTreeAsync).
+        var existing = await db.AccessLevels.Include(a => a.Tree).ToDictionaryAsync(a => a.ExternalId, ct);
 
         int added = 0, updated = 0, deactivated = 0;
         var now = DateTime.UtcNow;
@@ -80,7 +82,7 @@ public class AccessLevelSyncService(AcsDbContext db, WinPakClient winPak, AuditS
                 local.Description = level.Description;
                 local.IsActive = true;
                 local.LastSyncedAt = now;
-                if (changed || refreshTrees || local.AccessTree is null)
+                if (changed || refreshTrees || local.Tree?.AccessTree is null)
                     toRefresh.Add(local);
                 updated++;
             }
@@ -236,12 +238,16 @@ public class AccessLevelSyncService(AcsDbContext db, WinPakClient winPak, AuditS
         if (string.IsNullOrWhiteSpace(tree))
             return; // WIN-PAK strom nevrátil — položky (třeba právě zapsané z ACS) zůstávají
 
-        level.AccessTree = tree;
+        (level.Tree ??= new AccessLevelTree { AccessLevelId = level.Id }).AccessTree = tree;
         var parsed = AccessTreeParser.Parse(tree);
         if (parsed is null)
             return; // strom je, ale není to XML, kterému rozumíme — položky nechat, surový strom je uložený
 
         var matcher = await MatcherAsync(ct);
+        // Stávající položky jen této úrovně — Clear() nad nenačtenou kolekcí by v DB nechal staré řádky.
+        var entries = db.Entry(level).Collection(l => l.Entries);
+        if (!entries.IsLoaded && level.Id != 0)
+            await entries.LoadAsync(ct);
         level.Entries.Clear();
         foreach (var entry in parsed)
         {

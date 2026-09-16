@@ -16,6 +16,18 @@ RestartSec=5
 KillSignal=SIGINT
 TimeoutStopSec=20
 
+# Paměť — acs-web sdílí node (7,5 GB RAM) s dalšími službami (unisapi). Bez stropu si
+# .NET bere paměť podle volné RAM celého stroje, uklízí až při jejím nedostatku a mezitím
+# stroj swapuje a OOM killer bere i sousedy. Strop v cgroupu .NET sám přečte (limit heapu
+# 75 % z MemoryMax) a garbage collector drží proces v mezích; kdyby přesto rostl, zabije
+# OOM killer jen tuto službu (Restart=always ji zvedne) — ne unisapi. MemoryHigh je měkká
+# hranice, od které jádro paměť služby přednostně uvolňuje; bez swapu se únik projeví
+# restartem, ne zamrznutím celého nodu.
+MemoryHigh=1536M
+MemoryMax=2G
+MemorySwapMax=0
+OOMScoreAdjust=500
+
 # Hardening
 NoNewPrivileges=true
 ProtectSystem=strict
