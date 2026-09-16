@@ -40,7 +40,9 @@ public class LoginModel(UserAuthenticationService auth, AuditService audit, Sett
     {
         ReturnUrl = returnUrl;
         var showForm = manual is "1" or "true";
-        WindowsLoginEnabled = await settings.GetBoolAsync(SettingKeys.SsoEnabled);
+        // Bez keytabu Kerberos ticket nikdo neověří (UnknownCredentials) — tlačítko ani automatická
+        // výzva Negotiate se nenabízí, uživatel dostane rovnou formulář.
+        WindowsLoginEnabled = await settings.GetBoolAsync(SettingKeys.SsoEnabled) && KerberosKeytab.IsAvailable;
         LdapDomain = await settings.GetLdapDomainAsync();
         var autoLogin = WindowsLoginEnabled && await settings.GetBoolAsync(SettingKeys.SsoAutoLogin);
 
@@ -53,6 +55,7 @@ public class LoginModel(UserAuthenticationService auth, AuditService audit, Sett
             "failed" => "Přihlášení účtem Windows se nezdařilo (prohlížeč neposlal platný Kerberos/NTLM token). Přihlaste se jménem a heslem.",
             "account" => "Účet Windows byl ověřen, ale v ACS ho nelze použít (neaktivní uživatel nebo nepovolená doména). Přihlaste se jménem a heslem, nebo kontaktujte správce.",
             "disabled" => "Přihlášení účtem Windows není zapnuté. Přihlaste se jménem a heslem.",
+            "nokeytab" => "Přihlášení účtem Windows na tomto serveru zatím není k dispozici (chybí Kerberos keytab). Přihlaste se jménem a heslem.",
             _ => "Přihlášení účtem Windows se nezdařilo. Přihlaste se jménem a heslem.",
         };
         if (sso is null && showForm && Request.Query.ContainsKey("loggedOut"))

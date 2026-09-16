@@ -117,6 +117,8 @@ public static class SettingKeys
     public const string SmtpPassword = "Smtp:Password";              // secret
     public const string SmtpFrom = "Smtp:From";
     public const string SmtpUseTls = "Smtp:UseTls";
+    /// <summary>Neověřovat certifikát SMTP serveru (self-signed / jiné jméno na interním relayi); spojení zůstává šifrované.</summary>
+    public const string SmtpIgnoreTlsErrors = "Smtp:IgnoreTlsErrors";
 
     // Parkovací systém (GreenCenter) — integrační API ACS (vzor B/C) a konektor (vzor A)
     /// <summary>Zapíná integrační API <c>/api/integration/v1</c> pro parkovací systém.</summary>

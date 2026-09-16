@@ -17,7 +17,7 @@ prohlížeč ──Authorization: Negotiate <ticket>──▶ ACS  ověří (GSS
 ```
 
 - **Formulář zůstává.** Lokální `admin` a záloha při výpadku Kerberosu:
-  `https://acs.fnmh.network/Account/Login?manual=1`. Po odhlášení se formulář ukáže
+  `https://acs.fnmh.hospital/Account/Login?manual=1`. Po odhlášení se formulář ukáže
   vždy (jinak by automatické přihlášení uživatele hned přihlásilo znovu).
 - **Selhání nikdy neskončí chybou 500** — neplatný token, chybějící keytab, NTLM bez
   podpory → přesměrování na formulář s vysvětlením (`?sso=failed`).
@@ -30,6 +30,18 @@ prohlížeč ──Authorization: Negotiate <ticket>──▶ ACS  ověří (GSS
 - Volitelně lze omezit **povolené domény** účtu (např. `FNMH`), aby se nepřihlásili
   uživatelé z důvěryhodných cizích domén.
 
+## Stav (16. 9. 2026)
+
+Na nodech **keytab zatím není** (`/etc/acs/acs.keytab` neexistuje, `KRB5_KTNAME` v `acs.env`
+chybí) a nody jsou klienty jiného Kerberos realmu (IPA `RHEL.NNH.NETWORK`, `/etc/krb5.conf`),
+takže Kerberos ticket pro ACS nemá čím ověřit — v logu je `Přihlášení Windows (Negotiate)
+selhalo: UnknownCredentials`. Aplikace to od v1.12.40 pozná sama: bez čitelného keytabu z
+`KRB5_KTNAME` se tlačítko ani automatická výzva Negotiate **nenabízí** a uživatelé dostanou
+rovnou formulář (Nastavení to hlásí červeně). Jakmile keytab nahrajete a nastavíte
+`KRB5_KTNAME` (kroky 1–2 níže) a restartujete `acs-web`, přihlášení Windows začne fungovat
+bez dalšího zásahu. Výchozí `/etc/krb5.keytab` se úmyslně nepoužívá — patří hostiteli
+v realmu IPA a SPN aplikace neobsahuje.
+
 ## Co je potřeba
 
 ACS běží na **RHEL** (Kestrel za HAProxy). Kestrel na Linuxu ověřuje Negotiate přes
@@ -41,26 +53,26 @@ uživatel skončí na formuláři.
 
 ### 1. Servisní účet a SPN (na doménovém řadiči, jako Domain Admin)
 
-Kerberos ticket pro `https://acs.fnmh.network` musí být vydaný na SPN
-`HTTP/acs.fnmh.network`, zaregistrované na účtu, jehož klíč mají oba nody.
+Kerberos ticket pro `https://acs.fnmh.hospital` musí být vydaný na SPN
+`HTTP/acs.fnmh.hospital`, zaregistrované na účtu, jehož klíč mají oba nody.
 
 ```powershell
 # Účet služby (může být stávající svc-acs; heslo bez expirace)
 New-ADUser svc-acs-web -Enabled $true -AccountPassword (Read-Host -AsSecureString) -PasswordNeverExpires $true
 # SPN podle DNS jména, na které se uživatelé připojují (přes HAProxy)
-setspn -S HTTP/acs.fnmh.network FNMH\svc-acs-web
-# Kontrola: setspn -L FNMH\svc-acs-web
+setspn -S HTTP/acs.fnmh.hospital NNH\svc-acs-web
+# Kontrola: setspn -L NNH\svc-acs-web
 # Doporučeno: povolit AES na účtu (záložka Account → "This account supports Kerberos AES 256")
 ```
 
 Keytab (soubor s klíčem účtu) — **pozor, `ktpass` nastaví účtu nové heslo**:
 
 ```powershell
-ktpass -princ HTTP/acs.fnmh.network@FNMH.LOCAL -mapuser FNMH\svc-acs-web `
+ktpass -princ HTTP/acs.fnmh.hospital@NNH.LOCAL -mapuser NNH\svc-acs-web `
        -pass * -pType KRB5_NT_PRINCIPAL -crypto AES256-SHA1 -out C:\temp\acs.keytab
 ```
 
-Realm (`@FNMH.LOCAL`) je DNS jméno domény velkými písmeny.
+Realm (`@NNH.LOCAL`) je DNS jméno domény velkými písmeny.
 
 ### 2. Nody (RHEL)
 
@@ -68,18 +80,15 @@ Realm (`@FNMH.LOCAL`) je DNS jméno domény velkými písmeny.
 sudo dnf install -y krb5-libs krb5-workstation          # install.sh to dělá
 sudo cp acs.keytab /etc/acs/acs.keytab
 sudo chown acs:acs /etc/acs/acs.keytab && sudo chmod 600 /etc/acs/acs.keytab
-sudo -u acs klist -k /etc/acs/acs.keytab                 # musí vypsat HTTP/acs.fnmh.network@FNMH.LOCAL
+sudo -u acs klist -kte /etc/acs/acs.keytab               # musí vypsat HTTP/acs.fnmh.hospital@NNH.LOCAL (aes256)
+echo 'KRB5_KTNAME=/etc/acs/acs.keytab' | sudo tee -a /etc/acs/acs.env   # pokud řádek chybí
+sudo systemctl restart acs-web
 ```
 
-`/etc/krb5.conf` (stačí minimální; řadiče se najdou přes DNS):
-
-```ini
-[libdefaults]
-    default_realm = FNMH.LOCAL
-    dns_lookup_kdc = true
-    dns_lookup_realm = false
-    rdns = false
-```
+`/etc/krb5.conf` na nodech **neměňte** — spravuje ho IPA klient (realm `RHEL.NNH.NETWORK`).
+Pro ověřování ticketů (acceptor) ho GSSAPI nepotřebuje: klíč bere z keytabu, který nese
+principal `HTTP/acs.fnmh.hospital@NNH.LOCAL` včetně realmu. Stačí, aby `dns_lookup_kdc = true`
+zůstalo (je) a čas nodu seděl s řadiči (chrony).
 
 `/etc/acs/acs.env` — cesta ke keytabu (viz `deploy/acs.env.example`):
 
@@ -113,9 +122,9 @@ skupin) a *Mapování AD skupin na role*.
 Prohlížeč pošle ticket jen webu, kterému věří:
 
 - **Edge / Chrome / IE zóny** (GPO *Site to Zone Assignment List*):
-  `https://acs.fnmh.network` → zóna 1 (Místní intranet). Případně politika
-  `AuthServerAllowlist = acs.fnmh.network` (Edge, Chrome).
-- **Firefox**: `network.negotiate-auth.trusted-uris = https://acs.fnmh.network`
+  `https://acs.fnmh.hospital` → zóna 1 (Místní intranet). Případně politika
+  `AuthServerAllowlist = acs.fnmh.hospital` (Edge, Chrome).
+- **Firefox**: `network.negotiate-auth.trusted-uris = https://acs.fnmh.hospital`
   (GPO / policies.json `Authentication.SPNEGO`).
 - Adresu používejte **jménem**, ne IP adresou — pro IP prohlížeč Kerberos nepoužije.
 
@@ -125,7 +134,7 @@ Prohlížeč pošle ticket jen webu, kterému věří:
 |---|---|
 | Po kliknutí na tlačítko se hned ukáže formulář s hláškou „neposlal platný token“ | Server token neověřil. `journalctl -u acs-web` — typicky chybí keytab (`KRB5_KTNAME`), klíč v keytabu je jiný než v AD (po `ktpass` se změnilo heslo → vygenerovat znovu a nahrát na **oba** nody) nebo prohlížeč poslal NTLM (viz níže). |
 | Prohlížeč zobrazí dialog na jméno a heslo | Web není v zóně Intranet / AuthServerAllowlist, nebo přístup přes IP. Zrušením dialogu se ukáže stránka s odkazem na formulář. |
-| V logu `NTLM` / `No credentials were supplied` | Klient nemá Kerberos ticket pro SPN — zkontrolujte `setspn -L`, DNS jméno a čas (Kerberos toleruje odchylku 5 min). Na klientovi `klist` po otevření stránky musí ukázat ticket `HTTP/acs.fnmh.network`. |
+| V logu `NTLM` / `No credentials were supplied` | Klient nemá Kerberos ticket pro SPN — zkontrolujte `setspn -L`, DNS jméno a čas (Kerberos toleruje odchylku 5 min). Na klientovi `klist` po otevření stránky musí ukázat ticket `HTTP/acs.fnmh.hospital`. |
 | Funguje na jednom nodu, na druhém ne | Keytab chybí / má jiná práva na druhém nodu (`sudo -u acs klist -k /etc/acs/acs.keytab`). |
 | Uživatel se přihlásí, ale nemá role | Sekce Active Directory: servisní účet pro bind + mapování skupin. Bez servisního účtu se skupiny nenačtou. |
 | „Účet Windows byl ověřen, ale v ACS ho nelze použít“ | Uživatel je v ACS neaktivní, účet je z nepovolené domény, nebo jméno patří lokálnímu účtu. |

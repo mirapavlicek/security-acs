@@ -17,8 +17,26 @@ public sealed class AcsWebFactory : WebApplicationFactory<Program>, IDisposable
 {
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"acs-test-{Guid.NewGuid():N}.db");
 
+    /// <summary>
+    /// Přihlášení Windows se bez keytabu vůbec nenabízí (KerberosKeytab.IsAvailable) — testy endpointu
+    /// Negotiate proto dostanou prázdný keytab, ať vidí stejné chování jako nasazený node s KRB5_KTNAME.
+    /// </summary>
+    private static readonly string KeytabPath = EnsureTestKeytab();
+
+    private static string EnsureTestKeytab()
+    {
+        var configured = Environment.GetEnvironmentVariable("KRB5_KTNAME");
+        if (!string.IsNullOrWhiteSpace(configured))
+            return configured;
+        var path = Path.Combine(Path.GetTempPath(), $"acs-test-{Guid.NewGuid():N}.keytab");
+        File.WriteAllBytes(path, [0x05, 0x02]); // hlavička keytabu verze 2, bez klíčů
+        Environment.SetEnvironmentVariable("KRB5_KTNAME", path);
+        return path;
+    }
+
     protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
     {
+        _ = KeytabPath;
         // Testy musí být deterministické i na stroji s produkčním prostředím
         // (updater na nodech spouští testy s nastaveným ASPNETCORE_ENVIRONMENT=Production,
         // což by zapnulo Secure cookies a rozbilo login test přes HTTP).
