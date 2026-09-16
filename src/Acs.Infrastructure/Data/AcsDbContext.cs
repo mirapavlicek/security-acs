@@ -191,6 +191,15 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
             e.HasOne<Building>().WithOne(b => b.Schema).HasForeignKey<BuildingSchema>(x => x.BuildingId);
         });
 
+        // Strom přístupů (~70 KB na úroveň) stejně: sdílí řádek s úrovní, načte se jen s Include(a => a.Tree).
+        modelBuilder.Entity<AccessLevelTree>(e =>
+        {
+            e.ToTable("AccessLevels");
+            e.HasKey(x => x.AccessLevelId);
+            e.Property(x => x.AccessLevelId).HasColumnName("Id");
+            e.HasOne<AccessLevel>().WithOne(a => a.Tree).HasForeignKey<AccessLevelTree>(x => x.AccessLevelId);
+        });
+
         modelBuilder.Entity<Corridor>(e =>
         {
             e.Property(x => x.Name).HasMaxLength(128);

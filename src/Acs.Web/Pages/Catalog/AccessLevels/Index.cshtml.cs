@@ -22,6 +22,12 @@ public class IndexModel(AcsDbContext db, AccessLevelAdminService admin, SyncJobR
 
     public List<AccessLevel> Levels { get; private set; } = [];
 
+    /// <summary>Počty čteček ve složení úrovně (celkem různých / ACS nezná) — spočtené v DB, položky se nenačítají.</summary>
+    public Dictionary<int, (int Total, int Unknown)> EntryStats { get; private set; } = new();
+
+    /// <summary>Úrovně, u kterých WIN-PAK strom vrátil, ale ACS mu nerozumí (bez položek, strom přitom není prázdný).</summary>
+    public HashSet<int> UnreadableTree { get; private set; } = [];
+
     /// <summary>Kolik čteček ACS má danou úroveň jako svou (Reader.AccessLevelExternalId).</summary>
     public Dictionary<string, int> MappedReaders { get; private set; } = new();
 
@@ -34,10 +40,32 @@ public class IndexModel(AcsDbContext db, AccessLevelAdminService admin, SyncJobR
 
     public async Task OnGetAsync()
     {
-        Levels = await db.AccessLevels.Include(a => a.Entries)
+        // Bez Include(Entries) a bez stromů: přes 200 úrovní × ~800 položek by byl přehled
+        // 170 tisíc řádků (dříve každý i se 70 KB stromem) — počty se spočítají v DB.
+        Levels = await db.AccessLevels
             .Where(a => ShowInactive || a.IsActive)
             .OrderBy(a => a.Name)
             .ToListAsync();
+
+        var totals = await db.AccessLevelEntries
+            .GroupBy(e => e.AccessLevelId)
+            .Select(g => new { g.Key, Count = g.Select(e => e.ReaderExternalId ?? e.ReaderName).Distinct().Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count);
+        var unknown = await db.AccessLevelEntries
+            .Where(e => e.ReaderId == null)
+            .GroupBy(e => e.AccessLevelId)
+            .Select(g => new { g.Key, Count = g.Select(e => e.ReaderExternalId ?? e.ReaderName).Distinct().Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count);
+        EntryStats = totals.ToDictionary(t => t.Key, t => (t.Value, unknown.GetValueOrDefault(t.Key)));
+
+        var treesWithoutEntries = await db.AccessLevels
+            .Where(a => a.Entries.Count == 0 && a.Tree!.AccessTree != null && a.Tree.AccessTree != "")
+            .Select(a => new { a.Id, a.Tree!.AccessTree })
+            .ToListAsync();
+        UnreadableTree = treesWithoutEntries
+            .Where(t => AccessTreeParser.Parse(t.AccessTree) is null)
+            .Select(t => t.Id)
+            .ToHashSet();
         MappedReaders = await db.Readers
             .Where(r => r.AccessLevelExternalId != null)
             .GroupBy(r => r.AccessLevelExternalId!)

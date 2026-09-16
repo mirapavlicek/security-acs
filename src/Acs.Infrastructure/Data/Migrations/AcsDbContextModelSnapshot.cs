@@ -30,9 +30,6 @@ namespace Acs.Infrastructure.Data.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("AccessTree")
-                        .HasColumnType("longtext");
-
                     b.Property<string>("Description")
                         .HasMaxLength(1024)
                         .HasColumnType("varchar(1024)");
@@ -100,6 +97,20 @@ namespace Acs.Infrastructure.Data.Migrations
                     b.HasIndex("ReaderId");
 
                     b.ToTable("AccessLevelEntries");
+                });
+
+            modelBuilder.Entity("Acs.Domain.Entities.AccessLevelTree", b =>
+                {
+                    b.Property<int>("AccessLevelId")
+                        .HasColumnType("int")
+                        .HasColumnName("Id");
+
+                    b.Property<string>("AccessTree")
+                        .HasColumnType("longtext");
+
+                    b.HasKey("AccessLevelId");
+
+                    b.ToTable("AccessLevels", (string)null);
                 });
 
             modelBuilder.Entity("Acs.Domain.Entities.AccessRequest", b =>
@@ -1611,6 +1622,15 @@ namespace Acs.Infrastructure.Data.Migrations
                     b.Navigation("Reader");
                 });
 
+            modelBuilder.Entity("Acs.Domain.Entities.AccessLevelTree", b =>
+                {
+                    b.HasOne("Acs.Domain.Entities.AccessLevel", null)
+                        .WithOne("Tree")
+                        .HasForeignKey("Acs.Domain.Entities.AccessLevelTree", "AccessLevelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Acs.Domain.Entities.AccessRequest", b =>
                 {
                     b.HasOne("Acs.Domain.Entities.AppUser", "RequesterUser")
@@ -2239,6 +2259,8 @@ namespace Acs.Infrastructure.Data.Migrations
             modelBuilder.Entity("Acs.Domain.Entities.AccessLevel", b =>
                 {
                     b.Navigation("Entries");
+
+                    b.Navigation("Tree");
                 });
 
             modelBuilder.Entity("Acs.Domain.Entities.AccessRequest", b =>

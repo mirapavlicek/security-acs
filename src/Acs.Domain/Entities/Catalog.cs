@@ -71,9 +71,10 @@ public class Floor : IOwnedArea
 /// Obrázek schématu patra (až 5 MB). Leží ve stejném řádku tabulky <c>Floors</c> jako patro
 /// (sloupce <c>SchemaImage</c>, <c>SchemaContentType</c>), ale je to samostatná entita: EF Core
 /// ho načte jen tam, kde je vyžádán. Dokud byl obrázek přímo vlastností patra, každý dotaz
-/// s <c>Include(Floor)</c> — výpis 1 600 čteček, moje přístupy, nová žádost — tahal z databáze
-/// podklady všech dotčených pater znovu a znovu (u výpisu čteček za každý řádek), což
-/// znamenalo gigabajty alokací na jedno zobrazení stránky a růst paměti procesu až k OOM.
+/// s <c>Include(Floor)</c> — výpis 1 600 čteček, moje přístupy, nová žádost — by tahal z databáze
+/// podklady všech dotčených pater znovu a znovu (u výpisu čteček za každý řádek): gigabajty
+/// alokací na jedno zobrazení stránky. Stejný vzor u <see cref="AccessLevelTree"/> proces
+/// v produkci skutečně zabíjel.
 /// </summary>
 public class FloorSchema
 {
@@ -334,12 +335,29 @@ public class AccessLevel
     /// <summary>Úroveň ve WIN-PAKu zmizela — v ACS zůstává kvůli historii, ale nepřiděluje se.</summary>
     public bool IsActive { get; set; } = true;
 
-    /// <summary>Strom přístupů tak, jak ho WIN-PAK vrací (<c>GetAccessTreeByName</c>); podklad pro položky i pro kontrolu.</summary>
-    public string? AccessTree { get; set; }
+    /// <summary>
+    /// Strom přístupů z WIN-PAKu — v samostatné entitě sdílející řádek, načítá se jen
+    /// s <c>Include(a =&gt; a.Tree)</c>. Viz <see cref="AccessLevelTree"/>.
+    /// </summary>
+    public AccessLevelTree? Tree { get; set; }
 
     public DateTime? LastSyncedAt { get; set; }
 
     public List<AccessLevelEntry> Entries { get; set; } = [];
+}
+
+/// <summary>
+/// Strom přístupů tak, jak ho WIN-PAK vrací (<c>GetAccessTreeByName</c>, ~70 KB XML na úroveň);
+/// podklad pro položky i pro kontrolu správcem. Leží ve sloupci <c>AccessTree</c> tabulky
+/// <c>AccessLevels</c>, ale jako oddělená entita: dokud byl vlastností <see cref="AccessLevel"/>,
+/// nesl ho každý řádek dotazu <c>Include(a =&gt; a.Entries)</c> — u 217 úrovní × 785 položek to
+/// bylo 170 tisíc řádků × 70 KB, přes 10 GB na jeden dotaz, a hodinová synchronizace tak
+/// pokaždé skončila zabitím procesu OOM killerem.
+/// </summary>
+public class AccessLevelTree
+{
+    public int AccessLevelId { get; set; }
+    public string? AccessTree { get; set; }
 }
 
 /// <summary>Jedna čtečka v přístupové úrovni včetně časové zóny, ve které platí.</summary>

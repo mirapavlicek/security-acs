@@ -71,16 +71,24 @@ Pozn.: pokud je repozitář privátní, nastavte na nodech přístup ke čtení
 ## Paměť a soužití s dalšími službami na nodu
 
 Nody (8 CPU / 7,5 GB) sdílí `acs-web` s aplikací `unisapi`. V září 2026 rostl
-`acs-web` na app-02 opakovaně k ~6 GB, stroj swapoval a OOM killer službu zabíjel
-(6× za týden); mezitím ztuhlý `unisapi` nestíhal handshake s MariaDB a Galera
-klienta `10.84.7.147` zablokovala (`max_connect_errors`). Příčina a opatření:
+`acs-web` na obou nodech zhruba každou hodinu k ~6,5 GB, stroj swapoval a OOM
+killer službu zabíjel; mezitím ztuhlý `unisapi` nestíhal handshake s MariaDB a
+Galera klienta `10.84.7.147` zablokovala (`max_connect_errors`). Příčina a opatření:
 
-- **Podklady plánů v každém dotazu.** Obrázek schématu patra (až 5 MB, `longblob`)
-  byl obyčejná vlastnost entity `Floor`; každý dotaz s `Include(Floor)` /
-  `Include(Building)` — výpis 1 600 čteček, moje přístupy, nová žádost — ho tahal
-  z DB znovu, u výpisu čteček za každý řádek. Gigabajty alokací na jedno zobrazení.
-  Od této verze je obrázek samostatná entita `FloorSchema` ve stejném řádku
-  (table splitting, bez změny schématu DB) a načte se jen s `Include(f => f.Schema)`
+- **Strom přístupů na každém řádku položek.** Hodinová synchronizace přístupových
+  úrovní načítala `AccessLevels.Include(a => a.Entries)`: 217 úrovní × 785 položek
+  = 170 tisíc řádků JOINu a na každém z nich sloupec `AccessTree` (~70 KB XML) —
+  přes 10 GB dat na jeden dotaz. V logu je to poznat tak, že po `GET …/access-levels`
+  následuje tento SELECT, pak už jen varování Kestrelu o thread pool starvation a za
+  ~10 minut `Killed process (Acs.Web)`; audit `access-levels-synced` chybí. Stejný
+  dotaz měl i přehled *Číselníky → Přístupové úrovně*. Od této verze je strom
+  samostatná entita `AccessLevelTree` ve stejném řádku (table splitting, bez změny
+  schématu DB), synchronizace dotahuje položky jen u úrovně, jejíž složení obnovuje,
+  a přehled počítá čtečky v DB.
+- **Stejný vzor u podkladů plánů.** Obrázek schématu patra (až 5 MB, `longblob`) byl
+  obyčejná vlastnost entity `Floor`; každý dotaz s `Include(Floor)` / `Include(Building)`
+  by ho tahal z DB znovu, u výpisu čteček za každý řádek. Od této verze je samostatná
+  entita `FloorSchema` / `BuildingSchema` a načte se jen s `Include(f => f.Schema)`
   nebo přes `/floors/{id}/schema`.
 - **Garbage collector.** Aplikace přešla ze serverového GC (heap na každé jádro,
   úklid až při nedostatku RAM celého stroje) na souběžný workstation GC
