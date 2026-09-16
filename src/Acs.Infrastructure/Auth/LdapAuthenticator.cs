@@ -193,9 +193,11 @@ public class LdapAuthenticator(SettingsService settings, DcLocator dcLocator, IL
             ?? "(&(objectClass=user)(sAMAccountName={0}))";
         var filter = string.Format(filterTemplate, EscapeLdapFilter(samAccount));
 
-        var request = new SearchRequest(baseDn, filter, SearchScope.Subtree,
-            "displayName", "mail", "memberOf", "sAMAccountName");
-        var response = (SearchResponse)connection.SendRequest(request);
+        var request = DomainSearch(baseDn, filter, "displayName", "mail", "memberOf", "sAMAccountName");
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var response = (SearchResponse)await SendTimedAsync(connection, request, LoginBindTimeout, ct);
+        if (watch.Elapsed > TimeSpan.FromSeconds(3))
+            logger.LogWarning("LDAP: hledání účtu {User} trvalo {Ms} ms.", samAccount, watch.ElapsedMilliseconds);
 
         if (response.Entries.Count == 0)
             return new LdapUserInfo(samAccount, null, null, []);
@@ -212,7 +214,13 @@ public class LdapAuthenticator(SettingsService settings, DcLocator dcLocator, IL
             Groups: groups);
     }
 
-    /// <summary>Sdílená tovární metoda LDAP spojení (používá ji i import zaměstnanců).</summary>
+    /// <summary>
+    /// Sdílená tovární metoda LDAP spojení (používá ji i import zaměstnanců). Referraly se
+    /// nikdy nenásledují: hledání od kořene domény vrací odkazy na další partitions
+    /// (<c>DomainDnsZones</c>, <c>ForestDnsZones</c>, <c>Configuration</c>, poddomény) a libldap by se
+    /// k nim připojoval bez síťového limitu — v DNS mívají i nedosažitelné adresy (169.254.x.x,
+    /// cizí sítě), takže jedno přihlášení pak čekalo minuty a proxy vrátila 504.
+    /// </summary>
     public static LdapConnection CreateConnection(string server, int port, bool useSsl, string bindUser, string password)
     {
         var identifier = new LdapDirectoryIdentifier(server, port, fullyQualifiedDnsHostName: true, connectionless: false);
@@ -222,9 +230,42 @@ public class LdapAuthenticator(SettingsService settings, DcLocator dcLocator, IL
             Credential = new NetworkCredential(bindUser, password),
         };
         connection.SessionOptions.ProtocolVersion = 3;
+        connection.SessionOptions.ReferralChasing = ReferralChasingOptions.None;
         if (useSsl)
             connection.SessionOptions.SecureSocketLayer = true;
         return connection;
+    }
+
+    /// <summary>
+    /// Vyhledávací požadavek omezený na vlastní doménu (<c>DomainScope</c>): řadič pak referraly
+    /// vůbec negeneruje, takže odpověď nese jen nalezené účty.
+    /// </summary>
+    public static SearchRequest DomainSearch(string baseDn, string filter, params string[] attributes)
+    {
+        var request = new SearchRequest(baseDn, filter, SearchScope.Subtree, attributes);
+        request.Controls.Add(new SearchOptionsControl(System.DirectoryServices.Protocols.SearchOption.DomainScope));
+        return request;
+    }
+
+    /// <summary>
+    /// <see cref="LdapConnection.SendRequest(DirectoryRequest)"/> s tvrdým limitem: na Linuxu se
+    /// <see cref="LdapConnection.Timeout"/> na hledání ne vždy uplatní (blokující nativní volání),
+    /// a přihlášení nesmí čekat déle než reverzní proxy. Po limitu <see cref="LdapException"/>
+    /// s kódem <see cref="LdapTimeoutErrorCode"/>; zablokované volání se uklidí, až doběhne.
+    /// </summary>
+    public static async Task<DirectoryResponse> SendTimedAsync(LdapConnection connection, DirectoryRequest request,
+        TimeSpan timeout, CancellationToken ct = default)
+    {
+        var send = Task.Run(() => connection.SendRequest(request), CancellationToken.None);
+        try
+        {
+            return await send.WaitAsync(timeout, ct);
+        }
+        catch (TimeoutException)
+        {
+            throw new LdapException(LdapTimeoutErrorCode,
+                $"Řadič nevrátil výsledek hledání do {timeout.TotalSeconds:0} s.");
+        }
     }
 
     /// <summary>

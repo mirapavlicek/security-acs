@@ -96,4 +96,36 @@ public sealed class LdapBindTimeoutTests : IDisposable
         Assert.InRange(watch.Elapsed, TimeSpan.Zero, LdapAuthenticator.LoginBindTimeout * 2 + TimeSpan.FromSeconds(10));
         Assert.Contains("neodpovídá", ex.Message);
     }
+
+    /// <summary>
+    /// Hledání od kořene domény vrací referraly (DomainDnsZones, ForestDnsZones, Configuration,
+    /// poddomény); jejich následování bez síťového limitu drželo přihlášení minuty (v DNS mají
+    /// i nedosažitelné adresy) a proxy vracela 504 — náhodně, podle toho, jakou adresu DNS vrátilo.
+    /// </summary>
+    [Fact]
+    public void Spojeni_nenasleduje_referraly_a_hledani_je_omezene_na_domenu()
+    {
+        using var connection = LdapAuthenticator.CreateConnection("127.0.0.1", Port, useSsl: false, "svc@nnh.local", "pwd");
+        Assert.Equal(ReferralChasingOptions.None, connection.SessionOptions.ReferralChasing);
+
+        var request = LdapAuthenticator.DomainSearch("DC=nnh,DC=local", "(sAMAccountName=jnovak)", "mail");
+        Assert.Equal(SearchScope.Subtree, request.Scope);
+        var control = Assert.IsType<SearchOptionsControl>(Assert.Single(request.Controls.Cast<DirectoryControl>()));
+        Assert.Equal(System.DirectoryServices.Protocols.SearchOption.DomainScope, control.SearchOption);
+    }
+
+    [Fact]
+    public async Task Hledani_na_mlcicim_radici_skonci_v_limitu_chybou_spojeni()
+    {
+        using var connection = LdapAuthenticator.CreateConnection("127.0.0.1", Port, useSsl: false, "svc@nnh.local", "pwd");
+        var request = LdapAuthenticator.DomainSearch("DC=nnh,DC=local", "(sAMAccountName=jnovak)", "mail");
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+
+        var ex = await Assert.ThrowsAsync<LdapException>(() =>
+            LdapAuthenticator.SendTimedAsync(connection, request, TimeSpan.FromSeconds(1)));
+
+        Assert.Equal(LdapAuthenticator.LdapTimeoutErrorCode, ex.ErrorCode);
+        Assert.True(LdapAuthenticator.IsConnectivityError(ex));
+        Assert.InRange(watch.Elapsed, TimeSpan.Zero, TimeSpan.FromSeconds(10));
+    }
 }
