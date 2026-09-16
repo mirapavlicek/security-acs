@@ -134,8 +134,20 @@ public record ApiIdentifier(string Value, DateTime? ValidFrom, DateTime? ValidTo
 /// Služba tentýž identifikátor vrací opakovaně — rozbor vrací každou hodnotu jednou (první výskyt);
 /// u SPZ se odstraní přípona země (<c>1TN7287-CZE</c> → <c>1TN7287</c>), aby seděla na čtení kamer.
 /// </summary>
-public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCardSource.Options options) : ICardSource
+public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCardSource.Options options, bool ownsHttpClient = false)
+    : ICardSource, IDisposable
 {
+    /// <summary>
+    /// Klient s vlastním handlerem (Windows účet, vypnuté ověření TLS) vzniká pro každou synchronizaci
+    /// znovu — bez uvolnění by po každém běhu zůstal handler se svými spojeními až do finalizace.
+    /// Klient z <see cref="IHttpClientFactory"/> se neuvolňuje (spravuje ho továrna).
+    /// </summary>
+    public void Dispose()
+    {
+        if (ownsHttpClient)
+            http.Dispose();
+    }
+
     /// <param name="SubType">Podtyp identifikační karty (3).</param>
     /// <param name="PlateSubType">Podtyp SPZ (4); null = SPZ se z API nestahují.</param>
     public sealed record Options(
@@ -222,7 +234,7 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
                 handler.Credentials = NtlmCredentials(url, credential);
             }
 
-            return new IdentifiersApiCardSource(new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(2) }, options)
+            return new IdentifiersApiCardSource(new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(2) }, options, ownsHttpClient: true)
             {
                 AuthDescription = DescribeAuth(options, credential),
             };

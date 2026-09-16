@@ -29,6 +29,7 @@ public class CardSyncService(
     public async Task<CardSyncResult> SyncAsync(string? userName, CancellationToken ct = default)
     {
         var source = await sources.CreateAsync(ct);
+        using var sourceLifetime = source as IDisposable;
         var employees = await db.Employees.Where(e => e.IsActive).ToListAsync(ct);
         var byAd = employees.Where(e => e.AdAccount != null)
             .GroupBy(e => e.AdAccount!, StringComparer.OrdinalIgnoreCase)

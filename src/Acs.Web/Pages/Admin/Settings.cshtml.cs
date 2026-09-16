@@ -253,7 +253,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
 
         try
         {
-            var source = await IdentifiersApiCardSource.CreateAsync(settings, httpClientFactory, HttpContext.RequestAborted);
+            using var source = await IdentifiersApiCardSource.CreateAsync(settings, httpClientFactory, HttpContext.RequestAborted);
             var lines = new List<string> { $"Přihlášení: {source.AuthDescription}" };
             // Karty a (když jsou zapnuté) SPZ — každý podtyp je samostatný dotaz.
             foreach (var (subType, type) in source.SubTypes)
