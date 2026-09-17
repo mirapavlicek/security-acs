@@ -6,18 +6,46 @@ jako z SQL: *Správa → Nastavení → Karty*, zdroj **Integrační API**.
 
 ## Jak se ACS ptá
 
-Pro každého aktivního zaměstnance s osobním číslem pošle
+**Výchozí režim — vše jedním dotazem.** Služba funguje i bez filtrů: ACS pošle
 
 ```
 POST https://ws-integrations.nnh.local/api/v0/Identifiers
-{ "employeeNo": "<osobní číslo>", "idIdentifierSubType": 3 }
+{}
 ```
 
-a totéž s `"idIdentifierSubType": 4`. Podtyp `3` = identifikační karta,
-podtyp `4` = SPZ vozidla (oba nastavitelné; prázdný podtyp SPZ = SPZ z API
-nestahovat). Z podtypu 3 vznikají identifikátory typu *karta*, z podtypu 4
-typu *SPZ*. Volání jdou po čtyřech souběžně; zaměstnanec bez karty či SPZ smí
-dostat `404` — to není chyba.
+a dostane identifikátory všech osob (`employeeNo`, `initialCode`,
+`idIdentifierSubType`). Odpověď si uloží jako **otisk** do tabulky
+`ImportedIdentifiers` (co přišlo, jak se číslo převedlo, ke komu se spárovalo)
+a **spárování se zaměstnanci udělá nad databází ACS** podle osobního čísla.
+Osobní čísla, která v ACS nejsou, zůstávají v otisku k dohledání a ve výsledku
+synchronizace jako „N osobních čísel v ACS není“. Synchronizace běží podle
+intervalu v Nastavení → Karty (výchozí 60 minut).
+
+**Režim po zaměstnancích** (přepínač *Režim čtení*) je původní chování: pro
+každého aktivního zaměstnance s osobním číslem a každý podtyp z pravidel
+`POST { "employeeNo": "<osobní číslo>", "idIdentifierSubType": 3 }`; volání
+jdou po čtyřech souběžně, zaměstnanec bez karty smí dostat `404`.
+
+## Podtypy a čísla pro čtečky
+
+Co je karta, co SPZ a jak se z hodnoty služby udělá číslo, které čtou čtečky
+(WIN-PAK), určují **pravidla podtypů** v Nastavení → Karty — řádek
+`podtyp = typ : formát`. Výchozí:
+
+```
+3 = Card : Last5            # Homolka: 4d-07782 → 07782 (posledních 5 číslic)
+100003 = Card : DashToZero  # FN Motol (NATIVE nnn-nnnnn): 123-45678 → 123045678
+4 = LicensePlate            # SPZ: 1TN7287-CZE → 1TN7287
+```
+
+Formáty: `Last5` (posledních 5 číslic), `DashToZero` (pomlčka → 0), `Raw`
+(beze změny). Typ i formát jdou zapsat i česky (`karta`, `SPZ`, `posledních 5`,
+`pomlčka→0`). Podtypy bez pravidla se přeskočí (zkouška je vypíše). Původní
+hodnota ze služby zůstává v poznámce identifikátoru (`podtyp 100003: 123-45678`).
+
+Po přepnutí na tyto převody se dřívější identifikátory v původním tvaru
+(např. `4D07782`) při první synchronizaci deaktivují a vzniknou nové v tvaru
+pro čtečky — přístupy ve WIN-PAKu se pak zapisují na správná čísla karet.
 
 ## Přihlášení
 
@@ -74,10 +102,12 @@ Rozbor zůstává tolerantní i k jiným tvarům:
 - platnost `validFrom`/`validTo` (`dateFrom`/`dateTo`…), stav `active`/`isActive`
   nebo textový `state`/`status` („Aktivní“, „Blokovaná“…) — neaktivní se vynechají.
 
-**Než zapnete automatickou synchronizaci, vyzkoušejte to na jednom osobním
-čísle** tlačítkem *Vyzkoušet* v Nastavení: pro karty i SPZ ukáže surovou
-odpověď a to, co z ní ACS přečetl. Když nepřečte nic, pošlete surovou odpověď
-vývoji — rozbor se doplní o skutečné názvy polí.
+**Než zapnete automatickou synchronizaci, vyzkoušejte to** tlačítkem
+*Vyzkoušet* v Nastavení: s **prázdným osobním číslem** pošle dotaz bez filtrů a
+vypíše, kolik záznamů přišlo, po podtypech s ukázkou převodu čísel (`4d-07782 →
+07782`) a kolik osobních čísel ze služby v ACS je; s osobním číslem se zeptá
+po zaměstnanci pro každý podtyp a ukáže surovou odpověď i rozbor. Když nepřečte
+nic, pošlete surovou odpověď vývoji — rozbor se doplní o skutečné názvy polí.
 
 ## Výsledek
 

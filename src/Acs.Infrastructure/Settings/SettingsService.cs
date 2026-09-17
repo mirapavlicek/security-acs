@@ -92,6 +92,12 @@ public static class SettingKeys
     public const string CardsApiUser = "Cards:ApiUser";
     public const string CardsApiPassword = "Cards:ApiPassword"; // secret
     public const string CardsApiIgnoreTls = "Cards:ApiIgnoreTls";
+    /// <summary>Režim čtení: <c>All</c> = jeden dotaz bez filtrů (výchozí), <c>PerEmployee</c> = dotaz po zaměstnanci a podtypu.</summary>
+    public const string CardsApiFetchMode = "Cards:ApiFetchMode";
+    /// <summary>Pravidla po podtypech: „podtyp = typ : formát“ na řádek (viz CardNumberFormats).</summary>
+    public const string CardsApiSubTypeRules = "Cards:ApiSubTypeRules";
+    /// <summary>Statistika posledního stažení identifikátorů — jen k zobrazení.</summary>
+    public const string CardsLastImportStats = "Cards:LastImportStats";
     public const string EmployeeMssqlConnectionString = "Employees:MssqlConnectionString"; // secret
     public const string EmployeeMssqlQuery = "Employees:MssqlQuery";
     public const string EmployeeApiUrl = "Employees:ApiUrl";
