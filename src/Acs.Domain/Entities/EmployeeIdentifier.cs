@@ -55,3 +55,38 @@ public class EmployeeIdentifier
     public static string Normalize(string value)
         => value.Replace(" ", "").Replace("-", "").ToUpperInvariant();
 }
+
+/// <summary>
+/// Otisk posledního stažení identifikátorů ze zdroje (integrační služba, SQL) —
+/// řádek na identifikátor tak, jak přišel, plus číslo převedené pro čtečky a
+/// zaměstnanec, ke kterému se spároval. Při každé synchronizaci se přepíše celý.
+/// Slouží k tomu, aby se párování dělalo nad naší databází a šlo dohledat, co
+/// zdroj vrátil a proč se něco nespárovalo (osobní číslo, které v ACS není).
+/// </summary>
+public class ImportedIdentifier
+{
+    public int Id { get; set; }
+
+    /// <summary>Osobní číslo (employeeNo) ze zdroje.</summary>
+    public string? EmployeeNo { get; set; }
+
+    /// <summary>AD účet ze zdroje (MSSQL), když osobní číslo chybí.</summary>
+    public string? AdAccount { get; set; }
+
+    /// <summary>Podtyp identifikátoru ve zdroji (idIdentifierSubType), je-li znám.</summary>
+    public int? SubType { get; set; }
+
+    /// <summary>Hodnota přesně tak, jak ji zdroj vrátil (např. <c>4d-07782</c>).</summary>
+    public required string RawValue { get; set; }
+
+    /// <summary>Hodnota po převodu pro čtečky a normalizaci (např. <c>07782</c>).</summary>
+    public required string Value { get; set; }
+
+    public IdentifierType Type { get; set; }
+
+    /// <summary>Spárovaný zaměstnanec (null = osobní číslo v ACS není).</summary>
+    public int? EmployeeId { get; set; }
+    public Employee? Employee { get; set; }
+
+    public DateTime FetchedAt { get; set; } = DateTime.UtcNow;
+}

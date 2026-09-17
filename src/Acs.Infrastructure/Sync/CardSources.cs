@@ -10,6 +10,8 @@ using Microsoft.Data.SqlClient;
 namespace Acs.Infrastructure.Sync;
 
 /// <summary>Jeden identifikátor ze zdroje (řádek na identifikátor, ne na osobu).</summary>
+/// <param name="RawValue">Hodnota přesně ze zdroje, když se <paramref name="Value"/> převáděla pro čtečky.</param>
+/// <param name="SubType">Podtyp identifikátoru ve zdroji (idIdentifierSubType), je-li znám.</param>
 public record CardRecord(
     string? AdAccount,
     string? PersonalNumber,
@@ -18,7 +20,9 @@ public record CardRecord(
     string? Note = null,
     DateTime? ValidFrom = null,
     DateTime? ValidTo = null,
-    string? WinPakCardHolderId = null);
+    string? WinPakCardHolderId = null,
+    string? RawValue = null,
+    int? SubType = null);
 
 /// <summary>Odkud se berou identifikátory zaměstnanců (karty, SPZ…).</summary>
 public interface ICardSource
@@ -120,7 +124,17 @@ public static class CardApiAuth
 }
 
 /// <summary>Identifikátor tak, jak ho vrátilo integrační API, po rozboru odpovědi.</summary>
-public record ApiIdentifier(string Value, DateTime? ValidFrom, DateTime? ValidTo, bool? Active, string? Note);
+public record ApiIdentifier(string Value, DateTime? ValidFrom, DateTime? ValidTo, bool? Active, string? Note,
+    string? EmployeeNo = null, int? SubType = null);
+
+/// <summary>Jak se integrační služba čte.</summary>
+public static class CardApiFetchMode
+{
+    /// <summary>Jeden dotaz bez filtrů — všechny identifikátory všech osob; párování se dělá nad databází ACS (výchozí).</summary>
+    public const string All = "All";
+    /// <summary>Dotaz po zaměstnanci a podtypu (původní režim; tisíce volání).</summary>
+    public const string PerEmployee = "PerEmployee";
+}
 
 /// <summary>
 /// Identifikátory z integrační služby (<c>POST …/api/v0/Identifiers</c> s tělem
@@ -150,10 +164,12 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
 
     /// <param name="SubType">Podtyp identifikační karty (3).</param>
     /// <param name="PlateSubType">Podtyp SPZ (4); null = SPZ se z API nestahují.</param>
+    /// <param name="Rules">Pravidla po podtypech (typ + převod čísla pro čtečky); null = z <paramref name="SubType"/> a <paramref name="PlateSubType"/> beze změny hodnot.</param>
+    /// <param name="FetchAll">Jeden dotaz bez filtrů na všechny identifikátory (místo dotazu po zaměstnanci).</param>
     public sealed record Options(
         string Url, int SubType, string? ApiKeyHeader, string? ApiKey, string? User, string? Password, string Auth = CardApiAuth.None,
         string? BearerToken = null, string? TokenUrl = null, string? TokenBody = null, string? TokenField = null,
-        int? PlateSubType = null);
+        int? PlateSubType = null, IReadOnlyList<IdentifierSubTypeRule>? Rules = null, bool FetchAll = false);
 
     public const int DefaultCardSubType = 3;
     public const int DefaultPlateSubType = 4;
@@ -171,13 +187,23 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
 
     private const int Parallelism = 4;
 
-    public string Description => $"integrační API {options.Url} (podtyp {options.SubType}"
-        + (options.PlateSubType is { } plate ? $", SPZ podtyp {plate})" : ")");
+    public string Description => options.FetchAll
+        ? $"integrační API {options.Url} (vše jedním dotazem; podtypy {string.Join(", ", Rules.Select(r => r.SubType))})"
+        : $"integrační API {options.Url} (podtyp {options.SubType}"
+          + (options.PlateSubType is { } plate ? $", SPZ podtyp {plate})" : ")");
+
+    /// <summary>Pravidla po podtypech: co je karta, co SPZ a jak se číslo převádí pro čtečky.</summary>
+    public IReadOnlyList<IdentifierSubTypeRule> Rules => options.Rules ?? (options.PlateSubType is { } plate
+        ? [new IdentifierSubTypeRule(options.SubType, IdentifierType.Card, CardNumberFormat.Raw), new IdentifierSubTypeRule(plate, IdentifierType.LicensePlate, CardNumberFormat.Raw)]
+        : [new IdentifierSubTypeRule(options.SubType, IdentifierType.Card, CardNumberFormat.Raw)]);
 
     /// <summary>Podtypy, na které se služba ptá, a typ identifikátoru, který z nich vznikne.</summary>
-    public IReadOnlyList<(int SubType, IdentifierType Type)> SubTypes => options.PlateSubType is { } plate
-        ? [(options.SubType, IdentifierType.Card), (plate, IdentifierType.LicensePlate)]
-        : [(options.SubType, IdentifierType.Card)];
+    public IReadOnlyList<(int SubType, IdentifierType Type)> SubTypes => Rules.Select(r => (r.SubType, r.Type)).ToList();
+
+    public bool FetchAll => options.FetchAll;
+
+    /// <summary>Kolik záznamů mělo podtyp, pro který není pravidlo (přeskočeno) — po posledním čtení.</summary>
+    public int SkippedUnknownSubType { get; private set; }
 
     /// <summary>Podtyp karet z nastavení: prázdné, nečíselné nebo nekladné (např. omylem uložená 0) = výchozí 3.</summary>
     public static int ParseCardSubType(string? raw)
@@ -207,6 +233,11 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
             password = await settings.GetAsync(SettingKeys.LdapBindPassword, ct);
         }
 
+        var rules = CardNumberFormats.ParseRules(await settings.GetAsync(SettingKeys.CardsApiSubTypeRules, ct), out _);
+        if (rules.Count == 0)
+            rules = CardNumberFormats.Default;
+        var fetchAll = (await settings.GetAsync(SettingKeys.CardsApiFetchMode, ct) ?? CardApiFetchMode.All) != CardApiFetchMode.PerEmployee;
+
         var options = new Options(url, subType,
             await settings.GetAsync(SettingKeys.CardsApiKeyHeader, ct),
             await settings.GetAsync(SettingKeys.CardsApiKey, ct),
@@ -215,7 +246,7 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
             await settings.GetAsync(SettingKeys.CardsApiTokenUrl, ct),
             await settings.GetAsync(SettingKeys.CardsApiTokenBody, ct),
             await settings.GetAsync(SettingKeys.CardsApiTokenField, ct),
-            plateSubType);
+            plateSubType, rules, fetchAll);
 
         // Interní služba často běží s certifikátem vlastní CA, kterou nody neznají.
         var ignoreTls = await settings.GetAsync(SettingKeys.CardsApiIgnoreTls, ct) == "true";
@@ -289,6 +320,31 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
 
     public async IAsyncEnumerable<CardRecord> ReadAsync(IReadOnlyList<Employee> employees, [EnumeratorCancellation] CancellationToken ct)
     {
+        SkippedUnknownSubType = 0;
+        if (options.FetchAll)
+        {
+            // Jeden dotaz bez filtrů: služba vrátí identifikátory všech osob; párování na
+            // zaměstnance dělá CardSyncService nad databází ACS podle osobního čísla.
+            var body = await PostAsync(null, null, ct);
+            if (ServiceError(body) is { } error)
+                throw new InvalidOperationException($"Integrační API ohlásilo chybu: {error}");
+
+            foreach (var identifier in ParseAll(body))
+            {
+                if (identifier.Active == false)
+                    continue;
+                if (identifier.SubType is null || Rules.FirstOrDefault(r => r.SubType == identifier.SubType) is not { } rule)
+                {
+                    SkippedUnknownSubType++;
+                    continue;
+                }
+
+                yield return ToRecord(identifier, rule);
+            }
+
+            yield break;
+        }
+
         var numbers = employees
             .Where(e => !string.IsNullOrWhiteSpace(e.PersonalNumber))
             .Select(e => e.PersonalNumber!.Trim())
@@ -296,21 +352,33 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
             .ToList();
 
         // Jeden dotaz na osobní číslo a podtyp (karty, případně SPZ).
-        var queries = numbers.SelectMany(_ => SubTypes, (number, sub) => (number, sub.SubType, sub.Type));
+        var queries = numbers.SelectMany(_ => Rules, (number, rule) => (number, rule));
         foreach (var batch in queries.Chunk(Parallelism))
         {
-            var results = await Task.WhenAll(batch.Select(async q => (q.number, q.Type, identifiers: await QueryAsync(q.number, q.SubType, q.Type, ct))));
-            foreach (var (number, type, identifiers) in results)
+            var results = await Task.WhenAll(batch.Select(async q => (q.number, q.rule, identifiers: await QueryAsync(q.number, q.rule.SubType, q.rule.Type, ct))));
+            foreach (var (number, rule, identifiers) in results)
             {
                 foreach (var identifier in identifiers)
                 {
                     if (identifier.Active == false)
                         continue;
-                    yield return new CardRecord(null, number, identifier.Value, type,
-                        identifier.Note, identifier.ValidFrom, identifier.ValidTo);
+                    yield return ToRecord(identifier with { EmployeeNo = number, SubType = rule.SubType }, rule);
                 }
             }
         }
+    }
+
+    /// <summary>Záznam pro synchronizaci: číslo převedené pro čtečky podle pravidla podtypu, původní hodnota v poznámce.</summary>
+    private static CardRecord ToRecord(ApiIdentifier identifier, IdentifierSubTypeRule rule)
+    {
+        var value = rule.Type == IdentifierType.LicensePlate
+            ? StripPlateCountry(identifier.Value.Trim())
+            : CardNumberFormats.Apply(rule.Format, identifier.Value);
+        var note = rule.Format == CardNumberFormat.Raw || value == identifier.Value.Trim()
+            ? identifier.Note
+            : $"podtyp {rule.SubType}: {identifier.Value.Trim()}";
+        return new CardRecord(null, identifier.EmployeeNo, value, rule.Type,
+            note, identifier.ValidFrom, identifier.ValidTo, RawValue: identifier.Value.Trim(), SubType: rule.SubType);
     }
 
     /// <summary>Výsledek zkoušky z Nastavení — všechno, co je třeba k rozlišení „špatná adresa“, „jiný formát čísla“ a „jiné schéma odpovědi“.</summary>
@@ -341,13 +409,33 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
     public async Task<ProbeResult> ProbeAsync(string employeeNo, int? subType = null, CancellationToken ct = default)
     {
         var effectiveSubType = subType ?? options.SubType;
-        var type = effectiveSubType == options.PlateSubType ? IdentifierType.LicensePlate : IdentifierType.Card;
+        var type = Rules.FirstOrDefault(r => r.SubType == effectiveSubType)?.Type
+            ?? (effectiveSubType == options.PlateSubType ? IdentifierType.LicensePlate : IdentifierType.Card);
         var requestBody = JsonSerializer.Serialize(new { employeeNo, idIdentifierSubType = effectiveSubType });
         using var request = await BuildRequestAsync(employeeNo, effectiveSubType, ct);
         using var response = await http.SendAsync(request, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
         var parsed = response.IsSuccessStatusCode ? SafeParse(body, type) : [];
         return new ProbeResult(options.Url, effectiveSubType, requestBody, (int)response.StatusCode, response.ReasonPhrase,
+            response.Content.Headers.ContentType?.ToString(), body, parsed,
+            response.Headers.WwwAuthenticate.Select(h => h.Scheme).ToList(),
+            response.IsSuccessStatusCode ? SafeServiceError(body) : null);
+    }
+
+    /// <summary>Zkouška dotazu bez filtrů (všechny identifikátory) — surová odpověď a rozbor včetně osobních čísel a podtypů.</summary>
+    public async Task<ProbeResult> ProbeAllAsync(CancellationToken ct = default)
+    {
+        using var request = await BuildRequestAsync(null, null, ct);
+        using var response = await http.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        IReadOnlyList<ApiIdentifier> parsed = [];
+        if (response.IsSuccessStatusCode)
+        {
+            try { parsed = ParseAll(body); }
+            catch (JsonException) { parsed = []; }
+        }
+
+        return new ProbeResult(options.Url, 0, "{}", (int)response.StatusCode, response.ReasonPhrase,
             response.Content.Headers.ContentType?.ToString(), body, parsed,
             response.Headers.WwwAuthenticate.Select(h => h.Scheme).ToList(),
             response.IsSuccessStatusCode ? SafeServiceError(body) : null);
@@ -394,11 +482,14 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         }
     }
 
-    private async Task<HttpRequestMessage> BuildRequestAsync(string employeeNo, int subType, CancellationToken ct)
+    /// <param name="employeeNo">Osobní číslo; null spolu s null podtypem = dotaz bez filtrů (tělo <c>{}</c>).</param>
+    private async Task<HttpRequestMessage> BuildRequestAsync(string? employeeNo, int? subType, CancellationToken ct)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, options.Url)
         {
-            Content = JsonContent.Create(new { employeeNo, idIdentifierSubType = subType }),
+            Content = employeeNo is null && subType is null
+                ? new StringContent("{}", Encoding.UTF8, "application/json")
+                : JsonContent.Create(new { employeeNo, idIdentifierSubType = subType }),
         };
         request.Headers.Accept.ParseAdd("application/json");
         if (options.Auth == CardApiAuth.Bearer && !string.IsNullOrWhiteSpace(options.BearerToken))
@@ -498,19 +589,69 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
         return null;
     }
 
-    private async Task<string> PostAsync(string employeeNo, int subType, CancellationToken ct)
+    private async Task<string> PostAsync(string? employeeNo, int? subType, CancellationToken ct)
     {
         using var request = await BuildRequestAsync(employeeNo, subType, ct);
         using var response = await http.SendAsync(request, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
         {
+            var scope = employeeNo is null ? "bez filtrů (všechny identifikátory)" : $"pro zaměstnance {employeeNo} (podtyp {subType})";
             throw new HttpRequestException(
-                $"Integrační API odpovědělo {(int)response.StatusCode} pro zaměstnance {employeeNo} (podtyp {subType}): {Truncate(body, 300)}",
+                $"Integrační API odpovědělo {(int)response.StatusCode} {scope}: {Truncate(body, 300)}",
                 null, response.StatusCode);
         }
 
         return body;
+    }
+
+    private static readonly string[] EmployeeNoProperties = ["employeeNo", "employeeNumber", "personalNumber", "personalNo", "osobniCislo"];
+    private static readonly string[] SubTypeProperties = ["idIdentifierSubType", "identifierSubType", "subType", "subTypeId"];
+
+    /// <summary>
+    /// Rozbor odpovědi na dotaz bez filtrů: záznamy všech osob s osobním číslem a podtypem,
+    /// hodnota beze změny (převod pro čtečky dělá pravidlo podtypu). Tentýž identifikátor
+    /// téže osoby a podtypu jednou.
+    /// </summary>
+    public static IReadOnlyList<ApiIdentifier> ParseAll(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return [];
+
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        if (root.ValueKind == JsonValueKind.Object && IsFailedEnvelope(root))
+            return [];
+
+        var items = root.ValueKind switch
+        {
+            JsonValueKind.Array => root.EnumerateArray().ToList(),
+            JsonValueKind.Object => FindList(root) is { } list ? list.EnumerateArray().ToList() : [root],
+            _ => [root],
+        };
+
+        var result = new List<ApiIdentifier>();
+        var seen = new HashSet<(string, int?, string)>();
+        foreach (var item in items)
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                continue;
+            var value = First(item, ValueProperties)?.Trim();
+            if (string.IsNullOrEmpty(value))
+                continue;
+            var employeeNo = First(item, EmployeeNoProperties)?.Trim();
+            var subType = int.TryParse(First(item, SubTypeProperties), out var parsedSubType) ? parsedSubType : (int?)null;
+            if (!seen.Add((employeeNo ?? "", subType, EmployeeIdentifier.Normalize(value))))
+                continue;
+            result.Add(new ApiIdentifier(value,
+                ParseDate(First(item, FromProperties)),
+                ParseDate(First(item, ToProperties)),
+                ParseActive(item),
+                First(item, NoteProperties),
+                employeeNo, subType));
+        }
+
+        return result;
     }
 
     private static readonly string[] ListProperties = ["output", "identifiers", "items", "data", "result", "results", "value", "cards", "records"];

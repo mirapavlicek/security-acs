@@ -8,12 +8,13 @@ using Acs.Infrastructure.WinPak;
 using Acs.Web.Api;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 
 namespace Acs.Web.Pages.Admin;
 
 public class SettingsModel(SettingsService settings, AuditService audit, WinPakClient winPak,
     IHttpClientFactory httpClientFactory, ParkingConnectorClient parkingConnector,
-    Acs.Infrastructure.Notifications.EmailNotificationService email) : PageModel
+    Acs.Infrastructure.Notifications.EmailNotificationService email, Acs.Infrastructure.Data.AcsDbContext db) : PageModel
 {
     [TempData] public string? SmtpTestResult { get; set; }
 
@@ -58,7 +59,8 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         SettingKeys.SmtpUseTls, SettingKeys.SmtpIgnoreTlsErrors,
         SettingKeys.CardsSource, SettingKeys.CardsApiUrl, SettingKeys.CardsApiSubType, SettingKeys.CardsApiPlateSubType, SettingKeys.CardsApiAuth, SettingKeys.CardsApiKeyHeader,
         SettingKeys.CardsApiTokenUrl, SettingKeys.CardsApiTokenBody, SettingKeys.CardsApiTokenField,
-        SettingKeys.CardsApiUser, SettingKeys.CardsApiIgnoreTls,
+        SettingKeys.CardsApiUser, SettingKeys.CardsApiIgnoreTls, SettingKeys.CardsApiFetchMode, SettingKeys.CardsApiSubTypeRules,
+        SettingKeys.CardsLastImportStats,
         SettingKeys.ParkingSystemEnabled, SettingKeys.ParkingSystemAllowedIps, SettingKeys.ParkingSystemCacheTtlSeconds,
         SettingKeys.ParkingSystemExitAlwaysAllowed, SettingKeys.ParkingSystemConnectorBaseUrl,
         SettingKeys.ParkingSystemPushEnabled,
@@ -217,8 +219,23 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         string? cardsApiUrl, string? cardsApiSubType, string? cardsApiPlateSubType, string? cardsApiAuth, string? cardsApiKeyHeader, string? cardsApiKey,
         string? cardsApiUser, string? cardsApiPassword, string? cardsApiIgnoreTls,
         string? cardsApiBearerToken, string? cardsApiTokenUrl, string? cardsApiTokenBody, string? cardsApiTokenField,
-        string? cardsSyncEnabled, string? cardsSyncIntervalMinutes)
+        string? cardsSyncEnabled, string? cardsSyncIntervalMinutes,
+        string? cardsApiFetchMode = null, string? cardsApiSubTypeRules = null)
     {
+        // Pravidla podtypů se uloží jen srozumitelná; chybné řádky se vypíší a nastavení se neuloží.
+        var rules = CardNumberFormats.ParseRules(cardsApiSubTypeRules, out var ruleErrors);
+        if (ruleErrors.Count > 0 || rules.Count == 0)
+        {
+            CardsApiProbe = "Pravidla podtypů se neuložila:\n" + string.Join("\n", ruleErrors)
+                + (rules.Count == 0 ? "\nNezůstalo žádné pravidlo." : "")
+                + "\n\nTvar: „podtyp = typ : formát“ na řádek, např. 100003 = Card : DashToZero";
+            ActiveSection = "cards";
+            return RedirectToPage();
+        }
+        await settings.SetAsync(SettingKeys.CardsApiSubTypeRules, string.IsNullOrWhiteSpace(cardsApiSubTypeRules) ? null : cardsApiSubTypeRules.Trim(), UserName);
+        await settings.SetAsync(SettingKeys.CardsApiFetchMode,
+            cardsApiFetchMode == CardApiFetchMode.PerEmployee ? CardApiFetchMode.PerEmployee : CardApiFetchMode.All, UserName);
+
         await settings.SetAsync(SettingKeys.CardsSource, cardsSource == CardSources.Api ? CardSources.Api : CardSources.Mssql, UserName);
         await settings.SetIfProvidedAsync(SettingKeys.CardsMssqlConnectionString, cardsMssqlConnectionString, UserName);
         await settings.SetAsync(SettingKeys.CardsMssqlQuery, cardsMssqlQuery, UserName);
@@ -244,25 +261,31 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
     }
 
     /// <summary>Zkouška integračního API na jednom osobním čísle — ukáže surovou odpověď i rozbor, protože schéma odpovědi dokumentace neuvádí.</summary>
+    /// <param name="employeeNo">Osobní číslo; prázdné = zkouška dotazu bez filtrů (všechny identifikátory).</param>
     public async Task<IActionResult> OnPostCardsApiTestAsync(string? employeeNo)
     {
-        if (string.IsNullOrWhiteSpace(employeeNo))
-        {
-            CardsApiProbe = "Zadejte osobní číslo zaměstnance, na kterém se má API vyzkoušet.";
-            ActiveSection = "cards";
-            return RedirectToPage();
-        }
-
         try
         {
             using var source = await IdentifiersApiCardSource.CreateAsync(settings, httpClientFactory, HttpContext.RequestAborted);
             var lines = new List<string> { $"Přihlášení: {source.AuthDescription}" };
-            // Karty a (když jsou zapnuté) SPZ — každý podtyp je samostatný dotaz.
-            foreach (var (subType, type) in source.SubTypes)
+            if (string.IsNullOrWhiteSpace(employeeNo))
             {
                 lines.Add("");
-                lines.Add($"=== {(type == IdentifierType.LicensePlate ? "SPZ" : "Karty")} (idIdentifierSubType {subType}) ===");
-                lines.AddRange(DescribeProbe(await source.ProbeAsync(employeeNo.Trim(), subType, HttpContext.RequestAborted), source.Auth));
+                lines.Add("=== Všechny identifikátory jedním dotazem bez filtrů (tělo {}) ===");
+                var probe = await source.ProbeAllAsync(HttpContext.RequestAborted);
+                lines.AddRange(DescribeBulkProbe(probe, source.Rules, await db.Employees
+                    .Where(e => e.IsActive && e.PersonalNumber != null).Select(e => e.PersonalNumber!).ToListAsync()));
+                lines.AddRange(DescribeProbe(probe, source.Auth, includeParsed: false));
+            }
+            else
+            {
+                // Karty a (když jsou zapnuté) SPZ — každý podtyp je samostatný dotaz.
+                foreach (var (subType, type) in source.SubTypes)
+                {
+                    lines.Add("");
+                    lines.Add($"=== {(type == IdentifierType.LicensePlate ? "SPZ" : "Karty")} (idIdentifierSubType {subType}) ===");
+                    lines.AddRange(DescribeProbe(await source.ProbeAsync(employeeNo.Trim(), subType, HttpContext.RequestAborted), source.Auth));
+                }
             }
 
             if (source.TokenStepDescription is { } tokenStep)
@@ -282,7 +305,37 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         return RedirectToPage();
     }
 
-    private static List<string> DescribeProbe(IdentifiersApiCardSource.ProbeResult probe, string auth)
+    /// <summary>Souhrn dotazu bez filtrů: kolik záznamů, po podtypech, převod čísel podle pravidel a kolik osobních čísel v ACS je.</summary>
+    private static List<string> DescribeBulkProbe(IdentifiersApiCardSource.ProbeResult probe,
+        IReadOnlyList<IdentifierSubTypeRule> rules, IReadOnlyList<string> knownPersonalNumbers)
+    {
+        var lines = new List<string>();
+        if (!probe.Success || probe.ServiceError is not null)
+            return lines;
+        if (probe.Parsed.Count == 0)
+        {
+            lines.Add("Služba odpověděla, ale bez filtrů nevrátila žádný záznam — buď filtry vyžaduje (přepněte režim na „po zaměstnancích“), nebo má jiný tvar odpovědi (tělo níže).");
+            return lines;
+        }
+
+        var known = knownPersonalNumbers.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var persons = probe.Parsed.Where(p => p.EmployeeNo is { Length: > 0 }).Select(p => p.EmployeeNo!).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        lines.Add($"Přečteno {probe.Parsed.Count} identifikátorů u {persons.Count} osobních čísel; v ACS je {persons.Count(known.Contains)} z nich (zbytek se při synchronizaci nespáruje).");
+        foreach (var group in probe.Parsed.GroupBy(p => p.SubType).OrderBy(g => g.Key))
+        {
+            var rule = rules.FirstOrDefault(r => r.SubType == group.Key);
+            var sample = group.Take(3).Select(p => rule is null
+                ? p.Value
+                : $"{p.Value} → {(rule.Type == IdentifierType.LicensePlate ? IdentifiersApiCardSource.StripPlateCountry(p.Value) : CardNumberFormats.Apply(rule.Format, p.Value))}");
+            lines.Add(rule is null
+                ? $"  podtyp {group.Key?.ToString() ?? "?"}: {group.Count()} záznamů — BEZ PRAVIDLA, přeskočí se (např. {string.Join(", ", sample)})"
+                : $"  podtyp {group.Key}: {group.Count()} záznamů → {(rule.Type == IdentifierType.LicensePlate ? "SPZ" : "karta")}, {CardNumberFormats.Describe(rule.Format)} (např. {string.Join(", ", sample)})");
+        }
+
+        return lines;
+    }
+
+    private static List<string> DescribeProbe(IdentifiersApiCardSource.ProbeResult probe, string auth, bool includeParsed = true)
     {
         var lines = new List<string>();
         {
@@ -311,6 +364,9 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
             else if (probe.ServiceError is { } error)
             {
                 lines.Add($"Služba odpověděla {probe.StatusCode}, ale v těle hlásí chybu: {error}. Synchronizace takovou odpověď bere jako chybu (ne jako „zaměstnanec nic nemá“).");
+            }
+            else if (!includeParsed)
+            {
             }
             else if (probe.Parsed.Count == 0)
             {

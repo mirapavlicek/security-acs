@@ -10,6 +10,7 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
     public DbSet<AppUser> Users => Set<AppUser>();
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<EmployeeIdentifier> EmployeeIdentifiers => Set<EmployeeIdentifier>();
+    public DbSet<ImportedIdentifier> ImportedIdentifiers => Set<ImportedIdentifier>();
     public DbSet<Building> Buildings => Set<Building>();
     public DbSet<BuildingSection> BuildingSections => Set<BuildingSection>();
     public DbSet<Floor> Floors => Set<Floor>();
@@ -126,6 +127,18 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
             e.HasIndex(x => x.EmployeeId);
             e.HasOne(x => x.Employee).WithMany(emp => emp.Identifiers)
                 .HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ImportedIdentifier>(e =>
+        {
+            e.Property(x => x.EmployeeNo).HasMaxLength(64);
+            e.Property(x => x.AdAccount).HasMaxLength(128);
+            e.Property(x => x.RawValue).HasMaxLength(128);
+            e.Property(x => x.Value).HasMaxLength(128);
+            e.HasIndex(x => x.EmployeeNo);
+            e.HasIndex(x => x.EmployeeId);
+            e.HasOne(x => x.Employee).WithMany()
+                .HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<Reader>(e =>
