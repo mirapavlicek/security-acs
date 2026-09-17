@@ -23,6 +23,13 @@ public enum CardNumberFormat
     /// čtečka čte <c>nnn0nnnnn</c> (<c>123-45678</c> → <c>123045678</c>).
     /// </summary>
     DashToZero = 2,
+
+    /// <summary>
+    /// Podle tvaru hodnoty: <c>4D-…</c> (karta Homolky) → posledních 5 číslic doplněných
+    /// nulami; <c>xxx-nnnnn</c> (nativní tvar FN Motol, i s písmenem — <c>22B-11012</c>)
+    /// → pomlčka → 0; jinak beze změny. Služba vrací pod jedním podtypem oba druhy karet.
+    /// </summary>
+    Auto = 3,
 }
 
 /// <summary>Pravidlo pro jeden podtyp identifikátoru (<c>idIdentifierSubType</c>) z integrační služby.</summary>
@@ -39,7 +46,7 @@ public static class CardNumberFormats
     /// Výchozí pravidla podle skutečné služby ws-integrations: 3 = karta Homolka
     /// (posledních 5 číslic), 100003 = karta FN Motol (pomlčka → 0), 4 = SPZ.
     /// </summary>
-    public const string DefaultRules = "3 = Card : Last5\n100003 = Card : DashToZero\n4 = LicensePlate";
+    public const string DefaultRules = "3 = Card : Auto\n100003 = Card : DashToZero\n4 = LicensePlate";
 
     public static IReadOnlyList<IdentifierSubTypeRule> Default => ParseRules(DefaultRules, out _);
 
@@ -119,27 +126,50 @@ public static class CardNumberFormats
                 format = CardNumberFormat.Last5; return true;
             case "dashtozero" or "dash0" or "pomlcka0" or "pomlckanula" or "nula":
                 format = CardNumberFormat.DashToZero; return true;
+            case "auto" or "podletvaru" or "automaticky":
+                format = CardNumberFormat.Auto; return true;
             default:
                 format = CardNumberFormat.Raw; return false;
         }
     }
 
+    /// <summary>Nativní tvar FN Motol: tři znaky (číslice nebo písmeno), pomlčka, pět číslic — <c>123-45678</c>, <c>22B-11012</c>.</summary>
+    private static readonly System.Text.RegularExpressions.Regex MotolNative =
+        new(@"^[0-9A-Za-z]{3}-\d{5}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>Karta Homolky: prefix <c>4D-</c> a 1–5 číslic (služba posílá <c>4d-07782</c> i <c>4D-7782</c>).</summary>
+    private static readonly System.Text.RegularExpressions.Regex HomolkaCard =
+        new(@"^4[Dd]-?\d{1,5}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     /// <summary>Převede hodnotu ze zdroje na číslo pro čtečky podle formátu (bez závěrečné normalizace).</summary>
     public static string Apply(CardNumberFormat format, string raw)
     {
-        var value = raw.Trim();
+        var value = raw.Trim().Replace(" ", "");
         switch (format)
         {
             case CardNumberFormat.Last5:
             {
-                var digits = new string(value.Where(char.IsDigit).ToArray());
+                // Číslice za poslední pomlčkou (u „4D-7782“ nesmí do čísla spadnout čtyřka z prefixu);
+                // bez pomlčky všechny číslice. Doplní se nulami na 5 — 4D-7782 a 4d-07782 je tatáž karta.
+                var dash = value.LastIndexOf('-');
+                var segment = dash >= 0 ? value[(dash + 1)..] : value;
+                var digits = new string(segment.Where(char.IsDigit).ToArray());
+                if (digits.Length == 0)
+                    digits = new string(value.Where(char.IsDigit).ToArray());
                 if (digits.Length == 0)
                     return value;
-                return digits.Length > 5 ? digits[^5..] : digits;
+                return digits.Length >= 5 ? digits[^5..] : digits.PadLeft(5, '0');
             }
 
             case CardNumberFormat.DashToZero:
-                return value.Replace(" ", "").Replace('-', '0');
+                return value.Replace('-', '0');
+
+            case CardNumberFormat.Auto:
+                if (MotolNative.IsMatch(value))
+                    return Apply(CardNumberFormat.DashToZero, value);
+                if (HomolkaCard.IsMatch(value))
+                    return Apply(CardNumberFormat.Last5, value);
+                return value;
 
             default:
                 return value;
@@ -150,6 +180,7 @@ public static class CardNumberFormats
     {
         CardNumberFormat.Last5 => "posledních 5 číslic (4d-07782 → 07782)",
         CardNumberFormat.DashToZero => "pomlčka → 0 (123-45678 → 123045678)",
+        CardNumberFormat.Auto => "podle tvaru: 4D-… → posledních 5 číslic, xxx-nnnnn → pomlčka → 0",
         _ => "beze změny",
     };
 }

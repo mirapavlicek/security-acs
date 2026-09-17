@@ -33,13 +33,16 @@ Co je karta, co SPZ a jak se z hodnoty služby udělá číslo, které čtou čt
 `podtyp = typ : formát`. Výchozí:
 
 ```
-3 = Card : Last5            # Homolka: 4d-07782 → 07782 (posledních 5 číslic)
+3 = Card : Auto             # podle tvaru: 4d-07782 / 4D-7782 → 07782, 22B-11012 → 22B011012
 100003 = Card : DashToZero  # FN Motol (NATIVE nnn-nnnnn): 123-45678 → 123045678
 4 = LicensePlate            # SPZ: 1TN7287-CZE → 1TN7287
 ```
 
-Formáty: `Last5` (posledních 5 číslic), `DashToZero` (pomlčka → 0), `Raw`
-(beze změny). Typ i formát jdou zapsat i česky (`karta`, `SPZ`, `posledních 5`,
+Služba vrací pod podtypem 3 karty Homolky (`4d-07782`, někdy zkráceně
+`4D-7782`) i karty v nativním tvaru FN Motol (`22B-11012`), proto je výchozí
+formát `Auto` — pozná se podle tvaru hodnoty. Formáty: `Auto`, `Last5`
+(posledních 5 číslic doplněných nulami — `4D-7782` i `4d-07782` dají `07782`),
+`DashToZero` (pomlčka → 0), `Raw` (beze změny). Typ i formát jdou zapsat i česky (`karta`, `SPZ`, `posledních 5`,
 `pomlčka→0`). Podtypy bez pravidla se přeskočí (zkouška je vypíše). Původní
 hodnota ze služby zůstává v poznámce identifikátoru (`podtyp 100003: 123-45678`).
 
