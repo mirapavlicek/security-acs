@@ -15,7 +15,7 @@ namespace Acs.Tests;
 /// <summary>
 /// Karty z integrační služby jedním dotazem bez filtrů, párování nad databází ACS
 /// a převod čísel pro čtečky po podtypech: Homolka (3) posledních 5 číslic,
-/// FN Motol (100003) pomlčka → 0, SPZ (4) bez přípony země.
+/// FN Motol (1000003) pomlčka → 0, SPZ (4) bez přípony země.
 /// </summary>
 public sealed class CardNumberFormatTests : IDisposable
 {
@@ -60,15 +60,35 @@ public sealed class CardNumberFormatTests : IDisposable
 
     [Theory]
     [InlineData(CardNumberFormat.Last5, "4d-07782", "07782")]
-    [InlineData(CardNumberFormat.Last5, "4D-7782", "47782")]
+    [InlineData(CardNumberFormat.Last5, "4D-7782", "07782")]
     [InlineData(CardNumberFormat.Last5, "07782", "07782")]
-    [InlineData(CardNumberFormat.Last5, "782", "782")]
+    [InlineData(CardNumberFormat.Last5, "782", "00782")]
+    [InlineData(CardNumberFormat.Last5, "4D-123456", "23456")]
+    [InlineData(CardNumberFormat.Auto, "4d-07782", "07782")]
+    [InlineData(CardNumberFormat.Auto, "4D-7782", "07782")]
+    [InlineData(CardNumberFormat.Auto, "22B-11012", "22B011012")]
+    [InlineData(CardNumberFormat.Auto, "255-02564", "255002564")]
+    [InlineData(CardNumberFormat.Auto, "123045678", "123045678")]
+    [InlineData(CardNumberFormat.Auto, "ABC", "ABC")]
     [InlineData(CardNumberFormat.DashToZero, "123-45678", "123045678")]
     [InlineData(CardNumberFormat.DashToZero, " 123-45678 ", "123045678")]
     [InlineData(CardNumberFormat.DashToZero, "123045678", "123045678")]
+    [InlineData(CardNumberFormat.DashToZero, "17625930", "176025930")]
+    [InlineData(CardNumberFormat.DashToZero, "EA69-24836", "EA69024836")]
+    [InlineData(CardNumberFormat.DashToZero, "EA6924836", "EA6924836")]
+    [InlineData(CardNumberFormat.Auto, "EA69-24836", "EA69024836")]
     [InlineData(CardNumberFormat.Raw, "4d-07782", "4d-07782")]
     public void Format_prevede_cislo_pro_ctecky(CardNumberFormat format, string raw, string expected)
         => Assert.Equal(expected, CardNumberFormats.Apply(format, raw));
+
+    [Theory]
+    [InlineData(CardNumberFormat.DashToZero, "17625930", "NOHYPHEN", "176025930")]
+    [InlineData(CardNumberFormat.DashToZero, "EA6924836", "NOHYPHEN", "EA69024836")]
+    [InlineData(CardNumberFormat.DashToZero, "176-25930", "NATIVE", "176025930")]
+    [InlineData(CardNumberFormat.Auto, "17625930", "NOHYPHEN", "176025930")]
+    [InlineData(CardNumberFormat.Auto, "07782", null, "07782")]
+    public void InitialFormat_ze_sluzby_ridi_prevod(CardNumberFormat format, string raw, string? sourceFormat, string expected)
+        => Assert.Equal(expected, CardNumberFormats.Apply(format, raw, sourceFormat));
 
     [Fact]
     public void Vychozi_pravidla_odpovidaji_sluzbe_ws_integrations()
@@ -76,16 +96,16 @@ public sealed class CardNumberFormatTests : IDisposable
         var rules = CardNumberFormats.ParseRules(null, out var errors);
         Assert.Empty(errors);
         Assert.Equal(
-            [(3, IdentifierType.Card, CardNumberFormat.Last5), (100003, IdentifierType.Card, CardNumberFormat.DashToZero), (4, IdentifierType.LicensePlate, CardNumberFormat.Raw)],
+            [(3, IdentifierType.Card, CardNumberFormat.Auto), (1000003, IdentifierType.Card, CardNumberFormat.DashToZero), (4, IdentifierType.LicensePlate, CardNumberFormat.Raw)],
             rules.Select(r => (r.SubType, r.Type, r.Format)));
     }
 
     [Fact]
     public void Pravidla_se_ctou_cesky_i_anglicky_a_chybne_radky_se_hlasi()
     {
-        var rules = CardNumberFormats.ParseRules("3 = karta : posledních 5\n100003=Card:pomlčka→0 # FNM\n4 = SPZ; x = karta\n7 = cosi\n3 = Card", out var errors);
+        var rules = CardNumberFormats.ParseRules("3 = karta : posledních 5\n1000003=Card:pomlčka→0 # FNM\n4 = SPZ; x = karta\n7 = cosi\n3 = Card", out var errors);
         Assert.Equal(
-            [(3, IdentifierType.Card, CardNumberFormat.Last5), (100003, IdentifierType.Card, CardNumberFormat.DashToZero), (4, IdentifierType.LicensePlate, CardNumberFormat.Raw)],
+            [(3, IdentifierType.Card, CardNumberFormat.Last5), (1000003, IdentifierType.Card, CardNumberFormat.DashToZero), (4, IdentifierType.LicensePlate, CardNumberFormat.Raw)],
             rules.Select(r => (r.SubType, r.Type, r.Format)));
         Assert.Equal(3, errors.Count);
         Assert.Contains(errors, e => e.Contains("x = karta"));
@@ -96,9 +116,11 @@ public sealed class CardNumberFormatTests : IDisposable
     private const string BulkResponse = """
         {"output":[
           {"employeeNo":"13483","initialCode":"4d-07782","idIdentifierSubType":3},
-          {"employeeNo":"13483","initialCode":"4d-07782","idIdentifierSubType":3},
+          {"employeeNo":"13483","initialCode":"4D-7782","idIdentifierSubType":3},
+          {"employeeNo":"13483","initialCode":"22B-11012","idIdentifierSubType":3},
           {"employeeNo":"13483","initialCode":"1TN7287-CZE","idIdentifierSubType":4},
-          {"employeeNo":"20001","initialCode":"123-45678","idIdentifierSubType":100003},
+          {"employeeNo":"20001","initialCode":"123-45678","idIdentifierSubType":1000003,"initialFormat":"NATIVE"},
+          {"employeeNo":"20001","initialCode":"12345678","idIdentifierSubType":1000003,"initialFormat":"NOHYPHEN"},
           {"employeeNo":"20001","initialCode":"4d-00001","idIdentifierSubType":3},
           {"employeeNo":"99999","initialCode":"4d-55555","idIdentifierSubType":3},
           {"employeeNo":"13483","initialCode":"neco","idIdentifierSubType":77}
@@ -109,8 +131,11 @@ public sealed class CardNumberFormatTests : IDisposable
     public void Rozbor_bez_filtru_vraci_osobni_cislo_a_podtyp_kazdeho_zaznamu()
     {
         var parsed = IdentifiersApiCardSource.ParseAll(BulkResponse);
-        Assert.Equal(6, parsed.Count); // duplicitní 4d-07782 u 13483 jednou
-        Assert.Contains(parsed, p => p.EmployeeNo == "20001" && p.SubType == 100003 && p.Value == "123-45678");
+        // 4d-07782 a 4D-7782 jsou různé hodnoty ze služby (sjednotí je až převod pro čtečky);
+        // 123-45678 a 12345678 (NATIVE/NOHYPHEN) jsou po sjednocení totéž → jednou.
+        Assert.Equal(8, parsed.Count);
+        Assert.Equal("NATIVE", parsed.Single(p => p.Value == "123-45678").SourceFormat);
+        Assert.Contains(parsed, p => p.EmployeeNo == "20001" && p.SubType == 1000003 && p.Value == "123-45678");
         Assert.Contains(parsed, p => p.EmployeeNo == "13483" && p.SubType == 4 && p.Value == "1TN7287-CZE");
     }
 
@@ -133,29 +158,35 @@ public sealed class CardNumberFormatTests : IDisposable
         var request = Assert.Single(stub.Requests);
         Assert.Equal("{}", request.Body);
         Assert.Contains("vše jedním dotazem", source.Description);
-        Assert.Equal(1, source.SkippedUnknownSubType); // podtyp 77 bez pravidla
+        Assert.Equal(1, source.SkippedUnknownSubType); // podtyp 77 bez pravidla — jen v otisku
 
         // Čísla pro čtečky: Homolka posledních 5, FNM pomlčka → 0, SPZ bez -CZE.
         var identifiers = await _db.EmployeeIdentifiers.Include(i => i.Employee).OrderBy(i => i.Employee!.PersonalNumber).ThenBy(i => i.Value).ToListAsync();
         Assert.Equal(
-            [("13483", IdentifierType.Card, "07782"), ("13483", IdentifierType.LicensePlate, "1TN7287"),
+            [("13483", IdentifierType.Card, "07782"), ("13483", IdentifierType.LicensePlate, "1TN7287"), ("13483", IdentifierType.Card, "22B011012"),
              ("20001", IdentifierType.Card, "00001"), ("20001", IdentifierType.Card, "123045678")],
             identifiers.Select(i => (i.Employee!.PersonalNumber, i.Type, i.Value)));
-        Assert.Equal("podtyp 100003: 123-45678", identifiers.Single(i => i.Value == "123045678").Note);
+        Assert.Equal("podtyp 1000003: 123-45678", identifiers.Single(i => i.Value == "123045678").Note);
         Assert.Equal("07782", (await _db.Employees.SingleAsync(e => e.PersonalNumber == "13483")).CardNumber);
 
         // Osobní číslo 99999 v ACS není — nespárováno, ale v otisku zůstává k dohledání.
-        Assert.Equal(4, result.Added);
+        Assert.Equal(5, result.Added);
+        Assert.Equal(1, result.Duplicates); // 4D-7782 = 4d-07782 po převodu
         Assert.Equal(1, result.Unmatched);
         Assert.Equal(1, result.UnmatchedPersons);
-        Assert.Equal(5, result.Fetched);
+        Assert.Equal(1, result.Skipped);
+        Assert.Equal(8, result.Fetched);
         var snapshot = await _db.ImportedIdentifiers.ToListAsync();
-        Assert.Equal(5, snapshot.Count);
+        Assert.Equal(8, snapshot.Count);
         var orphan = snapshot.Single(s => s.EmployeeNo == "99999");
         Assert.Null(orphan.EmployeeId);
         Assert.Equal(("4d-55555", "55555", 3), (orphan.RawValue, orphan.Value, orphan.SubType));
+        var unknown = snapshot.Single(s => s.SubType == 77);
+        Assert.Equal("podtyp 77 bez pravidla", unknown.SkipReason);
+        Assert.NotNull(unknown.EmployeeId); // spárován, jen nepřenesen
         Assert.All(snapshot.Where(s => s.EmployeeNo != "99999"), s => Assert.NotNull(s.EmployeeId));
-        Assert.Contains("staženo 5", result.ToString());
+        Assert.Contains("staženo 8", result.ToString());
+        Assert.Contains("bez pravidla podtypu 1", result.ToString());
         Assert.Contains("1 osobních čísel v ACS není", result.ToString());
     }
 
@@ -172,7 +203,7 @@ public sealed class CardNumberFormatTests : IDisposable
         var sync = new CardSyncService(_db, new FixedSourceFactory(source), new AuditService(_db));
 
         await sync.SyncAsync("test");
-        Assert.Equal(5, await _db.ImportedIdentifiers.CountAsync());
+        Assert.Equal(8, await _db.ImportedIdentifiers.CountAsync());
 
         response = """{"output":[{"employeeNo":"13483","initialCode":"4d-07782","idIdentifierSubType":3}],"conclusion":true}""";
         var result = await sync.SyncAsync("test");
@@ -190,8 +221,8 @@ public sealed class CardNumberFormatTests : IDisposable
         _db.Employees.Add(new Employee { FirstName = "Jana", LastName = "Nová", PersonalNumber = "20001", IsActive = true });
         await _db.SaveChangesAsync();
 
-        var stub = new Stub(body => body.Contains("100003")
-            ? Json("""{"output":[{"employeeNo":"20001","initialCode":"123-45678","idIdentifierSubType":100003}],"conclusion":true}""")
+        var stub = new Stub(body => body.Contains("1000003")
+            ? Json("""{"output":[{"employeeNo":"20001","initialCode":"123-45678","idIdentifierSubType":1000003}],"conclusion":true}""")
             : Json("""{"output":[],"conclusion":true}"""));
         var source = new IdentifiersApiCardSource(new HttpClient(stub),
             new IdentifiersApiCardSource.Options("https://x/api/v0/Identifiers", 3, null, null, null, null,
@@ -199,7 +230,7 @@ public sealed class CardNumberFormatTests : IDisposable
 
         await new CardSyncService(_db, new FixedSourceFactory(source), new AuditService(_db)).SyncAsync("test");
 
-        Assert.Equal(3, stub.Requests.Count); // podtypy 3, 100003, 4
+        Assert.Equal(3, stub.Requests.Count); // podtypy 3, 1000003, 4
         Assert.All(stub.Requests, r => Assert.Contains("\"employeeNo\":\"20001\"", r.Body));
         Assert.Equal("123045678", (await _db.EmployeeIdentifiers.SingleAsync()).Value);
     }

@@ -12,6 +12,7 @@ namespace Acs.Infrastructure.Sync;
 /// <summary>Jeden identifikátor ze zdroje (řádek na identifikátor, ne na osobu).</summary>
 /// <param name="RawValue">Hodnota přesně ze zdroje, když se <paramref name="Value"/> převáděla pro čtečky.</param>
 /// <param name="SubType">Podtyp identifikátoru ve zdroji (idIdentifierSubType), je-li znám.</param>
+/// <param name="SkipReason">Záznam se do identifikátorů nepřenáší (např. podtyp bez pravidla) — jen do otisku, s důvodem.</param>
 public record CardRecord(
     string? AdAccount,
     string? PersonalNumber,
@@ -22,7 +23,8 @@ public record CardRecord(
     DateTime? ValidTo = null,
     string? WinPakCardHolderId = null,
     string? RawValue = null,
-    int? SubType = null);
+    int? SubType = null,
+    string? SkipReason = null);
 
 /// <summary>Odkud se berou identifikátory zaměstnanců (karty, SPZ…).</summary>
 public interface ICardSource
@@ -124,8 +126,9 @@ public static class CardApiAuth
 }
 
 /// <summary>Identifikátor tak, jak ho vrátilo integrační API, po rozboru odpovědi.</summary>
+/// <param name="SourceFormat">Tvar hodnoty podle služby (<c>initialFormat</c>: NATIVE / NOHYPHEN), když ho posílá.</param>
 public record ApiIdentifier(string Value, DateTime? ValidFrom, DateTime? ValidTo, bool? Active, string? Note,
-    string? EmployeeNo = null, int? SubType = null);
+    string? EmployeeNo = null, int? SubType = null, string? SourceFormat = null);
 
 /// <summary>Jak se integrační služba čte.</summary>
 public static class CardApiFetchMode
@@ -335,7 +338,11 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
                     continue;
                 if (identifier.SubType is null || Rules.FirstOrDefault(r => r.SubType == identifier.SubType) is not { } rule)
                 {
+                    // Bez pravidla se nepřenáší, ale v otisku zůstane vidět, co služba vrací navíc.
                     SkippedUnknownSubType++;
+                    yield return new CardRecord(null, identifier.EmployeeNo, identifier.Value.Trim(), IdentifierType.Other,
+                        RawValue: identifier.Value.Trim(), SubType: identifier.SubType,
+                        SkipReason: identifier.SubType is null ? "bez podtypu" : $"podtyp {identifier.SubType} bez pravidla");
                     continue;
                 }
 
@@ -373,7 +380,7 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
     {
         var value = rule.Type == IdentifierType.LicensePlate
             ? StripPlateCountry(identifier.Value.Trim())
-            : CardNumberFormats.Apply(rule.Format, identifier.Value);
+            : CardNumberFormats.Apply(rule.Format, identifier.Value, identifier.SourceFormat);
         var note = rule.Format == CardNumberFormat.Raw || value == identifier.Value.Trim()
             ? identifier.Note
             : $"podtyp {rule.SubType}: {identifier.Value.Trim()}";
@@ -607,6 +614,7 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
 
     private static readonly string[] EmployeeNoProperties = ["employeeNo", "employeeNumber", "personalNumber", "personalNo", "osobniCislo"];
     private static readonly string[] SubTypeProperties = ["idIdentifierSubType", "identifierSubType", "subType", "subTypeId"];
+    private static readonly string[] SourceFormatProperties = ["initialFormat", "format"];
 
     /// <summary>
     /// Rozbor odpovědi na dotaz bez filtrů: záznamy všech osob s osobním číslem a podtypem,
@@ -648,7 +656,7 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
                 ParseDate(First(item, ToProperties)),
                 ParseActive(item),
                 First(item, NoteProperties),
-                employeeNo, subType));
+                employeeNo, subType, First(item, SourceFormatProperties)));
         }
 
         return result;
@@ -685,12 +693,12 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
 
         var result = new List<ApiIdentifier>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        void Add(string raw, DateTime? from, DateTime? to, bool? active, string? note)
+        void Add(string raw, DateTime? from, DateTime? to, bool? active, string? note, string? sourceFormat = null)
         {
             var value = type == IdentifierType.LicensePlate ? StripPlateCountry(raw.Trim()) : raw.Trim();
             if (value.Length == 0 || !seen.Add(EmployeeIdentifier.Normalize(value)))
                 return;
-            result.Add(new ApiIdentifier(value, from, to, active, note));
+            result.Add(new ApiIdentifier(value, from, to, active, note, SourceFormat: sourceFormat));
         }
 
         foreach (var item in items)
@@ -711,7 +719,8 @@ public sealed class IdentifiersApiCardSource(HttpClient http, IdentifiersApiCard
                         ParseDate(First(item, FromProperties)),
                         ParseDate(First(item, ToProperties)),
                         ParseActive(item),
-                        First(item, NoteProperties));
+                        First(item, NoteProperties),
+                        First(item, SourceFormatProperties));
                     break;
             }
         }

@@ -88,5 +88,8 @@ public class ImportedIdentifier
     public int? EmployeeId { get; set; }
     public Employee? Employee { get; set; }
 
+    /// <summary>Proč se záznam do identifikátorů nepřenesl (podtyp bez pravidla…); null = přenesen.</summary>
+    public string? SkipReason { get; set; }
+
     public DateTime FetchedAt { get; set; } = DateTime.UtcNow;
 }

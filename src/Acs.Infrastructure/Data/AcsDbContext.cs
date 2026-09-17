@@ -135,6 +135,7 @@ public class AcsDbContext(DbContextOptions<AcsDbContext> options)
             e.Property(x => x.AdAccount).HasMaxLength(128);
             e.Property(x => x.RawValue).HasMaxLength(128);
             e.Property(x => x.Value).HasMaxLength(128);
+            e.Property(x => x.SkipReason).HasMaxLength(128);
             e.HasIndex(x => x.EmployeeNo);
             e.HasIndex(x => x.EmployeeId);
             e.HasOne(x => x.Employee).WithMany()
