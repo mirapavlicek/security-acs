@@ -328,8 +328,8 @@
                 Typ: <span class="mono">Card</span> (karta) nebo <span class="mono">LicensePlate</span> (SPZ). Formát čísla pro čtečky:
                 <span class="mono">Auto</span> = podle tvaru hodnoty (výchozí pro podtyp 3 — služba pod ním vrací karty Homolky <span class="mono">4d-07782</span> i karty Motola <span class="mono">22B-11012</span>);
                 <span class="mono">Last5</span> = posledních 5 číslic doplněných nulami (Homolka: <span class="mono">4d-07782</span> i <span class="mono">4D-7782 → 07782</span>);
-                <span class="mono">DashToZero</span> = pomlčka → 0 (FN Motol, podtyp 100003: <span class="mono">123-45678 → 123045678</span>);
-                <span class="mono">Raw</span> = beze změny. Podtypy bez pravidla se přeskočí. Původní hodnota ze služby zůstává v poznámce identifikátoru.
+                <span class="mono">DashToZero</span> = pomlčka → 0 (FN Motol, podtyp 1000003: <span class="mono">176-25930 → 176025930</span>; tvar NOHYPHEN <span class="mono">17625930</span> dá totéž);
+                <span class="mono">Raw</span> = beze změny. Podtypy bez pravidla se nepřenáší (zůstanou jen v otisku <em>ImportedIdentifiers</em> s důvodem). Původní hodnota ze služby zůstává v poznámce identifikátoru.
                 @if (!string.IsNullOrWhiteSpace(Model.Values[SettingKeys.CardsLastImportStats]))
                 {
                     <br /><strong>Poslední stažení:</strong> <span>@Model.Values[SettingKeys.CardsLastImportStats]</span>

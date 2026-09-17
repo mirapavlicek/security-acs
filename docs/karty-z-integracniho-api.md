@@ -33,16 +33,21 @@ Co je karta, co SPZ a jak se z hodnoty služby udělá číslo, které čtou čt
 `podtyp = typ : formát`. Výchozí:
 
 ```
-3 = Card : Auto             # podle tvaru: 4d-07782 / 4D-7782 → 07782, 22B-11012 → 22B011012
-100003 = Card : DashToZero  # FN Motol (NATIVE nnn-nnnnn): 123-45678 → 123045678
-4 = LicensePlate            # SPZ: 1TN7287-CZE → 1TN7287
+3 = Card : Auto              # podle tvaru: 4d-07782 / 4D-7782 → 07782, 22B-11012 → 22B011012
+1000003 = Card : DashToZero  # FN Motol: NATIVE 176-25930 i NOHYPHEN 17625930 → 176025930
+4 = LicensePlate             # SPZ: 1TN7287-CZE → 1TN7287
 ```
 
 Služba vrací pod podtypem 3 karty Homolky (`4d-07782`, někdy zkráceně
 `4D-7782`) i karty v nativním tvaru FN Motol (`22B-11012`), proto je výchozí
 formát `Auto` — pozná se podle tvaru hodnoty. Formáty: `Auto`, `Last5`
 (posledních 5 číslic doplněných nulami — `4D-7782` i `4d-07782` dají `07782`),
-`DashToZero` (pomlčka → 0), `Raw` (beze změny). Typ i formát jdou zapsat i česky (`karta`, `SPZ`, `posledních 5`,
+`DashToZero` (pomlčka → 0; u tvaru bez pomlčky — `initialFormat: NOHYPHEN` — se nula
+vloží před posledních 5 číslic, takže oba tvary téže karty dají jedno číslo),
+`Raw` (beze změny). Služba u karet FN Motol posílá tutéž kartu dvakrát
+(`initialFormat` `NATIVE` a `NOHYPHEN`); po převodu je to jeden identifikátor.
+Podtypy bez pravidla (např. 5, 7) se nepřenáší, ale zůstávají v otisku
+`ImportedIdentifiers` se `SkipReason`, aby bylo vidět, co služba vrací navíc. Typ i formát jdou zapsat i česky (`karta`, `SPZ`, `posledních 5`,
 `pomlčka→0`). Podtypy bez pravidla se přeskočí (zkouška je vypíše). Původní
 hodnota ze služby zůstává v poznámce identifikátoru (`podtyp 100003: 123-45678`).
 

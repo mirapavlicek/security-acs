@@ -10,13 +10,15 @@ namespace Acs.Infrastructure.Sync;
 /// <param name="Duplicates">Záznamy ze zdroje, které u téhož člověka opakovaly už načtený identifikátor (přeskočeny).</param>
 /// <param name="Fetched">Kolik záznamů zdroj vrátil (uloženo do otisku ImportedIdentifiers).</param>
 /// <param name="UnmatchedPersons">Kolik různých osobních čísel ze zdroje v ACS není.</param>
+/// <param name="Skipped">Záznamy jen v otisku — podtyp bez pravidla (viz Nastavení → Karty).</param>
 public record CardSyncResult(int Added, int Updated, int Deactivated, int Unmatched, int Duplicates = 0,
-    int Fetched = 0, int UnmatchedPersons = 0)
+    int Fetched = 0, int UnmatchedPersons = 0, int Skipped = 0)
 {
     public override string ToString()
         => $"staženo {Fetched}, přidáno {Added}, aktualizováno {Updated}, deaktivováno {Deactivated}, nespárováno {Unmatched}"
            + (UnmatchedPersons > 0 ? $" ({UnmatchedPersons} osobních čísel v ACS není)" : "")
-           + (Duplicates > 0 ? $", přeskočeno duplicit {Duplicates}" : "");
+           + (Duplicates > 0 ? $", přeskočeno duplicit {Duplicates}" : "")
+           + (Skipped > 0 ? $", bez pravidla podtypu {Skipped} (jen v otisku)" : "");
 }
 
 /// <summary>
@@ -57,7 +59,7 @@ public class CardSyncService(
             }
         }
 
-        int added = 0, updated = 0, unmatched = 0, duplicates = 0;
+        int added = 0, updated = 0, unmatched = 0, duplicates = 0, skipped = 0;
         var seen = new HashSet<(int, IdentifierType, string)>();
         var unmatchedPersons = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var fetchedAt = DateTime.UtcNow;
@@ -77,8 +79,16 @@ public class CardSyncService(
                     Value = Truncate(EmployeeIdentifier.Normalize(record.Value), 128),
                     Type = record.Type,
                     EmployeeId = employee?.Id,
+                    SkipReason = record.SkipReason,
                     FetchedAt = fetchedAt,
                 });
+            }
+
+            // Jen do otisku (podtyp bez pravidla) — do identifikátorů se nepřenáší.
+            if (record.SkipReason is not null)
+            {
+                skipped++;
+                continue;
             }
 
             if (employee is null)
@@ -156,7 +166,7 @@ public class CardSyncService(
         await ReplaceSnapshotAsync(snapshot, ct);
 
         var result = new CardSyncResult(added, updated, deactivated, unmatched, duplicates,
-            snapshot.Count, unmatchedPersons.Count(p => p.Length > 0));
+            snapshot.Count, unmatchedPersons.Count(p => p.Length > 0), skipped);
         logger?.LogInformation("Synchronizace karet ({Source}): {Result}", source.Description, result);
         await audit.LogAsync(userName, "cards-synced", "EmployeeIdentifier", null, result.ToString(), ct);
         if (settings is not null)

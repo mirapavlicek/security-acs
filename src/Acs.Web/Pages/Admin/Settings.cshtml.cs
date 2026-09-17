@@ -228,7 +228,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         {
             CardsApiProbe = "Pravidla podtypů se neuložila:\n" + string.Join("\n", ruleErrors)
                 + (rules.Count == 0 ? "\nNezůstalo žádné pravidlo." : "")
-                + "\n\nTvar: „podtyp = typ : formát“ na řádek, např. 100003 = Card : DashToZero";
+                + "\n\nTvar: „podtyp = typ : formát“ na řádek, např. 1000003 = Card : DashToZero";
             ActiveSection = "cards";
             return RedirectToPage();
         }
