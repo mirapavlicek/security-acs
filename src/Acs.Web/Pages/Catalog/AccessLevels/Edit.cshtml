@@ -10,12 +10,20 @@
             <summary>
                 @(branch.Name.Length == 0 ? Model.Name : branch.Name)
                 <span class="badge">@branch.ReaderCount čteček</span>
+                @if (branch.NoAccessCount > 0)
+                {
+                    <span class="muted" title="Čtečky, které WIN-PAK ve stromu vrací, ale úroveň na ně přístup nedává (nemají časovou zónu)"> +@branch.NoAccessCount bez přístupu</span>
+                }
             </summary>
             <div class="tree-body">
-                @if (branch.Readers.Count > 0)
+                @{
+                    var withAccess = branch.Readers.Where(r => r.HasAccess).OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ToList();
+                    var withoutAccess = branch.Readers.Where(r => !r.HasAccess).OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ToList();
+                }
+                @if (withAccess.Count > 0)
                 {
                     <div class="tree-readers">
-                    @foreach (var reader in branch.Readers.OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase))
+                    @foreach (var reader in withAccess)
                     {
                         var row = Model.TreeReaders.GetValueOrDefault(reader.Name);
                         var acs = row?.ReaderId is not null;
@@ -41,6 +49,15 @@
                         </div>
                     }
                     </div>
+                }
+                @if (withoutAccess.Count > 0)
+                {
+                    <details class="tree-no-access">
+                        <summary class="muted" style="cursor:pointer">@withoutAccess.Count čteček ve větvi bez přístupu (WIN-PAK je ve stromu vrací bez časové zóny)</summary>
+                        <p class="muted mono" style="font-size:0.8rem;margin:0.3rem 0 0">
+                            @string.Join(", ", withoutAccess.Select(r => r.TimeZoneName is null ? r.Name : $"{r.Name} ({r.TimeZoneName})"))
+                        </p>
+                    </details>
                 }
                 @foreach (var child in branch.Children.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase))
                 {
@@ -151,6 +168,8 @@
             <p class="hint">
                 Větve (areál → budova) a čtečky tak, jak je úroveň má ve WIN-PAKu. U čtečky je její číslo z WIN-PAKu,
                 pod ním čtečka ACS, se kterou je spárovaná, a časová zóna, ve které na ní úroveň platí.
+                WIN-PAK ve stromu vrací všechny čtečky účtu; ty, na které úroveň přístup nedává (bez časové zóny),
+                jsou sbalené pod větví.
             </p>
             @foreach (var root in Model.Outline)
             {

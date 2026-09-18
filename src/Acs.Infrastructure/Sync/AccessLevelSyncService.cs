@@ -12,13 +12,15 @@ namespace Acs.Infrastructure.Sync;
 public record AccessLevelSyncResult(
     int Added, int Updated, int Deactivated, int ReadersMapped, int TreesFailed,
     int TreesLoaded = 0, int TreesSkipped = 0, string? LastTreeError = null,
-    int EntriesPaired = 0, int EntriesUnknown = 0)
+    int EntriesPaired = 0, int EntriesUnknown = 0, int TreesReparsed = 0)
 {
     public override string ToString()
     {
         var text = $"přidáno {Added}, aktualizováno {Updated}, deaktivováno {Deactivated}";
         if (TreesLoaded > 0)
             text += $", složení načteno u {TreesLoaded}";
+        if (TreesReparsed > 0)
+            text += $", složení přepočteno z uloženého stromu u {TreesReparsed}";
         if (EntriesPaired > 0)
             text += $", čteček ve stromech spárováno s ACS: {EntriesPaired}";
         if (EntriesUnknown > 0)
@@ -119,6 +121,7 @@ public class AccessLevelSyncService(AcsDbContext db, WinPakClient winPak, AuditS
 
         int treesLoaded = 0, treesFailed = 0, treesSkipped = 0, consecutiveFailures = 0;
         string? lastError = null;
+        var refreshed = new HashSet<int>();
         for (var i = 0; i < toRefresh.Count; i++)
         {
             var level = toRefresh[i];
@@ -130,6 +133,7 @@ public class AccessLevelSyncService(AcsDbContext db, WinPakClient winPak, AuditS
             {
                 await RefreshTreeAsync(level, ct);
                 await db.SaveChangesAsync(ct);
+                refreshed.Add(level.Id);
                 treesLoaded++;
                 consecutiveFailures = 0;
                 _logger.LogDebug("Strom úrovně „{Level}“ načten za {Elapsed:0.0} s ({Entries} položek).",
@@ -161,20 +165,50 @@ public class AccessLevelSyncService(AcsDbContext db, WinPakClient winPak, AuditS
             }
         }
 
+        progress?.Invoke("přepočítávám složení z uložených stromů…");
+        var reparsed = await ReparseStoredTreesAsync(
+            existing.Values.Where(l => l.IsActive && !refreshed.Contains(l.Id)), ct);
+
         progress?.Invoke("páruji čtečky a doplňuji mapování…");
         var (paired, unknown) = await PairEntriesAsync(ct);
         var mapped = await MapSingleReaderLevelsAsync(ct);
 
         var result = new AccessLevelSyncResult(added, updated, deactivated, mapped, treesFailed, treesLoaded, treesSkipped, lastError,
-            paired, unknown);
+            paired, unknown, reparsed);
         await audit.LogAsync(userName, "access-levels-synced", "AccessLevel", null, result.ToString(), ct);
         return result;
     }
 
     private ReaderMatcher? _matcher;
+    private KnownTimeZones? _zones;
 
     private async Task<ReaderMatcher> MatcherAsync(CancellationToken ct)
         => _matcher ??= new ReaderMatcher(await db.Readers.ToListAsync(ct));
+
+    /// <summary>
+    /// Číselník zón WIN-PAKu (jedno volání za běh) — podle něj parser pozná, které čtečky
+    /// ve stromu mají skutečnou zónu, a tedy patří do úrovně. Bez něj se rozhoduje jen
+    /// podle toho, zda u čtečky zóna vůbec je.
+    /// </summary>
+    private async Task<KnownTimeZones> ZonesAsync(CancellationToken ct)
+    {
+        if (_zones is not null)
+            return _zones;
+        try
+        {
+            _zones = new KnownTimeZones(await winPak.GetTimeZonesAsync(ct));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Časové zóny se z WIN-PAKu nenačetly; čtečky ve stromech se posoudí jen podle toho, zda zónu mají.");
+            _zones = KnownTimeZones.Empty;
+        }
+        return _zones;
+    }
 
     /// <summary>
     /// Spáruje položky všech aktivních úrovní s čtečkami ACS — i ty načtené dřív, protože
@@ -239,22 +273,71 @@ public class AccessLevelSyncService(AcsDbContext db, WinPakClient winPak, AuditS
             return; // WIN-PAK strom nevrátil — položky (třeba právě zapsané z ACS) zůstávají
 
         (level.Tree ??= new AccessLevelTree { AccessLevelId = level.Id }).AccessTree = tree;
-        var parsed = AccessTreeParser.Parse(tree);
+        var parsed = AccessTreeParser.Parse(tree, await ZonesAsync(ct));
         if (parsed is null)
             return; // strom je, ale není to XML, kterému rozumíme — položky nechat, surový strom je uložený
 
-        var matcher = await MatcherAsync(ct);
-        // Stávající položky jen této úrovně — Clear() nad nenačtenou kolekcí by v DB nechal staré řádky.
+        await LoadEntriesAsync(level, ct);
+        await ReplaceEntriesAsync(level, parsed, ct);
+    }
+
+    /// <summary>
+    /// Složení z už uložených stromů znovu podle aktuálních pravidel čtení — bez volání
+    /// WIN-PAKu. Strom je celý strom oblastí účtu a to, které čtečky z něj do úrovně patří,
+    /// rozhoduje parser; když se jeho pravidla zpřesní (nebo přibudou zóny v číselníku),
+    /// zrcadlo se srovná při příští synchronizaci, ne až po ručním „včetně složení všech úrovní“.
+    /// Vrací počet úrovní, u kterých se složení změnilo.
+    /// </summary>
+    private async Task<int> ReparseStoredTreesAsync(IEnumerable<AccessLevel> levels, CancellationToken ct)
+    {
+        var changed = 0;
+        foreach (var level in levels)
+        {
+            ct.ThrowIfCancellationRequested();
+            var parsed = AccessTreeParser.Parse(level.Tree?.AccessTree, await ZonesAsync(ct));
+            if (parsed is null)
+                continue;
+
+            await LoadEntriesAsync(level, ct);
+            if (await ReplaceEntriesAsync(level, parsed, ct))
+            {
+                await db.SaveChangesAsync(ct);
+                changed++;
+                _logger.LogInformation("Složení úrovně „{Level}“ přepočteno z uloženého stromu: {Entries} položek.",
+                    level.Name, level.Entries.Count);
+            }
+        }
+
+        return changed;
+    }
+
+    /// <summary>Stávající položky jen této úrovně — Clear() nad nenačtenou kolekcí by v DB nechal staré řádky.</summary>
+    private async Task LoadEntriesAsync(AccessLevel level, CancellationToken ct)
+    {
         var entries = db.Entry(level).Collection(l => l.Entries);
         if (!entries.IsLoaded && level.Id != 0)
             await entries.LoadAsync(ct);
+    }
+
+    /// <summary>Nahradí položky úrovně spárovanými položkami ze stromu; false = složení je stejné a nic se neměnilo.</summary>
+    private async Task<bool> ReplaceEntriesAsync(AccessLevel level, IReadOnlyList<AccessLevelEntry> parsed, CancellationToken ct)
+    {
+        var matcher = await MatcherAsync(ct);
+        // Párování před porovnáním — spárovaná položka dostane id WIN-PAKu z čtečky, uložené položky ho už mají.
+        foreach (var entry in parsed)
+            Pair(entry, matcher);
+
+        if (level.Entries.Select(Key).ToHashSet().SetEquals(parsed.Select(Key)))
+            return false;
+
         level.Entries.Clear();
         foreach (var entry in parsed)
-        {
-            Pair(entry, matcher);
             level.Entries.Add(entry);
-        }
+        return true;
     }
+
+    private static (string?, string?, int?, string?, string?) Key(AccessLevelEntry e)
+        => (e.ReaderExternalId, e.ReaderName, e.ReaderId, e.TimeZoneExternalId, e.TimeZoneName);
 
     /// <summary>
     /// Čtečkám bez mapování doplní úroveň, která obsahuje právě tu jednu čtečku.

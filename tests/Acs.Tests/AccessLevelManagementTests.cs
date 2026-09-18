@@ -28,6 +28,7 @@ public sealed class AccessLevelManagementTests : IDisposable
         public List<object> TimeZones { get; } =
         [
             new { id = "1", name = "Always", description = (string?)null, accountName = "A" },
+            new { id = "2", name = "Always On", description = (string?)null, accountName = "A" },
             new { id = "7", name = "Pracovní doba", description = (string?)null, accountName = "A" },
         ];
 
@@ -426,5 +427,118 @@ public sealed class AccessLevelManagementTests : IDisposable
         Assert.Same(c, matcher.Match(null, "Hlavní vchod"));   // název čtečky ze synchronizace
         Assert.Null(matcher.Match(null, "Vchod"));             // podřetězec nestačí
         Assert.Null(matcher.Match("nope", null));
+    }
+
+    /// <summary>
+    /// Strom z ostrého WIN-PAKu: celý strom přístupových oblastí účtu — každá úroveň v něm má všech
+    /// 785 čteček domu, jen u části z nich je časová zóna. Před opravou tak v ACS měla každá úroveň
+    /// všechny čtečky a žádná se nedala namapovat jako „úroveň jedné čtečky“.
+    /// </summary>
+    private const string WholeAreaTree =
+        "<AccessTree><Branch><Name>FN Motol</Name><Parent>AccessArea</Parent></Branch>"
+        + "<Branch><Name>23 MOC</Name><Parent>FN Motol</Parent></Branch>"
+        + "<Branch><Name>21 Ředitelství</Name><Parent>FN Motol</Parent></Branch>"
+        + "<Reader><Name>334001</Name><Parent>23 MOC</Parent><Timezone>Always On</Timezone></Reader>"
+        + "<Reader><Name>334002</Name><Parent>23 MOC</Parent><Timezone></Timezone></Reader>"
+        + "<Reader><Name>334003</Name><Parent>23 MOC</Parent></Reader>"
+        + "<Reader><Name>341011</Name><Parent>21 Ředitelství</Parent><Timezone>** None **</Timezone></Reader>"
+        + "<Reader><Name>341012</Name><Parent>21 Ředitelství</Parent><Timezone>Never On</Timezone></Reader>"
+        + "</AccessTree>";
+
+    [Fact]
+    public void Parser_bere_do_urovne_jen_ctecky_se_skutecnou_casovou_zonou()
+    {
+        var entries = AccessTreeParser.Parse(WholeAreaTree)!;
+
+        var entry = Assert.Single(entries);
+        Assert.Equal(("334001", "Always On"), (entry.ReaderName, entry.TimeZoneName));
+        Assert.Equal(5, AccessTreeParser.CountReaders(WholeAreaTree));
+
+        // Osnova ukáže i čtečky bez přístupu, ale odlišené — správce vidí, co WIN-PAK poslal.
+        var motol = Assert.Single(AccessTreeOutline.Parse(WholeAreaTree)!);
+        Assert.Equal((1, 4), (motol.ReaderCount, motol.NoAccessCount));
+        var moc = motol.Children.Single(c => c.Name == "23 MOC");
+        Assert.Equal(["334001"], moc.Readers.Where(r => r.HasAccess).Select(r => r.Name));
+        Assert.Equal(["334002", "334003"], moc.Readers.Where(r => !r.HasAccess).Select(r => r.Name).Order());
+    }
+
+    [Fact]
+    public void Parser_pozna_skutecnou_zonu_od_zastupneho_textu()
+    {
+        // Skutečná pojmenovaná zóna platí bez ohledu na číselník (jiné názvosloví ani výpadek
+        // konektoru nesmí zahodit „Always On“); zástupné texty a „Never On“ přístup nedávají.
+        const string tree = "<AccessTree>"
+            + "<Reader><Name>1</Name><Timezone>Always On</Timezone></Reader>"
+            + "<Reader><Name>2</Name><Timezone>-- No Access --</Timezone></Reader>"
+            + "<Reader><Name>3</Name><Timezone>Pracovní doba</Timezone></Reader>"
+            + "<Reader><Name>4</Name><Timezone>Never On</Timezone></Reader>"
+            + "<Reader><Name>5</Name><Timezone>** None **</Timezone></Reader>"
+            + "<Reader><Name>6</Name><Timezone></Timezone></Reader>"
+            + "</AccessTree>";
+
+        Assert.Equal(["1", "3"], AccessTreeParser.Parse(tree, KnownTimeZones.Empty)!.Select(e => e.ReaderName).Order());
+        Assert.Equal(["1", "3"], AccessTreeParser.Parse(tree, new KnownTimeZones([new WinPakTimeZone("7", "Jiný název", null, null)]))!
+            .Select(e => e.ReaderName).Order());
+
+        // Zóna zadaná pouhým id (bez jména): 0 je „bez přístupu“, id z číselníku platí, cizí id ne (bez číselníku projde).
+        var zones = new KnownTimeZones([new WinPakTimeZone("7", "Pracovní doba", null, null)]);
+        Assert.Empty(AccessTreeParser.Parse("""<R><Reader HWDeviceID="5" ReaderName="A" TimeZoneID="0" /></R>""", zones)!);
+        Assert.Single(AccessTreeParser.Parse("""<R><Reader HWDeviceID="5" ReaderName="A" TimeZoneID="7" /></R>""", zones)!);
+        Assert.Empty(AccessTreeParser.Parse("""<R><Reader HWDeviceID="5" ReaderName="A" TimeZoneID="99" /></R>""", zones)!);
+        Assert.Single(AccessTreeParser.Parse("""<R><Reader HWDeviceID="5" ReaderName="A" TimeZoneID="99" /></R>""")!);
+    }
+
+    [Fact]
+    public async Task Sync_z_celeho_stromu_oblasti_vezme_jen_ctecky_s_pristupem_a_namapuje_uroven_jedne_ctecky()
+    {
+        var dilna = new Reader { DeviceNumber = "334001", Name = "334001 — DÍLNA", Source = RecordSource.Imported };
+        var chodba = new Reader { DeviceNumber = "334002", Name = "334002 — CHODBA", Source = RecordSource.Imported };
+        _db.Readers.AddRange(dilna, chodba);
+        await _db.SaveChangesAsync();
+        _connector.Levels.Add(new { id = "3", name = "23 MOC", description = (string?)null });
+        _connector.Levels.Add(new { id = "4", name = "Ředitelství", description = (string?)null });
+        _connector.Trees["23 MOC"] = WholeAreaTree;
+        _connector.Trees["Ředitelství"] = WholeAreaTree
+            .Replace("<Timezone>Always On</Timezone>", "<Timezone></Timezone>")
+            .Replace("<Timezone>** None **</Timezone>", "<Timezone>Pracovní doba</Timezone>");
+
+        var result = await new AccessLevelSyncService(_db, _client, _audit).SyncAsync("test");
+
+        var levels = await _db.AccessLevels.Include(a => a.Entries).ToListAsync();
+        Assert.Equal("334001", Assert.Single(levels.Single(l => l.Name == "23 MOC").Entries).ReaderName);
+        Assert.Equal("341011", Assert.Single(levels.Single(l => l.Name == "Ředitelství").Entries).ReaderName);
+        Assert.Equal((1, 1), (result.EntriesPaired, result.EntriesUnknown));
+        Assert.Equal(1, result.ReadersMapped);
+        Assert.Equal("3", (await _db.Readers.SingleAsync(r => r.Id == dilna.Id)).AccessLevelExternalId);
+        Assert.Null((await _db.Readers.SingleAsync(r => r.Id == chodba.Id)).AccessLevelExternalId);
+    }
+
+    /// <summary>
+    /// Zrcadlo naplněné starším parserem má u každé úrovně všechny čtečky domu. Příští synchronizace
+    /// složení přepočte z uloženého stromu — bez volání WIN-PAKu a bez ručního „včetně složení všech úrovní“.
+    /// </summary>
+    [Fact]
+    public async Task Sync_prepocita_slozeni_z_ulozeneho_stromu_kdyz_se_pravidla_cteni_zmenila()
+    {
+        var level = new AccessLevel { ExternalId = "3", Name = "23 MOC", LastSyncedAt = DateTime.UtcNow };
+        level.Tree = new AccessLevelTree { AccessTree = WholeAreaTree };
+        foreach (var name in new[] { "334001", "334002", "334003", "341011", "341012" })
+            level.Entries.Add(new AccessLevelEntry { ReaderName = name, TimeZoneName = name == "334001" ? "Always On" : null });
+        _db.AccessLevels.Add(level);
+        await _db.SaveChangesAsync();
+        _connector.Levels.Add(new { id = "3", name = "23 MOC", description = (string?)null });
+        _connector.TreeError = "strom se číst nemá — úroveň se nezměnila";
+
+        var result = await new AccessLevelSyncService(_db, _client, _audit).SyncAsync("test");
+
+        Assert.Equal(0, _connector.TreeRequests);
+        Assert.Equal(1, result.TreesReparsed);
+        Assert.Contains("přepočteno z uloženého stromu u 1", result.ToString());
+        Assert.Equal("334001", Assert.Single(await _db.AccessLevelEntries.ToListAsync()).ReaderName);
+
+        // Beze změny pravidel se při dalším běhu nic nepřepisuje.
+        var again = await new AccessLevelSyncService(_db, _client, _audit).SyncAsync("test");
+        Assert.Equal(0, again.TreesReparsed);
+        Assert.Single(await _db.AccessLevelEntries.ToListAsync());
     }
 }
