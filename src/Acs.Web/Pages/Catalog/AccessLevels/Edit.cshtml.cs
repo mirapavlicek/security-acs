@@ -62,9 +62,10 @@ public class EditModel(AcsDbContext db, AccessLevelAdminService admin) : PageMod
             IsActive = level.IsActive;
             AccessTree = level.Tree?.AccessTree;
             TreeUnreadable = AccessTreeParser.Parse(AccessTree) is null && !string.IsNullOrWhiteSpace(AccessTree);
-            Outline = AccessTreeOutline.Parse(AccessTree);
 
             await LoadChoicesAsync(level);
+            // Až po zónách: podle číselníku osnova pozná, které čtečky ve stromu přístup skutečně mají.
+            Outline = AccessTreeOutline.Parse(AccessTree, new KnownTimeZones(TimeZones));
             return Page();
         }
 

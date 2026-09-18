@@ -2,8 +2,11 @@ using System.Xml.Linq;
 
 namespace Acs.Infrastructure.Sync;
 
-/// <summary>Čtečka ve stromu přístupů: název (u čteček z EKV jejich číslo), id, časová zóna.</summary>
-public sealed record AccessTreeReader(string Name, string? ExternalId, string? TimeZoneName);
+/// <summary>
+/// Čtečka ve stromu přístupů: název (u čteček z EKV jejich číslo), id, časová zóna a zda na ni
+/// úroveň dává přístup (strom nese všechny čtečky účtu, ne jen ty v úrovni — viz <see cref="AccessTreeParser"/>).
+/// </summary>
+public sealed record AccessTreeReader(string Name, string? ExternalId, string? TimeZoneName, bool HasAccess = true);
 
 /// <summary>Větev stromu (areál → budova → …) s podřízenými větvemi a čtečkami.</summary>
 public sealed class AccessTreeBranch(string name)
@@ -12,35 +15,31 @@ public sealed class AccessTreeBranch(string name)
     public List<AccessTreeBranch> Children { get; } = [];
     public List<AccessTreeReader> Readers { get; } = [];
 
-    /// <summary>Čteček ve větvi včetně podřízených — do záhlaví větve.</summary>
-    public int ReaderCount => Readers.Count + Children.Sum(c => c.ReaderCount);
+    /// <summary>Čteček s přístupem ve větvi včetně podřízených — do záhlaví větve.</summary>
+    public int ReaderCount => Readers.Count(r => r.HasAccess) + Children.Sum(c => c.ReaderCount);
+
+    /// <summary>Čteček ve větvi včetně podřízených, na které úroveň přístup nedává.</summary>
+    public int NoAccessCount => Readers.Count(r => !r.HasAccess) + Children.Sum(c => c.NoAccessCount);
 }
 
 /// <summary>
 /// Strom přístupů pro zobrazení: hierarchie větví (WIN-PAK: <c>&lt;Branch&gt;&lt;Name&gt;23 MOC&lt;/Name&gt;&lt;Parent&gt;FN Motol&lt;/Parent&gt;&lt;/Branch&gt;</c>)
 /// a čtečky zařazené pod svou větev (<c>&lt;Reader&gt;…&lt;Parent&gt;23 MOC&lt;/Parent&gt;</c>).
-/// Stromy bez větví dají jeden kořen se všemi čtečkami. Položky k zápisu do zrcadla
-/// dělá <see cref="AccessTreeParser"/>; tady jde jen o to, jak strom ukázat správci.
+/// Stromy bez větví dají jeden kořen se všemi čtečkami. Čtečky bez přístupu zůstávají
+/// v osnově označené (<see cref="AccessTreeReader.HasAccess"/>), aby správce viděl, co
+/// WIN-PAK poslal a proč to v úrovni není. Položky k zápisu do zrcadla dělá
+/// <see cref="AccessTreeParser"/>; tady jde jen o to, jak strom ukázat správci.
 /// </summary>
 public static class AccessTreeOutline
 {
     private static readonly string[] ParentKeys = ["parent", "parentname", "branch", "area", "accessarea"];
 
     /// <summary>Kořeny stromu; null = strom není čitelné XML.</summary>
-    public static IReadOnlyList<AccessTreeBranch>? Parse(string? tree)
+    public static IReadOnlyList<AccessTreeBranch>? Parse(string? tree, KnownTimeZones? zones = null)
     {
-        if (string.IsNullOrWhiteSpace(tree) || !tree.TrimStart().StartsWith('<'))
+        var document = AccessTreeParser.Load(tree);
+        if (document is null)
             return null;
-
-        XDocument document;
-        try
-        {
-            document = XDocument.Parse(tree);
-        }
-        catch (Exception)
-        {
-            return null;
-        }
 
         var branches = new Dictionary<string, AccessTreeBranch>(StringComparer.OrdinalIgnoreCase);
         var parentOf = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
@@ -49,13 +48,10 @@ public static class AccessTreeOutline
         foreach (var element in document.Descendants())
         {
             var values = AccessTreeParser.Values(element);
-            var readerId = AccessTreeParser.First(values, ["hwdeviceid", "readerid", "deviceid", "entranceid", "hid"]);
-            var readerName = AccessTreeParser.ReaderName(element, values);
-            if (readerId is not null || readerName is not null)
+            if (AccessTreeParser.TryReadReader(element, values, zones, out var reader))
             {
-                var context = AccessTreeParser.Values(element, includeAncestors: true, includeDescendants: true);
-                readers.Add((new AccessTreeReader(readerName ?? readerId!, readerId,
-                    AccessTreeParser.First(context, ["timezonename", "tzname", "timezone", "tz"])), Parent(element, values)));
+                readers.Add((new AccessTreeReader(reader.Name ?? reader.Id!, reader.Id, reader.TimeZoneName, reader.HasAccess),
+                    Parent(element, values)));
                 continue;
             }
 

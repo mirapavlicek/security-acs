@@ -45,14 +45,30 @@ vrací větve a čtečky bez id, jen s názvem a zónou:
   <Branch><Name>FN Motol</Name><Parent>AccessArea</Parent></Branch>
   <Branch><Name>23 MOC</Name><Parent>FN Motol</Parent></Branch>
   <Reader><Name>334001</Name><Parent>23 MOC</Parent><Timezone>Always On</Timezone></Reader>
+  <Reader><Name>334002</Name><Parent>23 MOC</Parent><Timezone></Timezone></Reader>
 </AccessTree>
 ```
 
+Strom **není seznam čteček úrovně**, ale celý strom přístupových oblastí účtu
+(*Configuration → Define → Access Areas*) — tak úroveň vypadá i v okně
+WIN-PAKu: všechny čtečky domu a u každé buď časová zóna, nebo nic. Do úrovně
+proto ACS bere jen čtečky, u kterých strom **skutečnou zónu** nese: ne
+prázdnou, ne zástupný text (`None`, `No Access`, `Never`…), a když WIN-PAK
+vrátí číselník zón (`GET /api/v1/time-zones`, jedno volání za synchronizaci),
+tak zónu z něj. Bez tohoto pravidla měla každá úroveň všech 785 čteček domu
+a žádná se nedala namapovat jako úroveň jedné čtečky. Když se pravidla čtení
+změní, synchronizace složení přepočte z uložených stromů sama, bez volání
+WIN-PAKu.
+
 Detail úrovně ho kreslí jako strom: větve (areál → budova) jako rozbalovací
 uzly, čtečky jako karty s číslem z WIN-PAKu, spárovanou čtečkou ACS (odkaz do
-jejího detailu) a časovou zónou. Surové XML zůstává pod rozbalovátkem. Když
-ACS stromu nerozumí, úroveň to ukáže („?“ v seznamu, varování v detailu) —
-pošlete surový strom vývoji, parser se doplní.
+jejího detailu) a časovou zónou; čtečky bez přístupu jsou pod větví sbalené
+s počtem („+N bez přístupu“), aby bylo vidět, co WIN-PAK poslal a proč to
+v úrovni není. Surové XML zůstává pod rozbalovátkem. Když ACS stromu
+nerozumí, úroveň to ukáže („?“ v seznamu, varování v detailu) — pošlete
+surový strom vývoji, parser se doplní. Totéž platí, když má po synchronizaci
+každá úroveň stále všechny čtečky: WIN-PAK pak čtečky bez přístupu značí
+jinak, než ACS zná, a v surovém XML je to vidět.
 
 ## Párování čteček ze stromu
 
