@@ -53,13 +53,15 @@ public static class AccessTreeParser
     private static readonly string[] TimeZoneNameKeys = ["timezonename", "tzname", "timezone", "tz"];
 
     /// <summary>
-    /// Zástupné texty místo zóny u čtečky, na kterou úroveň přístup nedává (po odstranění
-    /// ozdob typu <c>** None **</c>). „Never“ je sice zóna, ale čtečka s ní nikdy neotevře —
-    /// pro ACS je to totéž jako bez přístupu. Skutečné zóny („Always“, „Pracovní doba“) sem nepatří.
+    /// Názvy zón (po odstranění ozdob a případné koncovky „ On/Off“), se kterými čtečka nikdy
+    /// neotevře — pro ACS je to totéž jako bez přístupu. WIN-PAK v Motole značí nepovolené
+    /// čtečky prázdnou zónou, povolené <c>Always On</c> a pár výjimek <c>Never On</c> (→ „never“).
+    /// Skutečné zóny („Always“, „Pracovní doba“) sem nepatří.
     /// </summary>
     private static readonly HashSet<string> NoAccessNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "none", "no access", "noaccess", "not assigned", "unassigned", "not set", "null", "n/a", "-", "--", "never",
+        "none", "never", "no access", "noaccess", "not assigned", "unassigned", "not set", "disabled",
+        "null", "n/a", "-", "--",
         "žádná", "žádný", "žádné", "bez přístupu", "nepřiřazeno", "nepřiřazena", "nepřiděleno", "nikdy",
     };
 
@@ -144,34 +146,53 @@ public static class AccessTreeParser
 
     /// <summary>
     /// Čtečka je součástí úrovně, jen když má skutečnou časovou zónu: ne prázdnou, ne zástupný
-    /// text („None“), ne id 0, a když je k dispozici číselník zón WIN-PAKu, tak zónu z něj.
+    /// text („None“, „Never On“), ne id 0. Rozhoduje jméno zóny (v Motole strom jiné vodítko
+    /// nenese) — „Always On“ přístup dává, „Never On“ a prázdno ne. Číselník zón WIN-PAKu
+    /// (<paramref name="zones"/>) potvrzuje jen zónu zadanou pouhým id (bez jména), aby se
+    /// skutečné jmenné zóny nezahazovaly kvůli jinému názvosloví nebo výpadku konektoru.
     /// </summary>
     internal static bool GrantsAccess(string? timeZoneId, string? timeZoneName, KnownTimeZones? zones)
     {
         zones ??= KnownTimeZones.Empty;
-        var nameIsReal = timeZoneName is not null && !NoAccessNames.Contains(Strip(timeZoneName));
+
+        if (timeZoneName is not null)
+            return IsRealZoneName(timeZoneName);
 
         if (timeZoneId is not null)
-        {
-            if (IsNoAccessId(timeZoneId))
-                return false;
-            if (zones.IsEmpty || zones.ContainsId(timeZoneId))
-                return true;
-            return nameIsReal && zones.ContainsName(timeZoneName!);
-        }
+            return !IsNoAccessId(timeZoneId) && (zones.IsEmpty || zones.ContainsId(timeZoneId));
 
-        if (!nameIsReal)
+        return false;
+    }
+
+    /// <summary>Jméno zóny, se kterou úroveň skutečně otevírá (ne prázdno, ne „None“/„Never (On)“…).</summary>
+    private static bool IsRealZoneName(string timeZoneName)
+    {
+        var stripped = Strip(timeZoneName);
+        if (stripped.Length == 0)
             return false;
-        return zones.IsEmpty || zones.ContainsName(timeZoneName!);
+        // „Always On“/„Never On“ — vestavěné zóny WIN-PAKu; posuzuje se i jméno bez koncovky „On/Off“.
+        return !NoAccessNames.Contains(stripped) && !NoAccessNames.Contains(WithoutOnOff(stripped));
     }
 
     private static bool IsNoAccessId(string timeZoneId)
         => long.TryParse(timeZoneId.Trim(), out var id) && id <= 0;
 
-    /// <summary>„** None **“, „<none>“, „[None]“ → „none“.</summary>
+    /// <summary>„** None **“, „&lt;none&gt;“, „[None]“, „-- No Access --“ → „none“ / „no access“; sjednotí i vnitřní mezery.</summary>
     private static string Strip(string value)
-        => string.Join(' ', value.Trim('*', '<', '>', '[', ']', '(', ')', ' ', '\t')
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        => string.Join(' ', value.Trim('*', '<', '>', '[', ']', '(', ')', '-', '_', '=', '.', ':', ' ', '\t')
+            .Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries));
+
+    /// <summary>„never on“ → „never“, „always off“ → „always“; jinak beze změny.</summary>
+    private static string WithoutOnOff(string value)
+    {
+        foreach (var suffix in (string[])[" on", " off"])
+        {
+            if (value.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                return value[..^suffix.Length];
+        }
+
+        return value;
+    }
 
     /// <summary>
     /// Název čtečky: pojmenovaný atribut/prvek (<c>ReaderName</c>, <c>DeviceName</c>…), nebo — u prvku,

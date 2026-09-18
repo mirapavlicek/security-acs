@@ -442,7 +442,7 @@ public sealed class AccessLevelManagementTests : IDisposable
         + "<Reader><Name>334002</Name><Parent>23 MOC</Parent><Timezone></Timezone></Reader>"
         + "<Reader><Name>334003</Name><Parent>23 MOC</Parent></Reader>"
         + "<Reader><Name>341011</Name><Parent>21 Ředitelství</Parent><Timezone>** None **</Timezone></Reader>"
-        + "<Reader><Name>341012</Name><Parent>21 Ředitelství</Parent><Timezone>Never</Timezone></Reader>"
+        + "<Reader><Name>341012</Name><Parent>21 Ředitelství</Parent><Timezone>Never On</Timezone></Reader>"
         + "</AccessTree>";
 
     [Fact]
@@ -463,20 +463,25 @@ public sealed class AccessLevelManagementTests : IDisposable
     }
 
     [Fact]
-    public void Parser_podle_ciselniku_zon_pozna_zonu_od_zastupneho_textu()
+    public void Parser_pozna_skutecnou_zonu_od_zastupneho_textu()
     {
+        // Skutečná pojmenovaná zóna platí bez ohledu na číselník (jiné názvosloví ani výpadek
+        // konektoru nesmí zahodit „Always On“); zástupné texty a „Never On“ přístup nedávají.
         const string tree = "<AccessTree>"
             + "<Reader><Name>1</Name><Timezone>Always On</Timezone></Reader>"
             + "<Reader><Name>2</Name><Timezone>-- No Access --</Timezone></Reader>"
             + "<Reader><Name>3</Name><Timezone>Pracovní doba</Timezone></Reader>"
+            + "<Reader><Name>4</Name><Timezone>Never On</Timezone></Reader>"
+            + "<Reader><Name>5</Name><Timezone>** None **</Timezone></Reader>"
+            + "<Reader><Name>6</Name><Timezone></Timezone></Reader>"
             + "</AccessTree>";
-        var zones = new KnownTimeZones([new WinPakTimeZone("2", "Always On", null, null), new WinPakTimeZone("7", "Pracovní doba", null, null)]);
 
-        Assert.Equal(["1", "3"], AccessTreeParser.Parse(tree, zones)!.Select(e => e.ReaderName).Order());
-        // Bez číselníku (WIN-PAK ho nevrátil) rozhoduje jen to, zda zóna je — neznámý zástupný text projde.
-        Assert.Equal(["1", "2", "3"], AccessTreeParser.Parse(tree, KnownTimeZones.Empty)!.Select(e => e.ReaderName).Order());
+        Assert.Equal(["1", "3"], AccessTreeParser.Parse(tree, KnownTimeZones.Empty)!.Select(e => e.ReaderName).Order());
+        Assert.Equal(["1", "3"], AccessTreeParser.Parse(tree, new KnownTimeZones([new WinPakTimeZone("7", "Jiný název", null, null)]))!
+            .Select(e => e.ReaderName).Order());
 
-        // Zóna zadaná id: 0 je „bez přístupu“, id z číselníku platí i bez názvu, cizí id ne.
+        // Zóna zadaná pouhým id (bez jména): 0 je „bez přístupu“, id z číselníku platí, cizí id ne (bez číselníku projde).
+        var zones = new KnownTimeZones([new WinPakTimeZone("7", "Pracovní doba", null, null)]);
         Assert.Empty(AccessTreeParser.Parse("""<R><Reader HWDeviceID="5" ReaderName="A" TimeZoneID="0" /></R>""", zones)!);
         Assert.Single(AccessTreeParser.Parse("""<R><Reader HWDeviceID="5" ReaderName="A" TimeZoneID="7" /></R>""", zones)!);
         Assert.Empty(AccessTreeParser.Parse("""<R><Reader HWDeviceID="5" ReaderName="A" TimeZoneID="99" /></R>""", zones)!);

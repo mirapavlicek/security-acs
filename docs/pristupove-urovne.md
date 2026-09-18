@@ -51,14 +51,18 @@ vrací větve a čtečky bez id, jen s názvem a zónou:
 
 Strom **není seznam čteček úrovně**, ale celý strom přístupových oblastí účtu
 (*Configuration → Define → Access Areas*) — tak úroveň vypadá i v okně
-WIN-PAKu: všechny čtečky domu a u každé buď časová zóna, nebo nic. Do úrovně
-proto ACS bere jen čtečky, u kterých strom **skutečnou zónu** nese: ne
-prázdnou, ne zástupný text (`None`, `No Access`, `Never`…), a když WIN-PAK
-vrátí číselník zón (`GET /api/v1/time-zones`, jedno volání za synchronizaci),
-tak zónu z něj. Bez tohoto pravidla měla každá úroveň všech 785 čteček domu
-a žádná se nedala namapovat jako úroveň jedné čtečky. Když se pravidla čtení
-změní, synchronizace složení přepočte z uložených stromů sama, bez volání
-WIN-PAKu.
+WIN-PAKu: **všech 785 čteček** domu a u každé buď časová zóna, nebo nic.
+Na ostrém serveru (WIN-PAK 4.9, Motol) se v `<Timezone>` napříč všemi 453
+úrovněmi objevují jen tři hodnoty: prázdno (čtečka bez přístupu), `Always On`
+(čtečka s přístupem) a pár výskytů `Never On` (vestavěná zóna „nikdy“, tedy
+také bez přístupu). Do úrovně proto ACS bere jen čtečky se **skutečnou zónou**:
+ne prázdnou, ne zástupný text (`None`, `No Access`…), ne `Never`/`Never On`,
+ne id 0. Skutečnou pojmenovanou zónu (`Always On`, `Pracovní doba`) bere vždy,
+i kdyby ji číselník zón WIN-PAKu (`GET /api/v1/time-zones`, jedno volání za
+synchronizaci) neobsahoval — číselník jen potvrzuje zónu zadanou pouhým id.
+Bez tohoto pravidla měla **každá** úroveň všech 785 čteček domu a žádná se
+nedala namapovat jako úroveň jedné čtečky. Když se pravidla čtení změní,
+synchronizace složení přepočte z uložených stromů sama, bez volání WIN-PAKu.
 
 Detail úrovně ho kreslí jako strom: větve (areál → budova) jako rozbalovací
 uzly, čtečky jako karty s číslem z WIN-PAKu, spárovanou čtečkou ACS (odkaz do
