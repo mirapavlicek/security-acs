@@ -62,6 +62,13 @@ public class LdapAuthenticator(SettingsService settings, DcLocator dcLocator, IL
             logger.LogWarning(ex, "LDAP ověření uživatele {User} selhalo.", userName);
             return null;
         }
+        catch (DirectoryOperationException ex)
+        {
+            // Heslo prošlo, ale dohledání uživatele server odmítl (špatný Base DN, referral, práva účtu).
+            logger.LogError(ex, "LDAP: dohledání uživatele {User} po úspěšném ověření selhalo ({Code}).", userName, ex.Response?.ResultCode);
+            throw new LdapUnavailableException(
+                $"Heslo bylo ověřeno, ale dohledání uživatele v Active Directory selhalo ({ex.Response?.ResultCode.ToString() ?? ex.Message}) — zkontrolujte Base DN a filtr v Nastavení → AD.", ex);
+        }
         catch (InvalidOperationException ex)
         {
             logger.LogError(ex, "LDAP ověření nelze provést (žádný dostupný řadič).");
@@ -132,7 +139,11 @@ public class LdapAuthenticator(SettingsService settings, DcLocator dcLocator, IL
         var domain = await settings.GetLdapDomainAsync(ct);
 
         // 1) bind jako přihlašovaný uživatel (ověření hesla) — k účtu bez domény se doplní
-        //    UPN sufix (nastavená doména, jinak z Base DN, jinak nnh.local), takže stačí zadat „jnovak“.
+        //    UPN sufix (nastavená doména, jinak z Base DN, jinak nnh.local), takže stačí zadat „jnovak“;
+        //    zadané „jnovak@nnh.local“ / „NNH\jnovak“ se napřed převede na totéž.
+        userName = NormalizeLoginName(userName, domain);
+        if (userName.Length == 0)
+            return null;
         var bindUser = BindUserName(userName, domain);
 
         LdapConnection connection;
@@ -184,6 +195,32 @@ public class LdapAuthenticator(SettingsService settings, DcLocator dcLocator, IL
         if (string.IsNullOrWhiteSpace(domain) || account.Contains('@') || account.Contains('\\'))
             return account;
         return $"{account}@{domain.Trim().TrimStart('@')}";
+    }
+
+    /// <summary>
+    /// Jméno z formuláře do tvaru, se kterým pracuje zbytek přihlášení: mezery pryč,
+    /// <c>jnovak@nnh.local</c> (přípona = nastavená doména, bez ohledu na velikost písmen) → <c>jnovak</c>,
+    /// <c>NNH\jnovak</c> nebo <c>nnh.local\jnovak</c> → <c>jnovak</c>. Jiná přípona (<c>jnovak@jina.domena</c>)
+    /// zůstává — uživatel ji zadal záměrně a bind ji použije. Zadání s doménou tak dopadne stejně
+    /// jako samotné jméno, které nápověda formuláře doporučuje.
+    /// </summary>
+    public static string NormalizeLoginName(string userName, string? domain)
+    {
+        var account = userName.Trim();
+        var backslash = account.IndexOf('\\');
+        if (backslash >= 0)
+            account = account[(backslash + 1)..].Trim();
+
+        var at = account.IndexOf('@');
+        if (at < 0)
+            return account;
+
+        var suffix = account[(at + 1)..].Trim().TrimEnd('.');
+        var configured = domain?.Trim().TrimStart('@').TrimEnd('.');
+        var sameDomain = !string.IsNullOrEmpty(configured)
+            && (suffix.Equals(configured, StringComparison.OrdinalIgnoreCase)
+                || suffix.Equals(configured.Split('.')[0], StringComparison.OrdinalIgnoreCase));
+        return sameDomain || suffix.Length == 0 ? account[..at].Trim() : account;
     }
 
     private async Task<LdapUserInfo> SearchUserAsync(LdapConnection connection, string samAccount, CancellationToken ct)

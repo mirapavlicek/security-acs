@@ -20,6 +20,20 @@ public class LoginDomainTests
         => Assert.Equal(expected, LdapAuthenticator.BindUserName(userName, domain));
 
     [Theory]
+    [InlineData("jnovak@nnh.local", "nnh.local", "jnovak")]
+    [InlineData("jnovak@NNH.LOCAL", "nnh.local", "jnovak")]
+    [InlineData(" jnovak@nnh.local ", "nnh.local", "jnovak")]
+    [InlineData("jnovak@nnh", "nnh.local", "jnovak")]
+    [InlineData("jnovak@", "nnh.local", "jnovak")]
+    [InlineData(@"NNH\jnovak", "nnh.local", "jnovak")]
+    [InlineData(@"nnh.local\jnovak", "nnh.local", "jnovak")]
+    [InlineData("jnovak@fnmh.cz", "nnh.local", "jnovak@fnmh.cz")]
+    [InlineData("jnovak@nnh.local", null, "jnovak@nnh.local")]
+    [InlineData("jnovak", "nnh.local", "jnovak")]
+    public void Zadane_jmeno_s_domenou_se_prevede_na_holy_ucet(string userName, string? domain, string expected)
+        => Assert.Equal(expected, LdapAuthenticator.NormalizeLoginName(userName, domain));
+
+    [Theory]
     [InlineData("DC=nnh,DC=local", "nnh.local")]
     [InlineData("OU=Users,OU=FNM,DC=nnh,DC=local", "nnh.local")]
     [InlineData(" dc=fnmh , dc=cz ", "fnmh.cz")]

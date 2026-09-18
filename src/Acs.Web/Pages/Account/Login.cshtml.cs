@@ -84,8 +84,16 @@ public class LoginModel(UserAuthenticationService auth, AuditService audit, Sett
         catch (LdapUnavailableException ex)
         {
             logger.LogError(ex, "Přihlášení {User}: Active Directory neodpovídá.", UserName);
-            await audit.LogAsync(UserName, "login-failed", details: "AD neodpovídá: " + ex.Message);
-            ErrorMessage = "Ověření účtem domény teď nelze provést — řadič Active Directory neodpovídá. Zkuste to za chvíli; lokální účet se přihlásí i tak.";
+            await audit.LogAsync(UserName, "login-failed", details: "AD: " + ex.Message);
+            ErrorMessage = $"Ověření účtem domény teď nelze provést: {ex.Message} Lokální účet se přihlásí i tak.";
+            return Page();
+        }
+        catch (Exception ex)
+        {
+            // Přihlašovací stránka nikdy nesmí skončit chybovou stránkou — uživatel potřebuje vědět, že to není jeho heslo.
+            logger.LogError(ex, "Přihlášení {User}: neočekávaná chyba při ověření.", UserName);
+            await audit.LogAsync(UserName, "login-failed", details: $"chyba: {ex.GetType().Name}: {ex.Message}");
+            ErrorMessage = "Přihlášení se nezdařilo kvůli chybě na serveru (zapsáno do logu). Zkuste to znovu nebo použijte lokální účet.";
             return Page();
         }
 
