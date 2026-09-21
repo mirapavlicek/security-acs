@@ -1,4 +1,5 @@
 using Acs.Infrastructure.Data;
+using Acs.Infrastructure.Notifications;
 using Acs.Infrastructure.Settings;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
@@ -68,5 +69,19 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.True(await _settings.GetBoolAsync(SettingKeys.LdapEnabled));
         Assert.Equal(636, await _settings.GetIntAsync(SettingKeys.LdapPort, 0));
         Assert.Equal(42, await _settings.GetIntAsync("neexistuje", 42));
+    }
+
+    /// <summary>
+    /// Odkazy v e-mailech byly natvrdo „http://acs.fnmh.network/…“ — po přejmenování domény
+    /// chodily mrtvé. Adresa je teď nastavení; bez něj platí správná výchozí a lomítko na konci nevadí.
+    /// </summary>
+    [Theory]
+    [InlineData(null, "https://acs.fnmh.hospital")]
+    [InlineData("", "https://acs.fnmh.hospital")]
+    [InlineData("  https://acs-test.fnmh.hospital/  ", "https://acs-test.fnmh.hospital")]
+    public void Verejna_adresa_pro_odkazy_v_mailech_ma_spravnou_vychozi_a_bez_koncoveho_lomitka(string? configured, string expected)
+    {
+        Assert.Equal(expected, EmailNotificationService.NormalizePublicUrl(configured));
+        Assert.DoesNotContain("fnmh.network", SettingKeys.DefaultPublicUrl);
     }
 }

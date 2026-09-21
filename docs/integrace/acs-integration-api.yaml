@@ -20,14 +20,14 @@ info:
     Terminologie a provozní požadavky: `docs/integrace/README.md`.
   contact:
     name: Správce ACS
-    url: https://acs.fnmh.network
+    url: https://acs.fnmh.hospital
   license:
     name: Interní dokument
 
 servers:
-  - url: https://acs.fnmh.network/api/v1
+  - url: https://acs.fnmh.hospital/api/v1
     description: Produkce
-  - url: https://acs-test.fnmh.network/api/v1
+  - url: https://acs-test.fnmh.hospital/api/v1
     description: Testovací prostředí
 
 tags:
@@ -485,7 +485,7 @@ components:
         oprávnění ke dveřím.
       flows:
         clientCredentials:
-          tokenUrl: https://acs.fnmh.network/connect/token
+          tokenUrl: https://acs.fnmh.hospital/connect/token
           scopes:
             persons.read: Čtení osob a identifikátorů
             groups.read: Čtení skupin a členství
@@ -586,7 +586,7 @@ components:
           type: string
           description: Identifikátor volání pro dohledání v logu ACS.
       examples:
-        - type: https://acs.fnmh.network/problems/credential-not-found
+        - type: https://acs.fnmh.hospital/problems/credential-not-found
           title: Identifikátor nenalezen
           status: 404
           detail: SPZ 1AB2345 není evidována u žádné osoby.

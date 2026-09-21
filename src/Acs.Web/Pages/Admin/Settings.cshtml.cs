@@ -56,7 +56,7 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
         SettingKeys.AutoDepartmentChangeEnabled, SettingKeys.AutoExpirationEnabled, SettingKeys.AutoRemindersEnabled,
         SettingKeys.AutoReminderAfterDays, SettingKeys.AutoEscalationAfterDays, SettingKeys.AutoPushEnabled,
         SettingKeys.SmtpHost, SettingKeys.SmtpPort, SettingKeys.SmtpUser, SettingKeys.SmtpFrom,
-        SettingKeys.SmtpUseTls, SettingKeys.SmtpIgnoreTlsErrors,
+        SettingKeys.SmtpUseTls, SettingKeys.SmtpIgnoreTlsErrors, SettingKeys.PublicUrl,
         SettingKeys.CardsSource, SettingKeys.CardsApiUrl, SettingKeys.CardsApiSubType, SettingKeys.CardsApiPlateSubType, SettingKeys.CardsApiAuth, SettingKeys.CardsApiKeyHeader,
         SettingKeys.CardsApiTokenUrl, SettingKeys.CardsApiTokenBody, SettingKeys.CardsApiTokenField,
         SettingKeys.CardsApiUser, SettingKeys.CardsApiIgnoreTls, SettingKeys.CardsApiFetchMode, SettingKeys.CardsApiSubTypeRules,
@@ -391,8 +391,9 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
 
     public async Task<IActionResult> OnPostSmtpAsync(
         string? smtpHost, string? smtpPort, string? smtpUser, string? smtpPassword, string? smtpFrom,
-        string? smtpUseTls, string? smtpIgnoreTlsErrors)
+        string? smtpUseTls, string? smtpIgnoreTlsErrors, string? publicUrl = null)
     {
+        await settings.SetAsync(SettingKeys.PublicUrl, publicUrl?.Trim().TrimEnd('/'), UserName);
         await settings.SetAsync(SettingKeys.SmtpHost, smtpHost, UserName);
         await settings.SetAsync(SettingKeys.SmtpPort, smtpPort, UserName);
         await settings.SetAsync(SettingKeys.SmtpUser, smtpUser, UserName);
@@ -406,9 +407,9 @@ public class SettingsModel(SettingsService settings, AuditService audit, WinPakC
     /// <summary>Uloží SMTP nastavení a pošle zkušební e-mail na zadanou adresu (výchozí: adresa odesílatele).</summary>
     public async Task<IActionResult> OnPostSmtpTestAsync(
         string? smtpHost, string? smtpPort, string? smtpUser, string? smtpPassword, string? smtpFrom,
-        string? smtpUseTls, string? smtpIgnoreTlsErrors, string? smtpTestTo)
+        string? smtpUseTls, string? smtpIgnoreTlsErrors, string? smtpTestTo, string? publicUrl = null)
     {
-        await OnPostSmtpAsync(smtpHost, smtpPort, smtpUser, smtpPassword, smtpFrom, smtpUseTls, smtpIgnoreTlsErrors);
+        await OnPostSmtpAsync(smtpHost, smtpPort, smtpUser, smtpPassword, smtpFrom, smtpUseTls, smtpIgnoreTlsErrors, publicUrl);
         var to = string.IsNullOrWhiteSpace(smtpTestTo) ? smtpFrom?.Trim() : smtpTestTo.Trim();
         if (string.IsNullOrWhiteSpace(to))
         {

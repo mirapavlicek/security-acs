@@ -117,6 +117,14 @@ public static class SettingKeys
     public const string AutoPushEnabled = "Automation:PushToWinPakEnabled";
 
     // SMTP notifikace
+    /// <summary>
+    /// Veřejná adresa aplikace pro odkazy v e-mailech (bez lomítka na konci). Výchozí
+    /// <see cref="DefaultPublicUrl"/> — dřív byla natvrdo v kódu a po přejmenování
+    /// domény nemocnice (fnmh.network → fnmh.hospital) chodily v notifikacích mrtvé odkazy.
+    /// </summary>
+    public const string PublicUrl = "App:PublicUrl";
+    public const string DefaultPublicUrl = "https://acs.fnmh.hospital";
+
     public const string SmtpHost = "Smtp:Host";
     public const string SmtpPort = "Smtp:Port";
     public const string SmtpUser = "Smtp:User";

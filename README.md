@@ -1,6 +1,6 @@
 # security-acs
 
-Webová aplikace pro schvalování přístupů k místnostem (`acs.fnmh.network`).
+Webová aplikace pro schvalování přístupů k místnostem (`acs.fnmh.hospital`).
 
 - .NET 10 (C#), Blazor WebAssembly + ASP.NET Core, MariaDB Galera
 - HA nasazení (bezestavové) na dvou RHEL serverech za HAProxy, port 52000
