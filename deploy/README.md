@@ -4,7 +4,7 @@
 
 - **2× RHEL node** (`10.84.7.146`, `10.84.7.147`) — na každém běží `acs-web`
   (Kestrel, port **52000**, HTTP) jako systemd služba pod účtem `acs`.
-- **HAProxy** (existující) směruje `acs.fnmh.network` na oba nody,
+- **HAProxy** (existující) směruje `acs.fnmh.hospital` na oba nody,
   healthcheck `GET /health`. Aplikace je bezestavová — bez sticky sessions.
 - **MariaDB Galera** `10.84.12.170-172`, DB `winpak`, connection string
   s `LoadBalance=Failover`.
@@ -49,12 +49,12 @@ Pozn.: pokud je repozitář privátní, nastavte na nodech přístup ke čtení
      journalctl -u acs-web | grep "počátečním heslem"
      ```
 
-3. Otevřete `https://acs.fnmh.network`, přihlaste se jménem `admin` a tímto
+3. Otevřete `https://acs.fnmh.hospital`, přihlaste se jménem `admin` a tímto
    heslem — aplikace vynutí okamžitou změnu.
 4. V **Nastavení** (GUI) nakonfigurujte Active Directory (LDAPS, mapování
    skupin na role), WIN-PAK konektor (adresa + API klíč) a zdroj zaměstnanců.
 5. **Přihlášení účtem Windows (NTLM / Kerberos)**: zaregistrujte SPN
-   `HTTP/acs.fnmh.network` na servisní účet, vytvořte keytab (`ktpass`), nahrajte
+   `HTTP/acs.fnmh.hospital` na servisní účet, vytvořte keytab (`ktpass`), nahrajte
    ho na oba nody jako `/etc/acs/acs.keytab` (`KRB5_KTNAME` v `acs.env`; při
    instalaci stačí soubor `deploy/acs.keytab`) a zapněte sekci *Přihlášení
    Windows* v Nastavení. Podrobný postup: [`docs/prihlaseni-windows.md`](../docs/prihlaseni-windows.md).

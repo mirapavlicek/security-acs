@@ -74,7 +74,7 @@ public class EmailNotificationService(
                 + $"Položka: {ItemName(item)}\n"
                 + $"Úroveň: {item.CurrentLevelOrder}{role}\n"
                 + $"Zdůvodnění: {item.Request.Justification}\n\n"
-                + $"Rozhodněte v aplikaci: http://acs.fnmh.network/Requests/Detail/{item.RequestId}", ct);
+                + $"Rozhodněte v aplikaci: {await PublicUrlAsync(ct)}/Requests/Detail/{item.RequestId}", ct);
         }
         catch (Exception ex)
         {
@@ -112,7 +112,7 @@ public class EmailNotificationService(
             var body = $"Zaměstnanec: {item.Request!.TargetEmployee!.FullName}\n"
                      + $"Položka: {ItemName(item)}\n"
                      + $"Stav: {statusText}\n\n"
-                     + $"Detail: http://acs.fnmh.network/Requests/Detail/{item.RequestId}";
+                     + $"Detail: {await PublicUrlAsync(ct)}/Requests/Detail/{item.RequestId}";
 
             // Informuje se žadatel i samotný zaměstnanec (často jde o dvě různé osoby).
             var recipients = new List<string?>
@@ -154,11 +154,12 @@ public class EmailNotificationService(
 
         var action = item.Request!.Kind == RequestKind.Revoke ? "odebrání" : "udělení";
         var what = item.IsParking ? "parkovacího povolení" : item.IsSecurity ? "kamer / EZS" : "přístupu";
+        var publicUrl = await PublicUrlAsync(ct);
         var queue = item.IsParking
-            ? "Fronta správce parkování: http://acs.fnmh.network/Parking/Queue"
+            ? $"Fronta správce parkování: {publicUrl}/Parking/Queue"
             : item.IsSecurity
-                ? "Fronta realizace ICT: http://acs.fnmh.network/Security/Queue"
-                : "Fronta správce karet: http://acs.fnmh.network/CardQueue";
+                ? $"Fronta realizace ICT: {publicUrl}/Security/Queue"
+                : $"Fronta správce karet: {publicUrl}/CardQueue";
         await SendAsync(emails,
             $"ACS: ve frontě čeká {action} {what} (#{item.RequestId})",
             $"Zaměstnanec: {item.Request.TargetEmployee!.FullName}\n"
@@ -202,7 +203,7 @@ public class EmailNotificationService(
                 $"Zaměstnanec: {item.Request!.TargetEmployee!.FullName}\n"
                 + $"Položka: {ItemName(item)}\n"
                 + $"Čeká na schválení: {waitingDays} dní (úroveň {item.CurrentLevelOrder})\n\n"
-                + $"Detail: http://acs.fnmh.network/Requests/Detail/{item.RequestId}", ct);
+                + $"Detail: {await PublicUrlAsync(ct)}/Requests/Detail/{item.RequestId}", ct);
         }
         catch (Exception ex)
         {
@@ -232,7 +233,7 @@ public class EmailNotificationService(
                 + $"Úroveň {item.CurrentLevelOrder}: {reason}\n\n"
                 + "Úroveň matice po vyhodnocení nemá žádného schvalovatele (typicky zaměstnanec bez nadřízeného).\n"
                 + "Rozhodněte jako administrátor, nebo doplňte zaměstnanci nadřízeného (Katalog → Zaměstnanci).\n\n"
-                + $"Detail: http://acs.fnmh.network/Requests/Detail/{item.RequestId}", ct);
+                + $"Detail: {await PublicUrlAsync(ct)}/Requests/Detail/{item.RequestId}", ct);
         }
         catch (Exception ex)
         {
@@ -287,6 +288,14 @@ public class EmailNotificationService(
         }
     }
 
+    /// <summary>Veřejná adresa aplikace pro odkazy v e-mailech (nastavení <see cref="SettingKeys.PublicUrl"/>), bez koncového lomítka.</summary>
+    private async Task<string> PublicUrlAsync(CancellationToken ct)
+        => NormalizePublicUrl(await settings.GetAsync(SettingKeys.PublicUrl, ct));
+
+    /// <summary>Prázdné → výchozí adresa; jinak bez mezer a bez koncového lomítka, aby šlo bezpečně připojit cestu.</summary>
+    internal static string NormalizePublicUrl(string? configured)
+        => (string.IsNullOrWhiteSpace(configured) ? SettingKeys.DefaultPublicUrl : configured.Trim()).TrimEnd('/');
+
     private async Task SendAsync(IReadOnlyList<string> to, string subject, string body, CancellationToken ct)
     {
         var host = await settings.GetAsync(SettingKeys.SmtpHost, ct);
@@ -294,7 +303,7 @@ public class EmailNotificationService(
             return; // SMTP nenakonfigurováno — notifikace se tiše vynechají.
 
         var port = await settings.GetIntAsync(SettingKeys.SmtpPort, 25, ct);
-        var from = await settings.GetAsync(SettingKeys.SmtpFrom, ct) ?? "acs@fnmh.network";
+        var from = await settings.GetAsync(SettingKeys.SmtpFrom, ct) ?? "acs@fnmh.hospital";
         var user = await settings.GetAsync(SettingKeys.SmtpUser, ct);
         var password = await settings.GetAsync(SettingKeys.SmtpPassword, ct);
         var useTls = await settings.GetBoolAsync(SettingKeys.SmtpUseTls, false, ct);

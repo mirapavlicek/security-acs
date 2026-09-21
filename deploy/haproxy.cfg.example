@@ -1,10 +1,10 @@
-# Ukázková konfigurace HAProxy pro acs.fnmh.network
+# Ukázková konfigurace HAProxy pro acs.fnmh.hospital
 # (doplňte do stávající HAProxy před aplikačními servery).
 
 frontend acs_front
     bind *:80
     # Pokud HAProxy terminuje TLS:
-    # bind *:443 ssl crt /etc/haproxy/certs/acs.fnmh.network.pem
+    # bind *:443 ssl crt /etc/haproxy/certs/acs.fnmh.hospital.pem
     # redirect scheme https code 301 if !{ ssl_fc }
     default_backend acs_back
 

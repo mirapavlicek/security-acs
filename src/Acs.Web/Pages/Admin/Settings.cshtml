@@ -453,7 +453,10 @@
         <label>Heslo (prázdné = ponechat)</label>
         <input type="password" name="SmtpPassword" autocomplete="new-password" />
         <label>Odesílatel</label>
-        <input type="email" name="SmtpFrom" value="@Model.Values[SettingKeys.SmtpFrom]" placeholder="acs@fnmh.network" />
+        <input type="email" name="SmtpFrom" value="@Model.Values[SettingKeys.SmtpFrom]" placeholder="acs@fnmh.hospital" />
+        <label>Veřejná adresa aplikace (odkazy v e-mailech)</label>
+        <input type="url" name="PublicUrl" value="@Model.Values[SettingKeys.PublicUrl]" placeholder="@SettingKeys.DefaultPublicUrl" />
+        <p class="hint">Prázdné = @SettingKeys.DefaultPublicUrl. Používá se v odkazech „Detail“ a „Fronta“ v notifikacích.</p>
         <div class="checkbox-row">
             <input type="checkbox" id="SmtpUseTls" name="SmtpUseTls" value="true"
                    checked="@(Model.Values[SettingKeys.SmtpUseTls] == "true")" />
