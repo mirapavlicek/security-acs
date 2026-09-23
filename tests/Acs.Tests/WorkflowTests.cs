@@ -156,6 +156,56 @@ public sealed class WorkflowTests : IDisposable
     }
 
     [Fact]
+    public async Task Approver_KeepsViewAccess_AfterDeciding_AndAfterCompletion()
+    {
+        var request = await _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [_corridor.Id], null,
+            requesterCanActForOthers: true);
+        var item = request.Items.Single(i => i.ReaderId == _corridor.Id);
+
+        // Před rozhodnutím: schvalovatelé obou úrovní žádost vidí, cizí uživatel ne.
+        Assert.True(await _workflow.IsApproverOfAsync(_boss.Id, request.Items));
+        Assert.True(await _workflow.IsApproverOfAsync(_security.Id, request.Items));
+        Assert.False(await _workflow.IsApproverOfAsync(_deputy.Id, request.Items));
+
+        // Vedoucí rozhodl → už na něj nic nečeká, ale žádost vidět nepřestává.
+        await _workflow.DecideAsync(item.Id, _boss.Id, approve: true, "ok");
+        Assert.DoesNotContain(await _workflow.GetPendingForApproverAsync(_boss.Id), i => i.Id == item.Id);
+        Assert.True(await _workflow.IsApproverOfAsync(_boss.Id, request.Items));
+
+        // Po dokončení celého schvalování platí totéž pro oba schvalovatele.
+        await _workflow.DecideAsync(item.Id, _security.Id, approve: true, null);
+        await _db.Entry(item).ReloadAsync();
+        Assert.Equal(RequestStatus.Approved, item.Status);
+        Assert.Empty(await _workflow.GetPendingForApproverAsync(_boss.Id));
+        Assert.Empty(await _workflow.GetPendingForApproverAsync(_security.Id));
+        Assert.True(await _workflow.IsApproverOfAsync(_boss.Id, request.Items));
+        Assert.True(await _workflow.IsApproverOfAsync(_security.Id, request.Items));
+        Assert.False(await _workflow.IsApproverOfAsync(_deputy.Id, request.Items));
+    }
+
+    [Fact]
+    public async Task Deputy_KeepsViewAccess_ToRequestDecidedOnBehalfOfPrincipal()
+    {
+        _db.Deputies.Add(new Deputy
+        {
+            PrincipalUserId = _boss.Id,
+            DeputyUserId = _deputy.Id,
+            ValidFrom = DateTime.UtcNow.AddDays(-1),
+            ValidTo = DateTime.UtcNow.AddDays(1),
+        });
+        await _db.SaveChangesAsync();
+
+        var request = await _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [_corridor.Id], null,
+            requesterCanActForOthers: true);
+        var item = request.Items.Single(i => i.ReaderId == _corridor.Id);
+
+        await _workflow.DecideAsync(item.Id, _deputy.Id, approve: true, "za vedoucího");
+        Assert.Empty(await _workflow.GetPendingForApproverAsync(_deputy.Id));
+        Assert.True(await _workflow.IsApproverOfAsync(_deputy.Id, request.Items));
+        Assert.True(await _workflow.IsApproverOfAsync(_boss.Id, request.Items));
+    }
+
+    [Fact]
     public async Task Rejection_StopsItem()
     {
         var request = await _workflow.CreateRequestAsync(_requester.Id, _employee.Id, [_corridor.Id], null,

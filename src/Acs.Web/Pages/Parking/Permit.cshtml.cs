@@ -43,10 +43,12 @@ public class PermitModel(AcsDbContext db, ParkingAdminService parkingAdmin, Requ
             .Select(u => u.EmployeeId).FirstOrDefaultAsync();
         var canDecide = (await workflow.GetPendingForApproverAsync(CurrentUserId, User.IsInRole("Admin")))
             .Any(i => i.Id == item.Id);
+        // Schvalovatel povolení vidí i po svém rozhodnutí / po vydání (ne jen dokud čeká na něj).
         var canView = isAdmin
             || item.Request!.RequesterUserId == CurrentUserId
             || (myEmployeeId is not null && item.Request.TargetEmployeeId == myEmployeeId)
-            || canDecide;
+            || canDecide
+            || await workflow.IsApproverOfAsync(CurrentUserId, [item]);
         if (!canView)
             return Forbid();
 

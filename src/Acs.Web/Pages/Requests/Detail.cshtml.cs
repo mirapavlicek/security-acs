@@ -50,7 +50,8 @@ public class DetailModel(AcsDbContext db, RequestWorkflowService workflow) : Pag
         CanDecide = pending.Where(i => i.RequestId == id).Select(i => i.Id).ToHashSet();
 
         // Autorizace zobrazení detailu (ochrana proti IDOR): žadatel, cílový
-        // zaměstnanec, aktuální schvalovatel položky, správce karet nebo admin.
+        // zaměstnanec, schvalovatel položky (i když už rozhodl nebo položka postoupila dál),
+        // správce karet nebo admin.
         var myEmployeeId = await db.Users.Where(u => u.Id == CurrentUserId)
             .Select(u => u.EmployeeId).FirstOrDefaultAsync();
         var canView = IsAdmin
@@ -60,7 +61,8 @@ public class DetailModel(AcsDbContext db, RequestWorkflowService workflow) : Pag
             || (User.IsInRole("IctAdmin") && request.Items.Any(i => i.IsSecurity))
             || request.RequesterUserId == CurrentUserId
             || (myEmployeeId is not null && request.TargetEmployeeId == myEmployeeId)
-            || CanDecide.Count > 0;
+            || CanDecide.Count > 0
+            || await workflow.IsApproverOfAsync(CurrentUserId, request.Items);
         if (!canView)
             return Forbid();
 

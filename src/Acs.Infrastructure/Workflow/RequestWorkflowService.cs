@@ -815,6 +815,63 @@ public class RequestWorkflowService(
         return result;
     }
 
+    /// <summary>
+    /// Je uživatel (sám nebo v zástupu) schvalovatelem některé z položek — buď už na ní
+    /// rozhodl, nebo je schvalovatelem kterékoli platné úrovně v řetězu jejích matic?
+    /// Na rozdíl od <see cref="GetPendingForApproverAsync"/> (jen to, co teprve čeká) tím
+    /// oprávnění žádost <em>zobrazit</em> nezaniká po rozhodnutí, po postupu na další
+    /// úroveň ani po vyřízení. Položky musí mít načtené <see cref="AccessRequestItem.Stages"/>
+    /// a <see cref="AccessRequestItem.Decisions"/>.
+    /// </summary>
+    public async Task<bool> IsApproverOfAsync(
+        int userId, IReadOnlyCollection<AccessRequestItem> items, CancellationToken ct = default)
+    {
+        if (items.Count == 0)
+            return false;
+
+        var resolver = new ApproverResolver(db);
+        var identity = await resolver.GetActingIdentityAsync(userId, ct);
+
+        // Už rozhodl — sám, v zástupu, nebo za něj rozhodl zástup.
+        if (items.Any(i => i.Decisions.Any(d =>
+                identity.UserIds.Contains(d.ApproverUserId)
+                || (d.OnBehalfOfUserId is { } principal && identity.UserIds.Contains(principal)))))
+            return true;
+
+        var chains = items
+            .Select(i => (Item: i, Chain: ChainOf(i)))
+            .Where(x => x.Chain.Count > 0)
+            .ToList();
+        var matrixIds = chains.SelectMany(x => x.Chain).Distinct().ToList();
+        if (matrixIds.Count == 0)
+            return false;
+
+        var matrices = await LoadMatricesAsync(matrixIds, new Dictionary<int, ApprovalMatrix>(), ct);
+        var levels = await db.ApprovalLevels.AsNoTracking()
+            .Include(l => l.Approvers)
+            .Where(l => matrixIds.Contains(l.MatrixId))
+            .ToListAsync(ct);
+
+        foreach (var (item, chain) in chains)
+        {
+            var context = await resolver.Contexts.ForItemAsync(item, ct);
+            foreach (var level in levels.Where(l => chain.Contains(l.MatrixId)))
+            {
+                // Úroveň, která pro položku neplatí (kategorie / úsek), se přeskočila — její
+                // schvalovatelé žádost nikdy nedostali.
+                var treatUnknownAsOutside = matrices.TryGetValue(level.MatrixId, out var matrix) && matrix.TreatUnknownUnitAsOutside;
+                if (!context.Applies(level, treatUnknownAsOutside))
+                    continue;
+
+                var resolution = await resolver.ResolveAsync(level, item, ct);
+                if (resolution.Approvers.Any(a => a.Matches(identity)))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
     // ---------- Rozhodnutí ----------
 
     public async Task DecideAsync(int itemId, int userId, bool approve, string? comment,
